@@ -2,7 +2,6 @@ package driver
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strings"
 
@@ -22,19 +21,41 @@ type NodeServer struct {
 var _ = csi.NodeServer(&NodeServer{})
 
 func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	volumeID := req.GetVolumeId()
 	// mount the fs here
 	targetPath := req.GetTargetPath()
+
+	// Check arguments
+	if req.GetVolumeCapability() == nil {
+		return nil, status.Error(codes.InvalidArgument, "Volume capability missing in request")
+	}
+	if volumeID == "" {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+	if targetPath == "" {
+		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
+	}
+
+	// check whether it can be mounted
+	notMnt, err := checkMount(targetPath)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if !notMnt {
+		return &csi.NodePublishVolumeResponse{}, nil
+	}
 
 	mo := req.GetVolumeCapability().GetMount().GetMountFlags()
 	if req.GetReadonly() {
 		mo = append(mo, "ro")
 	}
 
-	source := fmt.Sprintf("%s%s", ns.Driver.filer, ns.Driver.pathOnFiler)
-
-	err := ns.Driver.mount(source, targetPath)
-
+	cfg := newConfigFromSecrets(req.GetSecrets())
+	mounter, err := newMounter(volumeID, cfg)
 	if err != nil {
+		return nil, err
+	}
+	if err := mounter.Mount(targetPath); err != nil {
 		if os.IsPermission(err) {
 			return nil, status.Error(codes.PermissionDenied, err.Error())
 		}
@@ -44,19 +65,24 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	glog.V(4).Infof("volume %s successfully mounted to %s", volumeID, targetPath)
+
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
 func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+
 	targetPath := req.GetTargetPath()
 
-	err := ns.Driver.unmount(targetPath)
+	if targetPath == "" {
+		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
+	}
 
-	if err != nil {
+	if err := fuseUnmount(targetPath); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	err = os.Remove(targetPath)
+	err := os.Remove(targetPath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -80,6 +106,7 @@ func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetC
 			{
 				Type: &csi.NodeServiceCapability_Rpc{
 					Rpc: &csi.NodeServiceCapability_RPC{
+						// Type: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 						Type: csi.NodeServiceCapability_RPC_UNKNOWN,
 					},
 				},
@@ -93,13 +120,43 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 }
 
 func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
+	// Check arguments
+	if req.GetVolumeId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+	if req.GetStagingTargetPath() == "" {
+		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
+	}
+
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
 func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
+	// Check arguments
+	if req.GetVolumeId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+	if req.GetStagingTargetPath() == "" {
+		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
+	}
 	return &csi.NodeStageVolumeResponse{}, nil
 }
 
 func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	return &csi.NodeExpandVolumeResponse{}, status.Error(codes.Unimplemented, "NodeExpandVolume is not implemented")
+}
+
+func checkMount(targetPath string) (bool, error) {
+	notMnt, err := mount.New("").IsLikelyNotMountPoint(targetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			if err = os.MkdirAll(targetPath, 0750); err != nil {
+				return false, err
+			}
+			notMnt = true
+		} else {
+			return false, err
+		}
+	}
+	return notMnt, nil
 }

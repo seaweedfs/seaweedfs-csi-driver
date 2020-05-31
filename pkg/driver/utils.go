@@ -10,6 +10,13 @@ import (
 	"google.golang.org/grpc"
 )
 
+func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
+
+	return &NodeServer{
+		Driver: n,
+	}
+}
+
 func NewIdentityServer(d *SeaweedFsDriver) *IdentityServer {
 	return &IdentityServer{
 		Driver: d,

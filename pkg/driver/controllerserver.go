@@ -2,7 +2,13 @@ package driver
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"strings"
 
+	"github.com/chrislusf/seaweedfs/weed/pb/filer_pb"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
 	"google.golang.org/grpc/codes"
@@ -17,7 +23,21 @@ var _ = csi.ControllerServer(&ControllerServer{})
 
 func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 
-	volumeId := req.GetName()
+	volumeId := sanitizeVolumeId(req.GetName())
+
+	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
+		glog.V(3).Infof("invalid create volume req: %v", req)
+		return nil, err
+	}
+
+	// Check arguments
+	if volumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "Name missing in request")
+	}
+	if req.GetVolumeCapabilities() == nil {
+		return nil, status.Error(codes.InvalidArgument, "Volume Capabilities missing in request")
+	}
+
 	params := req.GetParameters()
 	glog.V(4).Info("params:%v", params)
 	capacity := req.GetCapacityRange().GetRequiredBytes()
@@ -30,7 +50,12 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		seaweedFsVolumeCount = 1
 	}
 
-	err := cs.Driver.createBucket(volumeId, int(seaweedFsVolumeCount))
+	cfg := newConfigFromSecrets(req.GetSecrets())
+	if err := filer_pb.Mkdir(cfg, "/buckets", volumeId, nil); err != nil {
+		return nil, fmt.Errorf("Error setting bucket metadata: %v", err)
+	}
+
+	glog.V(4).Infof("create volume %s", volumeId)
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -38,15 +63,30 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 			CapacityBytes: 0, // seaweedFsVolumeCount * 1024 * 1024 * 30,
 			VolumeContext: params,
 		},
-	}, err
+	}, nil
 }
 
 func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 
 	volumeId := req.VolumeId
-	err := cs.Driver.deleteBucket(volumeId)
 
-	return &csi.DeleteVolumeResponse{}, err
+	// Check arguments
+	if volumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+
+	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
+		glog.V(3).Infof("Invalid delete volume req: %v", req)
+		return nil, err
+	}
+	glog.V(4).Infof("Deleting volume %s", volumeId)
+
+	cfg := newConfigFromSecrets(req.GetSecrets())
+	if err := filer_pb.Remove(cfg, "/buckets", volumeId, true, true, true); err != nil {
+		return nil, fmt.Errorf("Error setting bucket metadata: %v", err)
+	}
+
+	return &csi.DeleteVolumeResponse{}, nil
 }
 
 func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
@@ -58,6 +98,35 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 }
 
 func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
+
+	// Check arguments
+	if req.GetVolumeId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+	if req.GetVolumeCapabilities() == nil {
+		return nil, status.Error(codes.InvalidArgument, "Volume capabilities missing in request")
+	}
+
+	cfg := newConfigFromSecrets(req.GetSecrets())
+	exists, err := filer_pb.Exists(cfg, "/buckets", req.GetVolumeId(), true)
+	if err != nil {
+		return nil, fmt.Errorf("Error checking bucket %s exists: %v", req.GetVolumeId(), err)
+	}
+	if !exists {
+		// return an error if the volume requested does not exist
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume with id %s does not exist", req.GetVolumeId()))
+	}
+
+	// We currently only support RWO
+	supportedAccessMode := &csi.VolumeCapability_AccessMode{
+		Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+	}
+
+	for _, cap := range req.VolumeCapabilities {
+		if cap.GetAccessMode().GetMode() != supportedAccessMode.GetMode() {
+			return &csi.ValidateVolumeCapabilitiesResponse{Message: "Only single node writer is supported"}, nil
+		}
+	}
 
 	return &csi.ValidateVolumeCapabilitiesResponse{
 		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
@@ -101,4 +170,14 @@ func (cs *ControllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 
 func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "")
+}
+
+func sanitizeVolumeId(volumeId string) string {
+	volumeId = strings.ToLower(volumeId)
+	if len(volumeId) > 63 {
+		h := sha1.New()
+		io.WriteString(h, volumeId)
+		volumeId = hex.EncodeToString(h.Sum(nil))
+	}
+	return volumeId
 }

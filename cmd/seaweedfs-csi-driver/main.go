@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	endpoint = flag.String("endpoint", "unix://tmp/seaweedfs-csi.sock", "CSI endpoint")
+	endpoint = flag.String("endpoint", "unix://tmp/seaweedfs-csi.sock", "CSI endpoint to accept gRPC calls")
 	nodeID   = flag.String("nodeid", "", "node id")
 	version  = flag.Bool("version", false, "Print the version and exit.")
 )

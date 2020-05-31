@@ -1,8 +1,15 @@
 package driver
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"k8s.io/klog"
+	"k8s.io/client-go/rest"
 )
 
 const (
@@ -23,8 +30,6 @@ type SeaweedFsDriver struct {
 	vcap  []*csi.VolumeCapability_AccessMode
 	cscap []*csi.ControllerServiceCapability
 
-	filer       string
-	pathOnFiler string
 }
 
 func NewSeaweedFsDriver(nodeID, endpoint string) *SeaweedFsDriver {
@@ -48,11 +53,13 @@ func NewSeaweedFsDriver(nodeID, endpoint string) *SeaweedFsDriver {
 	return n
 }
 
-func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
-
-	return &NodeServer{
-		Driver: n,
+func (n *SeaweedFsDriver) initClient() error {
+	_, err := rest.InClusterConfig()
+	if err != nil {
+		klog.Errorf("Failed to get cluster config with error: %v\n", err)
+		os.Exit(1)
 	}
+	return nil
 }
 
 func (n *SeaweedFsDriver) Run() {
@@ -87,16 +94,15 @@ func (n *SeaweedFsDriver) AddControllerServiceCapabilities(cl []csi.ControllerSe
 	return
 }
 
-func (n *SeaweedFsDriver) createBucket(volumeId string, seaweedFsVolumeCount int) error {
-	// TODO implement seaweedFsVolumeCount later
-	return nil
-}
-func (n *SeaweedFsDriver) deleteBucket(volumeId string) error {
-	return nil
-}
-func (n *SeaweedFsDriver) mount(source string, targetPath string) error {
-	return nil
-}
-func (n *SeaweedFsDriver) unmount(targetPath string) error {
-	return nil
+func (d *SeaweedFsDriver) ValidateControllerServiceRequest(c csi.ControllerServiceCapability_RPC_Type) error {
+	if c == csi.ControllerServiceCapability_RPC_UNKNOWN {
+		return nil
+	}
+
+	for _, cap := range d.cscap {
+		if c == cap.GetRpc().GetType() {
+			return nil
+		}
+	}
+	return status.Error(codes.InvalidArgument, fmt.Sprintf("%s", c))
 }
