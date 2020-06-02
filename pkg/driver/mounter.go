@@ -4,12 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chrislusf/seaweedfs/weed/pb"
-	"github.com/chrislusf/seaweedfs/weed/pb/filer_pb"
-	"github.com/chrislusf/seaweedfs/weed/security"
-	"github.com/chrislusf/seaweedfs/weed/util"
 	"github.com/golang/glog"
-	"google.golang.org/grpc"
 	"os/exec"
 	"k8s.io/utils/mount"
 )
@@ -24,8 +19,8 @@ type Mounter interface {
 	Mount(target string) error
 }
 
-func newMounter(bucketName string, cfg *Config) (Mounter, error) {
-	return newSeaweedFsMounter(bucketName, cfg)
+func newMounter(bucketName string, filer string) (Mounter, error) {
+	return newSeaweedFsMounter(bucketName, filer)
 }
 
 func fuseMount(path string, command string, args []string) error {
@@ -63,25 +58,4 @@ func newConfigFromSecrets(secrets map[string]string) *Config {
 		Filer: secrets["filer"],
 	}
 	return t
-}
-
-var _ = filer_pb.FilerClient(&Config{})
-
-func (cfg *Config) WithFilerClient(fn func(filer_pb.SeaweedFilerClient) error) error {
-
-	filerGrpcAddress, parseErr := pb.ParseServerToGrpcAddress(cfg.Filer)
-	if parseErr != nil {
-		return fmt.Errorf("failed to parse filer %v: %v", filerGrpcAddress, parseErr)
-	}
-
-	grpcDialOption := security.LoadClientTLS(util.GetViper(), "grpc.client")
-
-	return pb.WithCachedGrpcClient(func(grpcConnection *grpc.ClientConn) error {
-		client := filer_pb.NewSeaweedFilerClient(grpcConnection)
-		return fn(client)
-	}, filerGrpcAddress, grpcDialOption)
-
-}
-func (cfg *Config) AdjustedUrl(hostAndPort string) string {
-	return hostAndPort
 }

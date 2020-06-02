@@ -4,12 +4,17 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/chrislusf/seaweedfs/weed/pb"
+	"github.com/chrislusf/seaweedfs/weed/pb/filer_pb"
+	"github.com/chrislusf/seaweedfs/weed/security"
+	"github.com/chrislusf/seaweedfs/weed/util"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/glog"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/klog"
 	"k8s.io/client-go/rest"
+	"k8s.io/klog"
 )
 
 const (
@@ -30,17 +35,21 @@ type SeaweedFsDriver struct {
 	vcap  []*csi.VolumeCapability_AccessMode
 	cscap []*csi.ControllerServiceCapability
 
+	filer          string
+	grpcDialOption grpc.DialOption
 }
 
-func NewSeaweedFsDriver(nodeID, endpoint string) *SeaweedFsDriver {
+func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
 
 	glog.Infof("Driver: %v version: %v", driverName, version)
 
 	n := &SeaweedFsDriver{
-		endpoint: endpoint,
-		nodeID:   nodeID,
-		name:     driverName,
-		version:  version,
+		endpoint:       endpoint,
+		nodeID:         nodeID,
+		name:           driverName,
+		version:        version,
+		filer:          filer,
+		grpcDialOption: security.LoadClientTLS(util.GetViper(), "grpc.client"),
 	}
 
 	n.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{
@@ -105,4 +114,23 @@ func (d *SeaweedFsDriver) ValidateControllerServiceRequest(c csi.ControllerServi
 		}
 	}
 	return status.Error(codes.InvalidArgument, fmt.Sprintf("%s", c))
+}
+
+var _ = filer_pb.FilerClient(&SeaweedFsDriver{})
+
+func (d *SeaweedFsDriver) WithFilerClient(fn func(filer_pb.SeaweedFilerClient) error) error {
+
+	filerGrpcAddress, parseErr := pb.ParseServerToGrpcAddress(d.filer)
+	if parseErr != nil {
+		return fmt.Errorf("failed to parse filer %v: %v", filerGrpcAddress, parseErr)
+	}
+
+	return pb.WithCachedGrpcClient(func(grpcConnection *grpc.ClientConn) error {
+		client := filer_pb.NewSeaweedFilerClient(grpcConnection)
+		return fn(client)
+	}, filerGrpcAddress, d.grpcDialOption)
+
+}
+func (d *SeaweedFsDriver) AdjustedUrl(hostAndPort string) string {
+	return hostAndPort
 }

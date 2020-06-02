@@ -14,10 +14,10 @@ const (
 	seaweedFsCmd = "weed"
 )
 
-func newSeaweedFsMounter(bucketName string, cfg *Config) (Mounter, error) {
+func newSeaweedFsMounter(bucketName string, filer string) (Mounter, error) {
 	return &seaweedFsMounter{
 		bucketName:      bucketName,
-		filerUrl:        cfg.Filer,
+		filerUrl:        filer,
 	}, nil
 }
 

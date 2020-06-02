@@ -50,8 +50,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		mo = append(mo, "ro")
 	}
 
-	cfg := newConfigFromSecrets(req.GetSecrets())
-	mounter, err := newMounter(volumeID, cfg)
+	mounter, err := newMounter(volumeID, ns.Driver.filer)
 	if err != nil {
 		return nil, err
 	}
