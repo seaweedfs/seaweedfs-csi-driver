@@ -5,7 +5,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/golang/glog"
+	"github.com/chrislusf/seaweedfs/weed/glog"
 	"google.golang.org/grpc"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"

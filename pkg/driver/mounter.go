@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/glog"
+	"github.com/chrislusf/seaweedfs/weed/glog"
 	"os/exec"
 	"k8s.io/utils/mount"
 )

@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/golang/glog"
+	"github.com/chrislusf/seaweedfs/weed/glog"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -28,6 +28,9 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	// Check arguments
 	if req.GetVolumeCapability() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability missing in request")
+	}
+	if !isValidVolumeCapabilities(ns.Driver.vcap, []*csi.VolumeCapability{req.GetVolumeCapability()}) {
+		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 	if volumeID == "" {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")

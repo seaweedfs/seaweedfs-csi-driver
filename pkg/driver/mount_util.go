@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/mitchellh/go-ps"
-	"github.com/golang/glog"
+	"github.com/chrislusf/seaweedfs/weed/glog"
 	"k8s.io/utils/mount"
 )
 

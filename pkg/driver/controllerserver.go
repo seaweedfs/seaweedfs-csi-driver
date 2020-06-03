@@ -10,7 +10,7 @@ import (
 
 	"github.com/chrislusf/seaweedfs/weed/pb/filer_pb"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
+	"github.com/chrislusf/seaweedfs/weed/glog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -59,7 +59,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			VolumeId:      volumeId,
-			CapacityBytes: 0, // seaweedFsVolumeCount * 1024 * 1024 * 30,
+			CapacityBytes: capacity, // 0, // seaweedFsVolumeCount * 1024 * 1024 * 30,
 			VolumeContext: params,
 		},
 	}, nil
@@ -125,12 +125,17 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 		}
 	}
 
+	volCaps := req.GetVolumeCapabilities()
+	if len(volCaps) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume capabilities not provided")
+	}
+	var confirmed *csi.ValidateVolumeCapabilitiesResponse_Confirmed
+	if isValidVolumeCapabilities(cs.Driver.vcap, volCaps) {
+		confirmed = &csi.ValidateVolumeCapabilitiesResponse_Confirmed{VolumeCapabilities: volCaps}
+	}
+
 	return &csi.ValidateVolumeCapabilitiesResponse{
-		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
-			VolumeContext:      req.GetVolumeContext(),
-			VolumeCapabilities: req.GetVolumeCapabilities(),
-			Parameters:         req.GetParameters(),
-		},
+		Confirmed: confirmed,
 	}, nil
 
 }
@@ -177,4 +182,23 @@ func sanitizeVolumeId(volumeId string) string {
 		volumeId = hex.EncodeToString(h.Sum(nil))
 	}
 	return volumeId
+}
+
+func isValidVolumeCapabilities(driverVolumeCaps []*csi.VolumeCapability_AccessMode, volCaps []*csi.VolumeCapability) bool {
+	hasSupport := func(cap *csi.VolumeCapability) bool {
+		for _, c := range driverVolumeCaps {
+			if c.GetMode() == cap.AccessMode.GetMode() {
+				return true
+			}
+		}
+		return false
+	}
+
+	foundAll := true
+	for _, c := range volCaps {
+		if !hasSupport(c) {
+			foundAll = false
+		}
+	}
+	return foundAll
 }

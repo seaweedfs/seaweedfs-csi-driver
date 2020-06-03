@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/glog"
+	"github.com/chrislusf/seaweedfs/weed/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
