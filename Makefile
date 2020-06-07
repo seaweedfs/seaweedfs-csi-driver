@@ -10,7 +10,7 @@ LDFLAGS ?= -X github.com/seaweedfs/seaweedfs-csi-driver/pkg/driver.gitCommit=${C
 build:
 	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '$(LDFLAGS)' -o _output/seaweedfs-csi-driver ./cmd/seaweedfs-csi-driver/main.go
 container: build
-	docker build -t $(IMAGE_TAG) -f cmd/seaweedfs-csi-driver/Dockerfile .
+	docker build -t $(IMAGE_TAG) -f cmd/seaweedfs-csi-driver/Dockerfile.dev .
 push: container
 	docker push $(IMAGE_TAG)
 clean:

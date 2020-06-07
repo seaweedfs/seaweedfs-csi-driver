@@ -7,9 +7,7 @@ RUN cd /go/src/github.com/chrislusf/seaweedfs/weed && go install
 
 RUN mkdir -p /go/src/github.com/seaweedfs/
 RUN git clone https://github.com/seaweedfs/seaweedfs-csi-driver /go/src/github.com/seaweedfs/seaweedfs-csi-driver
-RUN cd /go/src/github.com/seaweedfs/seaweedfs-csi-driver && make build
-
-COPY ./_output/seaweedfs-csi-driver /seaweedfs-csi-driver
+RUN cd /go/src/github.com/seaweedfs/seaweedfs-csi-driver && go build -o /seaweedfs-csi-driver ./cmd/seaweedfs-csi-driver/main.go
 
 FROM alpine AS final
 LABEL author="Chris Lu"
