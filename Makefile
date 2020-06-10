@@ -1,7 +1,7 @@
 .PHONY: build container clean
 
-REGISTRY_NAME=seaweedfs
-IMAGE_NAME=csi
+REGISTRY_NAME=chrislusf
+IMAGE_NAME=seaweedfs-csi-driver
 VERSION ?= dev
 IMAGE_TAG=$(REGISTRY_NAME)/$(IMAGE_NAME):$(VERSION)
 COMMIT ?= $(shell git rev-parse --short HEAD)

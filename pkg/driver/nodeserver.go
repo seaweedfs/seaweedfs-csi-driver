@@ -30,7 +30,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.InvalidArgument, "Volume capability missing in request")
 	}
 	if !isValidVolumeCapabilities(ns.Driver.vcap, []*csi.VolumeCapability{req.GetVolumeCapability()}) {
-		return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
+		// return nil, status.Error(codes.InvalidArgument, "Volume capability not supported")
 	}
 	if volumeID == "" {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")

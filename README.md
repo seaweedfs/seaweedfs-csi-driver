@@ -10,19 +10,19 @@
 
 ## Utilize exiting SeaweedFS storage for your Kubernetes cluster (bare metal)
 
-1. Git clone this repository and add your SeaweedFS master IP to `deploy/kubernetes/seaweeedfs-csi.yaml` (2 places)
+1. Git clone this repository and add your SeaweedFS master IP to `deploy/kubernetes/seaweedfs-csi.yaml` (2 places)
 
 2. Apply the container storage interface for SeaweedFS for your cluster
 ```
-$ kubectl apply -f deploy/kubernetes/seaweeedfs-csi.yaml
+$ kubectl apply -f deploy/kubernetes/seaweedfs-csi.yaml
 ```
 3. Ensure all the containers are ready and running
 ```
 $ kubectl get po -n kube-system
 ```
-4. Testing: Create a persistant volume claim for 5GiB with name `seaweeedfs-csi-pvc` with storage class `seaweeedfs-storage`. The value, 5Gib does not have any significance as for SeaweedFS the whole filesystem is mounted into the container.
+4. Testing: Create a persistant volume claim for 5GiB with name `seaweedfs-csi-pvc` with storage class `seaweedfs-storage`. The value, 5Gib does not have any significance as for SeaweedFS the whole filesystem is mounted into the container.
 ```
-$ kubectl apply -f deploy/kubernetes/sample-seaweeedfs-pvc.yaml
+$ kubectl apply -f deploy/kubernetes/sample-seaweedfs-pvc.yaml
 ```
 5. Verify if the persistant volume claim exists and wait until its the STATUS is `Bound`
 ```
@@ -39,8 +39,8 @@ $ kubectl exec my-csi-app -- df -h
 8. Clean up 
 ```
 $ kubectl delete -f deploy/kubernetes/sample-busybox-pod.yaml
-$ kubectl delete -f deploy/kubernetes/sample-seaweeedfs-pvc.yaml
-$ kubectl delete -f deploy/kubernetes/seaweeedfs-csi.yaml
+$ kubectl delete -f deploy/kubernetes/sample-seaweedfs-pvc.yaml
+$ kubectl delete -f deploy/kubernetes/seaweedfs-csi.yaml
 ```
 
 # Developing and contributing
@@ -56,7 +56,7 @@ make test
 # Miscelleneous
 | Description                        | Command       |
 | -------------                      |:------------- |
-|Docker command for launching seaweeedfs|`docker run --cap-add SYS_ADMIN --security-opt apparmor:unconfined -v /dev/fuse:/dev/fuse --privileged -it seaweedfs /bin/bash`
+|Docker command for launching seaweedfs|`docker run --cap-add SYS_ADMIN --security-opt apparmor:unconfined -v /dev/fuse:/dev/fuse --privileged -it seaweedfs /bin/bash`
 
 # License
 [Apache v2 license](https://www.apache.org/licenses/LICENSE-2.0)

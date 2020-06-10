@@ -228,11 +228,14 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ---
 kind: StatefulSet
-apiVersion: apps/v1beta1
+apiVersion: apps/v1
 metadata:
   name: csi-seaweedfs-controller
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      app: csi-seaweedfs-controller
   serviceName: "csi-seaweedfs"
   replicas: 1
   template:
@@ -290,11 +293,16 @@ spec:
           args :
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--filer=$(SEAWEEDFS_FILER)"
+            - "--nodeid=$(NODE_ID)"
           env:
             - name: CSI_ENDPOINT
               value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
             - name: SEAWEEDFS_FILER
-              value: "192.X.X.X:8888" # host and port of your SeaweedFs filer
+              value: "192.168.2.7:8888" # host and port of your SeaweedFs filer
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           imagePullPolicy: "Always"
           volumeMounts:
             - name: socket-dir
@@ -304,7 +312,7 @@ spec:
           emptyDir: {}
 ---
 kind: DaemonSet
-apiVersion: apps/v1beta2
+apiVersion: apps/v1
 metadata:
   name: csi-seaweedfs-node
   namespace: kube-system
@@ -352,11 +360,16 @@ spec:
           args :
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--filer=$(SEAWEEDFS_FILER)"
+            - "--nodeid=$(NODE_ID)"
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
             - name: SEAWEEDFS_FILER
-              value: "192.X.X.X:8888" # host and port of your SeaweedFs filer
+              value: "192.168.2.7:8888" # host and port of your SeaweedFs filer
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - name: plugin-dir
