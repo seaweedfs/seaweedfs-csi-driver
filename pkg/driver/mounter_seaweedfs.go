@@ -2,6 +2,8 @@ package driver
 
 import (
 	"fmt"
+
+	"github.com/golang/glog"
 )
 
 // Implements Mounter
@@ -22,6 +24,8 @@ func newSeaweedFsMounter(bucketName string, filer string) (Mounter, error) {
 }
 
 func (seaweedFs *seaweedFsMounter) Mount(target string) error {
+	glog.V(4).Infof("mounting %s%s to %s", seaweedFs.filerUrl, seaweedFs.bucketName, target)
+
 	args := []string{
 		"mount",
 		fmt.Sprintf("-dir=%s", target),
@@ -29,5 +33,9 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 		fmt.Sprintf("-filer=%s", seaweedFs.filerUrl),
 		fmt.Sprintf("-filer.path=/buckets/%s", seaweedFs.bucketName),
 	}
-	return fuseMount(target, seaweedFsCmd, args)
+	err := fuseMount(target, seaweedFsCmd, args)
+	if err != nil {
+		glog.Errorf("mount %s%s to %s: %s", seaweedFs.filerUrl, seaweedFs.bucketName, target, err)
+	}
+	return err
 }

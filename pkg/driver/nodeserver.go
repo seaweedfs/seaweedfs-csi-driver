@@ -25,6 +25,8 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	// mount the fs here
 	targetPath := req.GetTargetPath()
 
+	glog.V(4).Infof("NodePublishVolume volume %s to %s", volumeID, targetPath)
+
 	// Check arguments
 	if req.GetVolumeCapability() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Volume capability missing in request")
@@ -93,7 +95,7 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 }
 
 func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	glog.V(5).Infof("Using default NodeGetInfo")
+	glog.V(5).Infof("Using default NodeGetInfo: nodeID %s", ns.Driver.nodeID)
 
 	return &csi.NodeGetInfoResponse{
 		NodeId: ns.Driver.nodeID,
