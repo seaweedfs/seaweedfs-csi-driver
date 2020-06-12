@@ -50,10 +50,11 @@ func ParseEndpoint(ep string) (string, string, error) {
 }
 
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	glog.V(3).Infof("GRPC call: %s", info.FullMethod)
+	glog.V(3).Infof("GRPC %s request %+v", info.FullMethod, req)
 	resp, err := handler(ctx, req)
 	if err != nil {
 		glog.Errorf("GRPC error: %v", err)
 	}
+	glog.V(3).Infof("GRPC %s response %+v", info.FullMethod, resp)
 	return resp, err
 }
