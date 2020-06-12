@@ -1,6 +1,7 @@
 FROM chrislusf/seaweedfs as builder
 
 FROM alpine AS final
+RUN apk add fuse
 LABEL author="Chris Lu"
 COPY --from=builder /usr/bin/weed /usr/bin/
 COPY ./_output/seaweedfs-csi-driver /seaweedfs-csi-driver
