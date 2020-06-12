@@ -28,6 +28,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 
 	args := []string{
 		"mount",
+		"-dirAutoCreate=true",
 		fmt.Sprintf("-dir=%s", target),
 		fmt.Sprintf("-collection=%s", seaweedFs.bucketName),
 		fmt.Sprintf("-filer=%s", seaweedFs.filerUrl),
