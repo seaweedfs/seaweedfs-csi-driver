@@ -3,7 +3,7 @@ package driver
 import (
 	"fmt"
 
-	"github.com/golang/glog"
+	"github.com/chrislusf/seaweedfs/weed/glog"
 )
 
 // Implements Mounter
