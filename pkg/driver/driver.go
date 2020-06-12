@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	driverName = "csi.seaweedfs.com"
+	driverName = "seaweedfs-csi-driver"
 )
 
 var (
