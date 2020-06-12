@@ -60,6 +60,7 @@ func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
 	})
 	n.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{
 		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+		csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
 	})
 
 	return n
