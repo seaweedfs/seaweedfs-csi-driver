@@ -43,21 +43,6 @@ $ kubectl delete -f deploy/kubernetes/sample-seaweedfs-pvc.yaml
 $ kubectl delete -f deploy/kubernetes/seaweedfs-csi.yaml
 ```
 
-# Developing and contributing
-
-1. Add and commit your changes after forking this repository
-2. Run unit tests
-```
-make test
-```
-3. After its successfull, create a pull request.
-
-
-# Miscelleneous
-| Description                        | Command       |
-| -------------                      |:------------- |
-|Docker command for launching seaweedfs|`docker run --cap-add SYS_ADMIN --security-opt apparmor:unconfined -v /dev/fuse:/dev/fuse --privileged -it seaweedfs /bin/bash`
-
 # License
 [Apache v2 license](https://www.apache.org/licenses/LICENSE-2.0)
 
