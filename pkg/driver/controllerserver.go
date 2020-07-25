@@ -8,9 +8,9 @@ import (
 	"io"
 	"strings"
 
+	"github.com/chrislusf/seaweedfs/weed/glog"
 	"github.com/chrislusf/seaweedfs/weed/pb/filer_pb"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/chrislusf/seaweedfs/weed/glog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -80,7 +80,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 	glog.V(4).Infof("Deleting volume %s", volumeId)
 
-	if err := filer_pb.Remove(cs.Driver, "/buckets", volumeId, true, true, true); err != nil {
+	if err := filer_pb.Remove(cs.Driver, "/buckets", volumeId, true, true, true, false); err != nil {
 		return nil, fmt.Errorf("Error setting bucket metadata: %v", err)
 	}
 
