@@ -27,8 +27,9 @@ func fuseMount(path string, command string, args []string) error {
 	cmd := exec.Command(command, args...)
 	glog.V(0).Infof("Mounting fuse with command: %s and args: %s", command, args)
 
-	out, err := cmd.CombinedOutput()
+	err := cmd.Start()
 	if err != nil {
+		glog.Errorf("running weed mount: %v", err)
 		return fmt.Errorf("Error fuseMount command: %s\nargs: %s\noutput: %s\nerror: %v", command, args, out, err)
 	}
 
