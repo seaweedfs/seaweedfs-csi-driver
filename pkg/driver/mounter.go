@@ -30,7 +30,7 @@ func fuseMount(path string, command string, args []string) error {
 	err := cmd.Start()
 	if err != nil {
 		glog.Errorf("running weed mount: %v", err)
-		return fmt.Errorf("Error fuseMount command: %s\nargs: %s\noutput: %s\nerror: %v", command, args, out, err)
+		return fmt.Errorf("Error fuseMount command: %s\nargs: %s\nerror: %v", command, args, err)
 	}
 
 	return waitForMount(path, 10*time.Second)
