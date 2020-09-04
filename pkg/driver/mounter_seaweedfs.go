@@ -24,7 +24,7 @@ func newSeaweedFsMounter(bucketName string, filer string) (Mounter, error) {
 }
 
 func (seaweedFs *seaweedFsMounter) Mount(target string) error {
-	glog.V(4).Infof("mounting %s%s to %s", seaweedFs.filerUrl, seaweedFs.bucketName, target)
+	glog.V(0).Infof("mounting %s%s to %s", seaweedFs.filerUrl, seaweedFs.bucketName, target)
 
 	args := []string{
 		"mount",

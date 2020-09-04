@@ -25,11 +25,11 @@ func newMounter(bucketName string, filer string) (Mounter, error) {
 
 func fuseMount(path string, command string, args []string) error {
 	cmd := exec.Command(command, args...)
-	glog.V(3).Infof("Mounting fuse with command: %s and args: %s", command, args)
+	glog.V(0).Infof("Mounting fuse with command: %s and args: %s", command, args)
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("Error fuseMount command: %s\nargs: %s\noutput: %s", command, args, out)
+		return fmt.Errorf("Error fuseMount command: %s\nargs: %s\noutput: %s\nerror: %v", command, args, out, err)
 	}
 
 	return waitForMount(path, 10*time.Second)

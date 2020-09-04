@@ -25,7 +25,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	// mount the fs here
 	targetPath := req.GetTargetPath()
 
-	glog.V(4).Infof("NodePublishVolume volume %s to %s", volumeID, targetPath)
+	glog.V(0).Infof("NodePublishVolume volume %s to %s", volumeID, targetPath)
 
 	// Check arguments
 	if req.GetVolumeCapability() == nil {
@@ -69,7 +69,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	glog.V(4).Infof("volume %s successfully mounted to %s", volumeID, targetPath)
+	glog.V(0).Infof("volume %s successfully mounted to %s", volumeID, targetPath)
 
 	return &csi.NodePublishVolumeResponse{}, nil
 }
