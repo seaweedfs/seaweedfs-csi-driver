@@ -330,6 +330,7 @@ spec:
       priorityClassName: system-node-critical
       serviceAccount: csi-seaweedfs-node-sa
       hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: driver-registrar
           image: quay.io/k8scsi/csi-node-driver-registrar:v1.0.1
@@ -366,7 +367,7 @@ spec:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
             - name: SEAWEEDFS_FILER
-              value: "192.168.2.7:8888" # host and port of your SeaweedFs filer
+              value: "192.168.2.7:8888" # host and port of your SeaweedFs filer, could also be K8S DNS entry like seaweedfs-filer.seaweed-namespace.svc:8888
             - name: NODE_ID
               valueFrom:
                 fieldRef:
