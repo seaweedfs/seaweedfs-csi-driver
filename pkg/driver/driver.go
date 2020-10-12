@@ -135,6 +135,6 @@ func (d *SeaweedFsDriver) WithFilerClient(fn func(filer_pb.SeaweedFilerClient) e
 	}, filerGrpcAddress, d.grpcDialOption)
 
 }
-func (d *SeaweedFsDriver) AdjustedUrl(hostAndPort string) string {
-	return hostAndPort
+func (d *SeaweedFsDriver) AdjustedUrl(location *filer_pb.Location) string {
+	return location.Url
 }

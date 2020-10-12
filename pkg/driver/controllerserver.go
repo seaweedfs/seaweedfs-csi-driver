@@ -80,7 +80,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 	glog.V(4).Infof("Deleting volume %s", volumeId)
 
-	if err := filer_pb.Remove(cs.Driver, "/buckets", volumeId, true, true, true, false); err != nil {
+	if err := filer_pb.Remove(cs.Driver, "/buckets", volumeId, true, true, true, false, nil); err != nil {
 		return nil, fmt.Errorf("Error setting bucket metadata: %v", err)
 	}
 
