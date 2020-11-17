@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/mitchellh/go-ps"
-	"github.com/chrislusf/seaweedfs/weed/glog"
+	"github.com/chrislusf/seaweedfs/weed/util/log"
 	"k8s.io/utils/mount"
 )
 
@@ -20,7 +20,7 @@ func waitForProcess(p *os.Process, backoff int) error {
 	}
 	cmdLine, err := getCmdLine(p.Pid)
 	if err != nil {
-		glog.Warningf("Error checking cmdline of PID %v, assuming it is dead: %s", p.Pid, err)
+		log.Warnf("Error checking cmdline of PID %v, assuming it is dead: %s", p.Pid, err)
 		return nil
 	}
 	if cmdLine == "" {
@@ -31,10 +31,10 @@ func waitForProcess(p *os.Process, backoff int) error {
 		return nil
 	}
 	if err := p.Signal(syscall.Signal(0)); err != nil {
-		glog.Warningf("Fuse process does not seem active or we are unprivileged: %s", err)
+		log.Warnf("Fuse process does not seem active or we are unprivileged: %s", err)
 		return nil
 	}
-	glog.Infof("Fuse process with PID %v still active, waiting...", p.Pid)
+	log.Infof("Fuse process with PID %v still active, waiting...", p.Pid)
 	time.Sleep(time.Duration(backoff*100) * time.Millisecond)
 	return waitForProcess(p, backoff+1)
 }
@@ -66,11 +66,11 @@ func findFuseMountProcess(path string) (*os.Process, error) {
 	for _, p := range processes {
 		cmdLine, err := getCmdLine(p.Pid())
 		if err != nil {
-			glog.Errorf("Unable to get cmdline of PID %v: %s", p.Pid(), err)
+			log.Errorf("Unable to get cmdline of PID %v: %s", p.Pid(), err)
 			continue
 		}
 		if strings.Contains(cmdLine, path) {
-			glog.Infof("Found matching pid %v on path %s", p.Pid(), path)
+			log.Infof("Found matching pid %v on path %s", p.Pid(), path)
 			return os.FindProcess(p.Pid())
 		}
 	}

@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/chrislusf/seaweedfs/weed/glog"
+	"github.com/chrislusf/seaweedfs/weed/util/log"
 	"github.com/chrislusf/seaweedfs/weed/pb/filer_pb"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -26,7 +26,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	volumeId := sanitizeVolumeId(req.GetName())
 
 	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
-		glog.V(3).Infof("invalid create volume req: %v", req)
+		log.Tracef("invalid create volume req: %v", req)
 		return nil, err
 	}
 
@@ -39,7 +39,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	params := req.GetParameters()
-	glog.V(4).Info("params:%v", params)
+	log.Trace("params:%v", params)
 	capacity := req.GetCapacityRange().GetRequiredBytes()
 	capacityGB := capacity >> 30
 	if capacityGB == 0 {
@@ -54,7 +54,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, fmt.Errorf("Error setting bucket metadata: %v", err)
 	}
 
-	glog.V(4).Infof("create volume %s", volumeId)
+	log.Tracef("create volume %s", volumeId)
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -75,10 +75,10 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 
 	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
-		glog.V(3).Infof("Invalid delete volume req: %v", req)
+		log.Tracef("Invalid delete volume req: %v", req)
 		return nil, err
 	}
-	glog.V(4).Infof("Deleting volume %s", volumeId)
+	log.Tracef("Deleting volume %s", volumeId)
 
 	if err := filer_pb.Remove(cs.Driver, "/buckets", volumeId, true, true, true, false, nil); err != nil {
 		return nil, fmt.Errorf("Error setting bucket metadata: %v", err)
@@ -151,7 +151,7 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 // ControllerGetCapabilities implements the default GRPC callout.
 // Default supports all capabilities
 func (cs *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
-	glog.V(3).Infof("Using default ControllerGetCapabilities")
+	log.Tracef("Using default ControllerGetCapabilities")
 
 	return &csi.ControllerGetCapabilitiesResponse{
 		Capabilities: cs.Driver.cscap,

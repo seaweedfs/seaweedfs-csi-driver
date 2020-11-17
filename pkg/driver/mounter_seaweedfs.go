@@ -3,7 +3,7 @@ package driver
 import (
 	"fmt"
 
-	"github.com/chrislusf/seaweedfs/weed/glog"
+	"github.com/chrislusf/seaweedfs/weed/util/log"
 )
 
 // Implements Mounter
@@ -24,7 +24,7 @@ func newSeaweedFsMounter(bucketName string, filer string) (Mounter, error) {
 }
 
 func (seaweedFs *seaweedFsMounter) Mount(target string) error {
-	glog.V(0).Infof("mounting %s%s to %s", seaweedFs.filerUrl, seaweedFs.bucketName, target)
+	log.Infof("mounting %s%s to %s", seaweedFs.filerUrl, seaweedFs.bucketName, target)
 
 	args := []string{
 		"mount",
@@ -37,7 +37,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 	}
 	err := fuseMount(target, seaweedFsCmd, args)
 	if err != nil {
-		glog.Errorf("mount %s%s to %s: %s", seaweedFs.filerUrl, seaweedFs.bucketName, target, err)
+		log.Errorf("mount %s%s to %s: %s", seaweedFs.filerUrl, seaweedFs.bucketName, target, err)
 	}
 	return err
 }

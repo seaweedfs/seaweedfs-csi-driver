@@ -9,7 +9,7 @@ import (
 	"github.com/chrislusf/seaweedfs/weed/security"
 	"github.com/chrislusf/seaweedfs/weed/util"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/chrislusf/seaweedfs/weed/glog"
+	"github.com/chrislusf/seaweedfs/weed/util/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -41,7 +41,7 @@ type SeaweedFsDriver struct {
 
 func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
 
-	glog.Infof("Driver: %v version: %v", driverName, version)
+	log.Infof("Driver: %v version: %v", driverName, version)
 
 	n := &SeaweedFsDriver{
 		endpoint:       endpoint,
@@ -87,7 +87,7 @@ func (n *SeaweedFsDriver) Run() {
 func (n *SeaweedFsDriver) AddVolumeCapabilityAccessModes(vc []csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability_AccessMode {
 	var vca []*csi.VolumeCapability_AccessMode
 	for _, c := range vc {
-		glog.Infof("Enabling volume access mode: %v", c.String())
+		log.Infof("Enabling volume access mode: %v", c.String())
 		vca = append(vca, &csi.VolumeCapability_AccessMode{Mode: c})
 	}
 	n.vcap = vca
@@ -98,7 +98,7 @@ func (n *SeaweedFsDriver) AddControllerServiceCapabilities(cl []csi.ControllerSe
 	var csc []*csi.ControllerServiceCapability
 
 	for _, c := range cl {
-		glog.Infof("Enabling controller service capability: %v", c.String())
+		log.Infof("Enabling controller service capability: %v", c.String())
 		csc = append(csc, NewControllerServiceCapability(c))
 	}
 

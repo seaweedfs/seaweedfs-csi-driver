@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chrislusf/seaweedfs/weed/glog"
+	"github.com/chrislusf/seaweedfs/weed/util/log"
 	"os/exec"
 	"k8s.io/utils/mount"
 )
@@ -25,11 +25,11 @@ func newMounter(bucketName string, filer string) (Mounter, error) {
 
 func fuseMount(path string, command string, args []string) error {
 	cmd := exec.Command(command, args...)
-	glog.V(0).Infof("Mounting fuse with command: %s and args: %s", command, args)
+	log.Infof("Mounting fuse with command: %s and args: %s", command, args)
 
 	err := cmd.Start()
 	if err != nil {
-		glog.Errorf("running weed mount: %v", err)
+		log.Errorf("running weed mount: %v", err)
 		return fmt.Errorf("Error fuseMount command: %s\nargs: %s\nerror: %v", command, args, err)
 	}
 
@@ -43,14 +43,14 @@ func fuseUnmount(path string) error {
 	// as fuse quits immediately, we will try to wait until the process is done
 	process, err := findFuseMountProcess(path)
 	if err != nil {
-		glog.Errorf("Error getting PID of fuse mount: %s", err)
+		log.Errorf("Error getting PID of fuse mount: %s", err)
 		return nil
 	}
 	if process == nil {
-		glog.Warningf("Unable to find PID of fuse mount %s, it must have finished already", path)
+		log.Warnf("Unable to find PID of fuse mount %s, it must have finished already", path)
 		return nil
 	}
-	glog.Infof("Found fuse pid %v of mount %s, checking if it still runs", process.Pid, path)
+	log.Infof("Found fuse pid %v of mount %s, checking if it still runs", process.Pid, path)
 	return waitForProcess(process, 1)
 }
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/chrislusf/seaweedfs/weed/glog"
+	"github.com/chrislusf/seaweedfs/weed/util/log"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )
@@ -50,11 +50,11 @@ func ParseEndpoint(ep string) (string, string, error) {
 }
 
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	glog.V(3).Infof("GRPC %s request %+v", info.FullMethod, req)
+	log.Tracef("GRPC %s request %+v", info.FullMethod, req)
 	resp, err := handler(ctx, req)
 	if err != nil {
-		glog.Errorf("GRPC error: %v", err)
+		log.Errorf("GRPC error: %v", err)
 	}
-	glog.V(3).Infof("GRPC %s response %+v", info.FullMethod, resp)
+	log.Tracef("GRPC %s response %+v", info.FullMethod, resp)
 	return resp, err
 }

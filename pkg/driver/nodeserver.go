@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/chrislusf/seaweedfs/weed/glog"
+	"github.com/chrislusf/seaweedfs/weed/util/log"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -25,7 +25,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	// mount the fs here
 	targetPath := req.GetTargetPath()
 
-	glog.V(0).Infof("NodePublishVolume volume %s to %s", volumeID, targetPath)
+	log.Infof("NodePublishVolume volume %s to %s", volumeID, targetPath)
 
 	// Check arguments
 	if req.GetVolumeCapability() == nil {
@@ -69,7 +69,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	glog.V(0).Infof("volume %s successfully mounted to %s", volumeID, targetPath)
+	log.Infof("volume %s successfully mounted to %s", volumeID, targetPath)
 
 	return &csi.NodePublishVolumeResponse{}, nil
 }
@@ -95,7 +95,7 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 }
 
 func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	glog.V(3).Infof("Using default NodeGetInfo: nodeID %s", ns.Driver.nodeID)
+	log.Tracef("Using default NodeGetInfo: nodeID %s", ns.Driver.nodeID)
 
 	return &csi.NodeGetInfoResponse{
 		NodeId: ns.Driver.nodeID,
@@ -103,7 +103,7 @@ func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 }
 
 func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
-	glog.V(3).Infof("Using default NodeGetCapabilities")
+	log.Tracef("Using default NodeGetCapabilities")
 
 	return &csi.NodeGetCapabilitiesResponse{
 		Capabilities: []*csi.NodeServiceCapability{
