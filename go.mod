@@ -11,7 +11,7 @@ require (
 	github.com/DataDog/zstd v1.4.5 // indirect
 	github.com/Shopify/sarama v1.27.1 // indirect
 	github.com/aws/aws-sdk-go v1.35.7 // indirect
-	github.com/chrislusf/seaweedfs v0.0.0-20201012192625-f022aff289d5
+	github.com/chrislusf/seaweedfs v0.0.0-20210110065522-f0d3b3bf9397
 	github.com/container-storage-interface/spec v1.2.0
 	github.com/coreos/bbolt v1.3.3 // indirect
 	github.com/coreos/etcd v3.3.15+incompatible // indirect
@@ -54,15 +54,14 @@ require (
 	gocloud.dev/pubsub/rabbitpubsub v0.20.0 // indirect
 	golang.org/x/crypto v0.0.0-20201012173705-84dcc777aaee // indirect
 	golang.org/x/image v0.0.0-20200927104501-e162460cd6b5 // indirect
-	golang.org/x/net v0.0.0-20201010224723-4f7140c49acb
+	golang.org/x/net v0.0.0-20201202161906-c7110b5ffcbb
 	golang.org/x/sync v0.0.0-20201008141435-b3e1573b7520 // indirect
-	golang.org/x/sys v0.0.0-20201009025420-dfb3f7c4e634 // indirect
 	golang.org/x/tools v0.0.0-20201012192620-5bd05386311b // indirect
 	google.golang.org/genproto v0.0.0-20201012135029-0c95dc0d88e8 // indirect
 	google.golang.org/grpc v1.33.0
 	gopkg.in/ini.v1 v1.62.0 // indirect
 	k8s.io/apimachinery v0.18.2 // indirect
-	k8s.io/client-go v0.17.0
+	k8s.io/client-go v0.17.1
 	k8s.io/klog v1.0.0
 	k8s.io/utils v0.0.0-20200318093247-d1ab8797c558
 )
