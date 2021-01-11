@@ -44,7 +44,7 @@ metadata:
   namespace: kube-system
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
-provisioner: com.seaweedfs.csi
+provisioner: seaweedfs-csi-driver
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -249,9 +249,8 @@ spec:
       containers:
         # provisioner
         - name: csi-provisioner
-          image: quay.io/k8scsi/csi-provisioner:v1.0.1
+          image: quay.io/k8scsi/csi-provisioner:v2.1.0
           args:
-            - "--provisioner=com.seaweedfs.csi"
             - "--csi-address=$(ADDRESS)"
             - "--v=5"
           env:
@@ -342,7 +341,7 @@ spec:
             - name: ADDRESS
               value: /csi/csi.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: /var/lib/kubelet/plugins/com.seaweedfs.csi/csi.sock
+              value: /var/lib/kubelet/plugins/seaweedfs-csi-driver/csi.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -388,7 +387,7 @@ spec:
             type: DirectoryOrCreate
         - name: plugin-dir
           hostPath:
-            path: /var/lib/kubelet/plugins/com.seaweedfs.csi
+            path: /var/lib/kubelet/plugins/seaweedfs-csi-driver
             type: DirectoryOrCreate
         - name: pods-mount-dir
           hostPath:
