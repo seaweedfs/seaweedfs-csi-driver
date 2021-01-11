@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/chrislusf/seaweedfs/weed/glog"
 	"github.com/chrislusf/seaweedfs/weed/pb"
 	"github.com/chrislusf/seaweedfs/weed/pb/filer_pb"
 	"github.com/chrislusf/seaweedfs/weed/security"
 	"github.com/chrislusf/seaweedfs/weed/util"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/chrislusf/seaweedfs/weed/glog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -35,8 +35,9 @@ type SeaweedFsDriver struct {
 	vcap  []*csi.VolumeCapability_AccessMode
 	cscap []*csi.ControllerServiceCapability
 
-	filer          string
-	grpcDialOption grpc.DialOption
+	filer             string
+	grpcDialOption    grpc.DialOption
+	ConcurrentWriters int
 }
 
 func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
