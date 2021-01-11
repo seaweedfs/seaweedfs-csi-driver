@@ -19,8 +19,8 @@ type Mounter interface {
 	Mount(target string) error
 }
 
-func newMounter(bucketName string, filer string) (Mounter, error) {
-	return newSeaweedFsMounter(bucketName, filer)
+func newMounter(bucketName string, driver *SeaweedFsDriver) (Mounter, error) {
+	return newSeaweedFsMounter(bucketName, driver)
 }
 
 func fuseMount(path string, command string, args []string) error {

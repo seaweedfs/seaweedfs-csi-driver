@@ -8,23 +8,23 @@ import (
 
 // Implements Mounter
 type seaweedFsMounter struct {
-	bucketName      string
-	filerUrl        string
+	bucketName string
+	driver     *SeaweedFsDriver
 }
 
 const (
 	seaweedFsCmd = "weed"
 )
 
-func newSeaweedFsMounter(bucketName string, filer string) (Mounter, error) {
+func newSeaweedFsMounter(bucketName string, driver *SeaweedFsDriver) (Mounter, error) {
 	return &seaweedFsMounter{
-		bucketName:      bucketName,
-		filerUrl:        filer,
+		bucketName: bucketName,
+		driver:   driver,
 	}, nil
 }
 
 func (seaweedFs *seaweedFsMounter) Mount(target string) error {
-	glog.V(0).Infof("mounting %s%s to %s", seaweedFs.filerUrl, seaweedFs.bucketName, target)
+	glog.V(0).Infof("mounting %s%s to %s", seaweedFs.driver.filer, seaweedFs.bucketName, target)
 
 	args := []string{
 		"mount",
@@ -32,12 +32,12 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 		"-umask=000",
 		fmt.Sprintf("-dir=%s", target),
 		fmt.Sprintf("-collection=%s", seaweedFs.bucketName),
-		fmt.Sprintf("-filer=%s", seaweedFs.filerUrl),
+		fmt.Sprintf("-filer=%s", seaweedFs.driver.filer),
 		fmt.Sprintf("-filer.path=/buckets/%s", seaweedFs.bucketName),
 	}
 	err := fuseMount(target, seaweedFsCmd, args)
 	if err != nil {
-		glog.Errorf("mount %s%s to %s: %s", seaweedFs.filerUrl, seaweedFs.bucketName, target, err)
+		glog.Errorf("mount %s%s to %s: %s", seaweedFs.driver.filer, seaweedFs.bucketName, target, err)
 	}
 	return err
 }
