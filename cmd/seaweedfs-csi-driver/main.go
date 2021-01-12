@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/chrislusf/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/driver"
 )
 
@@ -29,6 +30,8 @@ func main() {
 		fmt.Println(info)
 		os.Exit(0)
 	}
+
+	glog.Infof("connect to filer %s", *filer)
 
 	drv := driver.NewSeaweedFsDriver(*filer, *nodeID, *endpoint)
 	drv.ConcurrentWriters = *concurrentWriters
