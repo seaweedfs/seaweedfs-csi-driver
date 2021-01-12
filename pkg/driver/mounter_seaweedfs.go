@@ -40,7 +40,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 	}
 	err := fuseMount(target, seaweedFsCmd, args)
 	if err != nil {
-		glog.Errorf("mount %s%s to %s: %s", seaweedFs.driver.filer, seaweedFs.bucketName, target, err)
+		glog.Errorf("mount %s %s to %s: %s", seaweedFs.driver.filer, seaweedFs.bucketName, target, err)
 	}
 	return err
 }
