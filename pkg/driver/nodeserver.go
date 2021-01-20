@@ -55,7 +55,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		mo = append(mo, "ro")
 	}
 
-	volParameters := req.GetVolumeContext()
+	volParameters := req.GetPublishContext()
 
 	mounter, err := newMounter(volumeID, ns.Driver, volParameters)
 	if err != nil {

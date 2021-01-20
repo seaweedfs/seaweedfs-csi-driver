@@ -26,7 +26,7 @@ func newSeaweedFsMounter(bucketName string, driver *SeaweedFsDriver, volParamete
 }
 
 func (seaweedFs *seaweedFsMounter) Mount(target string) error {
-	glog.V(0).Infof("mounting %s%s to %s", seaweedFs.driver.filer, seaweedFs.bucketName, target)
+	glog.V(0).Infof("mounting %s %s to %s", seaweedFs.driver.filer, seaweedFs.bucketName, target)
 
 	args := []string{
 		"mount",
