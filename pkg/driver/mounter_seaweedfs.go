@@ -8,18 +8,20 @@ import (
 
 // Implements Mounter
 type seaweedFsMounter struct {
-	bucketName string
-	driver     *SeaweedFsDriver
+	bucketName    string
+	driver        *SeaweedFsDriver
+	volParameters map[string]string
 }
 
 const (
 	seaweedFsCmd = "weed"
 )
 
-func newSeaweedFsMounter(bucketName string, driver *SeaweedFsDriver) (Mounter, error) {
+func newSeaweedFsMounter(bucketName string, driver *SeaweedFsDriver, volParameters map[string]string) (Mounter, error) {
 	return &seaweedFsMounter{
-		bucketName: bucketName,
-		driver:   driver,
+		bucketName:    bucketName,
+		driver:        driver,
+		volParameters: volParameters,
 	}, nil
 }
 
@@ -35,6 +37,16 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 		fmt.Sprintf("-filer=%s", seaweedFs.driver.filer),
 		fmt.Sprintf("-filer.path=/buckets/%s", seaweedFs.bucketName),
 	}
+
+	for arg, value := range seaweedFs.volParameters {
+		switch arg {
+		case "map.uid":
+			args = append(args, fmt.Sprintf("-map.uid=%s", value))
+		case "map.gid":
+			args = append(args, fmt.Sprintf("-map.gid=%s", value))
+		}
+	}
+
 	if seaweedFs.driver.ConcurrentWriters > 0 {
 		args = append(args, fmt.Sprintf("-concurrentWriters=%d", seaweedFs.driver.ConcurrentWriters))
 	}

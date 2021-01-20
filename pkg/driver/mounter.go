@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chrislusf/seaweedfs/weed/glog"
 	"os/exec"
+
+	"github.com/chrislusf/seaweedfs/weed/glog"
 	"k8s.io/utils/mount"
 )
 
@@ -19,8 +20,8 @@ type Mounter interface {
 	Mount(target string) error
 }
 
-func newMounter(bucketName string, driver *SeaweedFsDriver) (Mounter, error) {
-	return newSeaweedFsMounter(bucketName, driver)
+func newMounter(bucketName string, driver *SeaweedFsDriver, volParameters map[string]string) (Mounter, error) {
+	return newSeaweedFsMounter(bucketName, driver, volParameters)
 }
 
 func fuseMount(path string, command string, args []string) error {
