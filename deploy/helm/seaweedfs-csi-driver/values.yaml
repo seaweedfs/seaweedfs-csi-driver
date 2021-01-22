@@ -1,0 +1,25 @@
+
+# host and port of your SeaweedFs filer
+seaweedfsFiller: ""
+isDefaultStorageClass: false
+tlsSecret: ""
+
+imagePullPolicy: "IfNotPresent"
+
+csiProvisioner:
+  image: quay.io/k8scsi/csi-provisioner:v1.6.1
+  resources: {}
+
+csiAttacher:
+  image: quay.io/k8scsi/csi-attacher:v1.2.1
+  resources: {}
+
+csiNodeDriverRegistrar:
+  image: quay.io/k8scsi/csi-node-driver-registrar:v1.2.0
+  resources: {}
+
+seaweedfsCsiPlugin:
+  image: chrislusf/seaweedfs-csi-driver:latest
+  resources: {}
+
+
