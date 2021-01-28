@@ -8,20 +8,20 @@ import (
 
 // Implements Mounter
 type seaweedFsMounter struct {
-	bucketName    string
-	driver        *SeaweedFsDriver
-	volParameters map[string]string
+	bucketName string
+	driver     *SeaweedFsDriver
+	volContext map[string]string
 }
 
 const (
 	seaweedFsCmd = "weed"
 )
 
-func newSeaweedFsMounter(bucketName string, driver *SeaweedFsDriver, volParameters map[string]string) (Mounter, error) {
+func newSeaweedFsMounter(bucketName string, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
 	return &seaweedFsMounter{
-		bucketName:    bucketName,
-		driver:        driver,
-		volParameters: volParameters,
+		bucketName: bucketName,
+		driver:     driver,
+		volContext: volContext,
 	}, nil
 }
 
@@ -38,7 +38,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 		fmt.Sprintf("-filer.path=/buckets/%s", seaweedFs.bucketName),
 	}
 
-	for arg, value := range seaweedFs.volParameters {
+	for arg, value := range seaweedFs.volContext {
 		switch arg {
 		case "map.uid":
 			args = append(args, fmt.Sprintf("-map.uid=%s", value))
