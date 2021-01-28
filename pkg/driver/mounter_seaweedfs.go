@@ -10,21 +10,23 @@ import (
 type seaweedFsMounter struct {
 	bucketName string
 	driver     *SeaweedFsDriver
+	volContext map[string]string
 }
 
 const (
 	seaweedFsCmd = "weed"
 )
 
-func newSeaweedFsMounter(bucketName string, driver *SeaweedFsDriver) (Mounter, error) {
+func newSeaweedFsMounter(bucketName string, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
 	return &seaweedFsMounter{
 		bucketName: bucketName,
-		driver:   driver,
+		driver:     driver,
+		volContext: volContext,
 	}, nil
 }
 
 func (seaweedFs *seaweedFsMounter) Mount(target string) error {
-	glog.V(0).Infof("mounting %s%s to %s", seaweedFs.driver.filer, seaweedFs.bucketName, target)
+	glog.V(0).Infof("mounting %s %s to %s", seaweedFs.driver.filer, seaweedFs.bucketName, target)
 
 	args := []string{
 		"mount",
@@ -35,6 +37,16 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 		fmt.Sprintf("-filer=%s", seaweedFs.driver.filer),
 		fmt.Sprintf("-filer.path=/buckets/%s", seaweedFs.bucketName),
 	}
+
+	for arg, value := range seaweedFs.volContext {
+		switch arg {
+		case "map.uid":
+			args = append(args, fmt.Sprintf("-map.uid=%s", value))
+		case "map.gid":
+			args = append(args, fmt.Sprintf("-map.gid=%s", value))
+		}
+	}
+
 	if seaweedFs.driver.ConcurrentWriters > 0 {
 		args = append(args, fmt.Sprintf("-concurrentWriters=%d", seaweedFs.driver.ConcurrentWriters))
 	}
