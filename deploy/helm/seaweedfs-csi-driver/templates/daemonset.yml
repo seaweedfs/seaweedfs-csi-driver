@@ -1,23 +1,23 @@
+{{- if .Values.node.enabled}}
 ---
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: csi-seaweedfs-node
+  name: {{ template "seaweedfs-csi-driver.name" . }}-node
 spec:
   selector:
     matchLabels:
-      app: csi-seaweedfs-node
+      app: {{ template "seaweedfs-csi-driver.name" . }}-node
   updateStrategy:
     rollingUpdate:
       maxUnavailable: 25%
   template:
     metadata:
       labels:
-        app: csi-seaweedfs-node
-        role: csi-seaweedfs
+        app: {{ template "seaweedfs-csi-driver.name" . }}-node
     spec:
       priorityClassName: system-node-critical
-      serviceAccountName: csi-seaweedfs-node-sa
+      serviceAccountName: {{ template "seaweedfs-csi-driver.name" . }}-node-sa
       #hostNetwork: true
       #dnsPolicy: ClusterFirstWithHostNet
       containers:
@@ -32,7 +32,7 @@ spec:
             - name: ADDRESS
               value: /csi/csi.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: /var/lib/kubelet/plugins/com.seaweedfs.csi/csi.sock
+              value: /var/lib/kubelet/plugins/{{ .Values.driverName }}/csi.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -56,6 +56,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--filer=$(SEAWEEDFS_FILER)"
             - "--nodeid=$(NODE_ID)"
+            - "-v=9"
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
@@ -70,7 +71,7 @@ spec:
               value: /var/run/secrets/app/tls/tls.key
             - name: WEED_GRPC_CLIENT_CERT
               value: /var/run/secrets/app/tls/tls.crt
-            - name: WEED_GRPC_CLIENT_GRPC_CA
+            - name: WEED_GRPC_CA
               value: /var/run/secrets/app/tls/ca.crt
             {{- end }}
           resources:
@@ -79,7 +80,7 @@ spec:
             - name: plugin-dir
               mountPath: /csi
             - name: pods-mount-dir
-              mountPath: /var/lib/kubelet
+              mountPath: /var/lib/kubelet/pods
               mountPropagation: "Bidirectional"
             - mountPath: /dev
               name: device-dir
@@ -87,12 +88,6 @@ spec:
             - name: tls
               mountPath: /var/run/secrets/app/tls
             {{- end }}
-        - name: tools
-          image: registry.tech.bank24.int/devexp/network-multitool:1.0
-          command:
-            - bash
-            - -c
-            - tail -f /dev/null
       volumes:
         - name: registration-dir
           hostPath:
@@ -100,11 +95,11 @@ spec:
             type: DirectoryOrCreate
         - name: plugin-dir
           hostPath:
-            path: /var/lib/kubelet/plugins/com.seaweedfs.csi
+            path: /var/lib/kubelet/plugins/{{ .Values.driverName }}
             type: DirectoryOrCreate
         - name: pods-mount-dir
           hostPath:
-            path: /var/lib/kubelet
+            path: /var/lib/kubelet/pods
             type: Directory
         - name: device-dir
           hostPath:
@@ -114,3 +109,4 @@ spec:
           secret:
             secretName: {{ .Values.tlsSecret }}
         {{- end }}
+{{- end }}

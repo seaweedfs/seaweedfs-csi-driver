@@ -2,7 +2,7 @@
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-seaweedfs-provisioner-role
+  name: {{ template "seaweedfs-csi-driver.name" . }}-provisioner-role
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
@@ -30,20 +30,20 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-seaweedfs-provisioner-binding
+  name: {{ template "seaweedfs-csi-driver.name" . }}-provisioner-binding
 subjects:
   - kind: ServiceAccount
-    name: csi-seaweedfs-controller-sa
+    name: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: csi-seaweedfs-provisioner-role
+  name: {{ template "seaweedfs-csi-driver.name" . }}-provisioner-role
   apiGroup: rbac.authorization.k8s.io
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-seaweedfs-attacher-role
+  name: {{ template "seaweedfs-csi-driver.name" . }}-attacher-role
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -62,20 +62,20 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-seaweedfs-attacher-binding
+  name: {{ template "seaweedfs-csi-driver.name" . }}-attacher-binding
 subjects:
   - kind: ServiceAccount
-    name: csi-seaweedfs-controller-sa
+    name: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: csi-seaweedfs-attacher-role
+  name: {{ template "seaweedfs-csi-driver.name" . }}-attacher-role
   apiGroup: rbac.authorization.k8s.io
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-seaweedfs-snapshotter-role
+  name: {{ template "seaweedfs-csi-driver.name" . }}-snapshotter-role
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -108,20 +108,20 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-seaweedfs-snapshotter-binding
+  name: {{ template "seaweedfs-csi-driver.name" . }}-snapshotter-binding
 subjects:
   - kind: ServiceAccount
-    name: csi-seaweedfs-controller-sa
+    name: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: csi-seaweedfs-snapshotter-role
+  name: {{ template "seaweedfs-csi-driver.name" . }}-snapshotter-role
   apiGroup: rbac.authorization.k8s.io
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-seaweedfs-driver-registrar-controller-role
+  name: {{ template "seaweedfs-csi-driver.name" . }}-driver-registrar-controller-role
 rules:
   - apiGroups: ["csi.storage.k8s.io"]
     resources: ["csidrivers"]
@@ -133,20 +133,20 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-seaweedfs-driver-registrar-controller-binding
+  name: {{ template "seaweedfs-csi-driver.name" . }}-driver-registrar-controller-binding
 subjects:
   - kind: ServiceAccount
-    name: csi-seaweedfs-controller-sa
+    name: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: csi-seaweedfs-driver-registrar-controller-role
+  name: {{ template "seaweedfs-csi-driver.name" . }}-driver-registrar-controller-role
   apiGroup: rbac.authorization.k8s.io
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-seaweedfs-driver-registrar-node-role
+  name: {{ template "seaweedfs-csi-driver.name" . }}-driver-registrar-node-role
 rules:
   - apiGroups: [""]
     resources: ["events"]
@@ -161,12 +161,12 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: csi-seaweedfs-driver-registrar-node-binding
+  name: {{ template "seaweedfs-csi-driver.name" . }}-driver-registrar-node-binding
 subjects:
   - kind: ServiceAccount
-    name: csi-seaweedfs-node-sa
+    name: {{ template "seaweedfs-csi-driver.name" . }}-node-sa
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: csi-seaweedfs-driver-registrar-node-role
+  name: {{ template "seaweedfs-csi-driver.name" . }}-driver-registrar-node-role
   apiGroup: rbac.authorization.k8s.io

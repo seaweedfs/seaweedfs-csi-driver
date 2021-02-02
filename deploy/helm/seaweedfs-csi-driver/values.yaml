@@ -1,6 +1,7 @@
 
 # host and port of your SeaweedFs filer
 seaweedfsFiller: ""
+storageClassName: seaweedfs-storage
 isDefaultStorageClass: false
 tlsSecret: ""
 
@@ -22,4 +23,9 @@ seaweedfsCsiPlugin:
   image: chrislusf/seaweedfs-csi-driver:latest
   resources: {}
 
+# NOT Change, for future releases. Must be equal Name in GetPluginInfoResponse
+driverName: seaweedfs-csi-driver
 
+node:
+  # Deploy node daemonset
+  enabled: true

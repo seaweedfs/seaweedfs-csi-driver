@@ -2,21 +2,20 @@
 kind: StatefulSet
 apiVersion: apps/v1
 metadata:
-  name: csi-seaweedfs-controller
+  name: {{ template "seaweedfs-csi-driver.name" . }}-controller
 spec:
   selector:
     matchLabels:
-      app: csi-seaweedfs-controller
+      app: {{ template "seaweedfs-csi-driver.name" . }}-controller
   serviceName: "csi-seaweedfs"
   replicas: 1
   template:
     metadata:
       labels:
-        app: csi-seaweedfs-controller
-        role: csi-seaweedfs
+        app: {{ template "seaweedfs-csi-driver.name" . }}-controller
     spec:
       priorityClassName: system-cluster-critical
-      serviceAccountName: csi-seaweedfs-controller-sa
+      serviceAccountName: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
       containers:
         # provisioner
         - name: csi-provisioner
@@ -74,7 +73,7 @@ spec:
               value: /var/run/secrets/app/tls/tls.key
             - name: WEED_GRPC_CLIENT_CERT
               value: /var/run/secrets/app/tls/tls.crt
-            - name: WEED_GRPC_CLIENT_GRPC_CA
+            - name: WEED_GRPC_CA
               value: /var/run/secrets/app/tls/ca.crt
             {{- end }}
           volumeMounts:
@@ -84,12 +83,6 @@ spec:
             - name: tls
               mountPath: /var/run/secrets/app/tls
            {{- end }}
-        - name: tools
-          image: registry.tech.bank24.int/devexp/network-multitool:1.0
-          command:
-            - bash
-            - -c
-            - tail -f /dev/null
       volumes:
         - name: socket-dir
           emptyDir: {}
