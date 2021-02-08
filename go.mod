@@ -48,7 +48,7 @@ require (
 	go.etcd.io/etcd v3.3.25+incompatible // indirect
 	go.mongodb.org/mongo-driver v1.4.2 // indirect
 	go.opencensus.io v0.22.5 // indirect
-	go.uber.org/multierr v1.6.0 // indirect
+	go.uber.org/multierr v1.6.1 // indirect
 	go.uber.org/zap v1.16.0 // indirect
 	gocloud.dev/pubsub/natspubsub v0.20.0 // indirect
 	gocloud.dev/pubsub/rabbitpubsub v0.20.0 // indirect
