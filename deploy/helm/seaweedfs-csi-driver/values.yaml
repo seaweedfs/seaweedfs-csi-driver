@@ -1,6 +1,6 @@
 
 # host and port of your SeaweedFs filer
-seaweedfsFiller: ""
+seaweedfsFiler: ""
 storageClassName: seaweedfs-storage
 isDefaultStorageClass: false
 tlsSecret: ""
