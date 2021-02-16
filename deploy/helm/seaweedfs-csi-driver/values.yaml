@@ -28,4 +28,5 @@ driverName: seaweedfs-csi-driver
 
 node:
   # Deploy node daemonset
+  # for a smoother update it is better to use static pods on nodes
   enabled: true
