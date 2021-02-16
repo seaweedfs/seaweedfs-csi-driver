@@ -53,7 +53,7 @@ git clone https://github.com/seaweedfs/seaweedfs-csi-driver.git
 ```
 2. Install
 ```bash
-helm install seaweedfs-csi-driver ./seaweedfs-csi-driver/deploy/helm/seaweedfs-csi-driver
+helm install --set seaweedfsFiller=<url to filler host:port> seaweedfs-csi-driver ./seaweedfs-csi-driver/deploy/helm/seaweedfs-csi-driver
 ```
 
 3. Clean up
