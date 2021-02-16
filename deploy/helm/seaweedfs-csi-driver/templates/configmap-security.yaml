@@ -1,0 +1,61 @@
+{{- if .Values.tlsSecret }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "seaweedfs-csi-driver.name" . }}
+  labels:
+    app: {{ template "seaweedfs-csi-driver.name" . }}
+data:
+  security.toml: |-
+    # this file is read by master, volume server, and filer
+
+    # the jwt signing key is read by master and volume server
+    # a jwt expires in 10 seconds
+    #[jwt.signing]
+    # key = "{{ .Values.jwtSigningKey }}"
+    #expires_after_seconds = 10           # seconds
+
+    #[jwt.signing.read]
+    #key = ""
+    #expires_after_seconds = 10           # seconds
+    # all grpc tls authentications are mutual
+    # the values for the following ca, cert, and key are paths to the PERM files.
+    [grpc]
+    ca = "/usr/local/share/ca-certificates/ca.crt"
+
+    [grpc.volume]
+    cert = "/usr/local/share/ca-certificates/tls.crt"
+    key  = "/usr/local/share/ca-certificates/tls.key"
+    ca = "/usr/local/share/ca-certificates/ca.crt"
+
+    [grpc.master]
+    cert = "/usr/local/share/ca-certificates/tls.crt"
+    key  = "/usr/local/share/ca-certificates/tls.key"
+    ca = "/usr/local/share/ca-certificates/ca.crt"
+
+    [grpc.filer]
+    cert = "/usr/local/share/ca-certificates/tls.crt"
+    key  = "/usr/local/share/ca-certificates/tls.key"
+    ca = "/usr/local/share/ca-certificates/ca.crt"
+
+    [grpc.msg_broker]
+    cert = "/usr/local/share/ca-certificates/tls.crt"
+    key  = "/usr/local/share/ca-certificates/tls.key"
+    ca = "/usr/local/share/ca-certificates/ca.crt"
+
+    # use this for any place needs a grpc client
+    # i.e., "weed backup|benchmark|filer.copy|filer.replicate|mount|s3|upload"
+    [grpc.client]
+    cert = "/usr/local/share/ca-certificates/tls.crt"
+    key  = "/usr/local/share/ca-certificates/tls.key"
+    ca = "/usr/local/share/ca-certificates/ca.crt"
+
+    # volume server https options
+    # Note: work in progress!
+    #     this does not work with other clients, e.g., "weed filer|mount" etc, yet.
+    #[https.client]
+    #enabled = false
+    #[https.volume]
+    #cert = ""
+    #key  = ""
+{{- end }}

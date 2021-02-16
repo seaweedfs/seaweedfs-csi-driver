@@ -1,0 +1,112 @@
+{{- if .Values.node.enabled}}
+---
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: {{ template "seaweedfs-csi-driver.name" . }}-node
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "seaweedfs-csi-driver.name" . }}-node
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        app: {{ template "seaweedfs-csi-driver.name" . }}-node
+    spec:
+      priorityClassName: system-node-critical
+      serviceAccountName: {{ template "seaweedfs-csi-driver.name" . }}-node-sa
+      #hostNetwork: true
+      #dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: driver-registrar
+          image: {{ .Values.csiNodeDriverRegistrar.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: /var/lib/kubelet/plugins/{{ .Values.driverName }}/csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            {{ toYaml .Values.csiNodeDriverRegistrar.resources | nindent 12 }}
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi/
+            - name: registration-dir
+              mountPath: /registration/
+        - name: csi-seaweedfs-plugin
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+            allowPrivilegeEscalation: true
+          image: {{.Values.seaweedfsCsiPlugin.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          args :
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--filer=$(SEAWEEDFS_FILER)"
+            - "--nodeid=$(NODE_ID)"
+            - "-v=9"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: SEAWEEDFS_FILER
+              value: {{ .Values.seaweedfsFiller | quote }}
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            {{- if .Values.tlsSecret }}
+            - name: WEED_GRPC_CLIENT_KEY
+              value: /var/run/secrets/app/tls/tls.key
+            - name: WEED_GRPC_CLIENT_CERT
+              value: /var/run/secrets/app/tls/tls.crt
+            - name: WEED_GRPC_CA
+              value: /var/run/secrets/app/tls/ca.crt
+            {{- end }}
+          resources:
+            {{ toYaml .Values.seaweedfsCsiPlugin.resources | nindent 12 }}
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: "Bidirectional"
+            - mountPath: /dev
+              name: device-dir
+            {{- if .Values.tlsSecret }}
+            - name: tls
+              mountPath: /var/run/secrets/app/tls
+            {{- end }}
+      volumes:
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: DirectoryOrCreate
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/{{ .Values.driverName }}
+            type: DirectoryOrCreate
+        - name: pods-mount-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: Directory
+        - name: device-dir
+          hostPath:
+            path: /dev
+        {{- if .Values.tlsSecret }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.tlsSecret }}
+        {{- end }}
+{{- end }}
