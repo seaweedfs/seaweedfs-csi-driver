@@ -9,8 +9,7 @@ spec:
     matchLabels:
       app: {{ template "seaweedfs-csi-driver.name" . }}-node
   updateStrategy:
-    rollingUpdate:
-      maxUnavailable: 25%
+    {{ toYaml .Values.node.updateStrategy | nindent 4 }}
   template:
     metadata:
       labels:
