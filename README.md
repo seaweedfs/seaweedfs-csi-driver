@@ -70,7 +70,7 @@ For better safe update use ``node.updateStrategy.type: OnDelete`` in this need m
  - delete DS pods on node where no exists seaweefs PV
  - cordon or taint node 
  - evict or delete pods with seaweedfs PV
- - delete DS pos on node
+ - delete DS pod on node
  - uncordon or remove taint on node
  - repeat all steps on all nodes 
   
