@@ -60,7 +60,7 @@ spec:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
             - name: SEAWEEDFS_FILER
-              value: {{ .Values.seaweedfsFiller | quote }}
+              value: {{ .Values.seaweedfsFiler | quote }}
             - name: NODE_ID
               valueFrom:
                 fieldRef:
