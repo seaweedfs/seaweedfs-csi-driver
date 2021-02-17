@@ -28,5 +28,12 @@ driverName: seaweedfs-csi-driver
 
 node:
   # Deploy node daemonset
-  # for a smoother update it is better to use static pods on nodes
   enabled: true
+  # When pod on node be recreated all pod on same node lost PV.
+  # For safe update use updateStrategy.type: OnDelete and manual move pods who use PV and delete damonset pod
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+
+
