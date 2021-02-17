@@ -1,0 +1,93 @@
+---
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: {{ template "seaweedfs-csi-driver.name" . }}-controller
+spec:
+  selector:
+    matchLabels:
+      app: {{ template "seaweedfs-csi-driver.name" . }}-controller
+  serviceName: "csi-seaweedfs"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ template "seaweedfs-csi-driver.name" . }}-controller
+    spec:
+      priorityClassName: system-cluster-critical
+      serviceAccountName: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
+      containers:
+        # provisioner
+        - name: csi-provisioner
+          image: {{ .Values.csiProvisioner.image }}
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - -v
+            - "9"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+          resources:
+            {{ toYaml .Values.csiProvisioner.resources | nindent 12 }}
+        # attacher
+        - name: csi-attacher
+          image: {{ .Values.csiAttacher.image }}
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--timeout=120s"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          resources:
+            {{ toYaml .Values.csiAttacher.resources | nindent 12 }}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+        # SeaweedFs Plugin
+        - name: seaweedfs-csi-plugin
+          image: {{.Values.seaweedfsCsiPlugin.image}}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          args :
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--filer=$(SEAWEEDFS_FILER)"
+            - "--nodeid=$(NODE_ID)"
+            - -v
+            - "9"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
+            - name: SEAWEEDFS_FILER
+              value: {{ .Values.seaweedfsFiler | quote }}
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            {{- if .Values.tlsSecret }}
+            - name: WEED_GRPC_CLIENT_KEY
+              value: /var/run/secrets/app/tls/tls.key
+            - name: WEED_GRPC_CLIENT_CERT
+              value: /var/run/secrets/app/tls/tls.crt
+            - name: WEED_GRPC_CA
+              value: /var/run/secrets/app/tls/ca.crt
+            {{- end }}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+           {{- if .Values.tlsSecret }}
+            - name: tls
+              mountPath: /var/run/secrets/app/tls
+           {{- end }}
+      volumes:
+        - name: socket-dir
+          emptyDir: {}
+        {{- if .Values.tlsSecret }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.tlsSecret }}
+        {{- end }}

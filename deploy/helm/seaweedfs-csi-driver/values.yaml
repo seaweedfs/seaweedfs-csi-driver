@@ -1,0 +1,32 @@
+
+# host and port of your SeaweedFs filer
+seaweedfsFiler: ""
+storageClassName: seaweedfs-storage
+isDefaultStorageClass: false
+tlsSecret: ""
+
+imagePullPolicy: "IfNotPresent"
+
+csiProvisioner:
+  image: quay.io/k8scsi/csi-provisioner:v1.6.1
+  resources: {}
+
+csiAttacher:
+  image: quay.io/k8scsi/csi-attacher:v1.2.1
+  resources: {}
+
+csiNodeDriverRegistrar:
+  image: quay.io/k8scsi/csi-node-driver-registrar:v1.2.0
+  resources: {}
+
+seaweedfsCsiPlugin:
+  image: chrislusf/seaweedfs-csi-driver:latest
+  resources: {}
+
+# NOT Change, for future releases. Must be equal Name in GetPluginInfoResponse
+driverName: seaweedfs-csi-driver
+
+node:
+  # Deploy node daemonset
+  # for a smoother update it is better to use static pods on nodes
+  enabled: true

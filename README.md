@@ -46,6 +46,21 @@ $ kubectl delete -f deploy/kubernetes/sample-seaweedfs-pvc.yaml
 $ kubectl delete -f deploy/kubernetes/seaweedfs-csi.yaml
 ```
 
+# Deployment by helm chart
+
+1. Clone project 
+```bash
+git clone https://github.com/seaweedfs/seaweedfs-csi-driver.git
+```
+2. Install
+```bash
+helm install --set seaweedfsFiler=<filerHost:port> seaweedfs-csi-driver ./seaweedfs-csi-driver/deploy/helm/seaweedfs-csi-driver
+```
+
+3. Clean up
+```bash
+helm uninstall seaweedfs-csi-driver
+```
 # License
 [Apache v2 license](https://www.apache.org/licenses/LICENSE-2.0)
 
