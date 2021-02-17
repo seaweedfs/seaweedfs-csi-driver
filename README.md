@@ -62,8 +62,10 @@ helm install --set seaweedfsFiler=<filerHost:port> seaweedfs-csi-driver ./seawee
 helm uninstall seaweedfs-csi-driver
 ```
 
-# Safe rolling update
-When update DaemonSet ( DS ) break processes who implements fuse mount. And now new pod not remount net device
+# Safe rollout update
+When update DaemonSet ( DS ) break processes who implements fuse mount. 
+And now new pod not remount net device
+
 For better safe update use ``node.updateStrategy.type: OnDelete`` in this need manual update. Steps:
  - delete DS pods on node where no exists seaweefs PV
  - cordon or taint node 
