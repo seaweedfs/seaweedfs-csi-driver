@@ -11,7 +11,7 @@ require (
 	github.com/DataDog/zstd v1.4.5 // indirect
 	github.com/Shopify/sarama v1.27.1 // indirect
 	github.com/aws/aws-sdk-go v1.35.7 // indirect
-	github.com/chrislusf/seaweedfs v0.0.0-20210110065522-f0d3b3bf9397
+	github.com/chrislusf/seaweedfs v0.0.0-20210306222627-1bd880dcdb87
 	github.com/container-storage-interface/spec v1.2.0
 	github.com/coreos/bbolt v1.3.3 // indirect
 	github.com/coreos/etcd v3.3.15+incompatible // indirect
