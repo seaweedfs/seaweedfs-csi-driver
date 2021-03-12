@@ -176,6 +176,8 @@ github.com/chrislusf/seaweedfs v0.0.0-20210110065522-f0d3b3bf9397 h1:3rGVP8RbEcd
 github.com/chrislusf/seaweedfs v0.0.0-20210110065522-f0d3b3bf9397/go.mod h1:i5UVLjU5cI1LdcUhlNKAklLcAGPIjrPiZqEFzb66HhE=
 github.com/chrislusf/seaweedfs v0.0.0-20210306222627-1bd880dcdb87 h1:CtRVwciI1rQJdBGOKZum3MRLze2ywZc7uvq+g7spFlI=
 github.com/chrislusf/seaweedfs v0.0.0-20210306222627-1bd880dcdb87/go.mod h1:ny70/bqBAEEsczUFgxXwEQkhCQcLrVyxBGVYA2Z9nuA=
+github.com/chrislusf/seaweedfs v0.0.0-20210312083638-7d57664c2d80 h1:wWrNs+O0v1OAq9CMSaK37yjtVwh+Ni6iWN3Iq8JU8Tg=
+github.com/chrislusf/seaweedfs v0.0.0-20210312083638-7d57664c2d80/go.mod h1:W9fDFQqdNw3/SG6eCM7DV6h6O6sUsSMqHcdOV9fS848=
 github.com/chzyer/logex v1.1.10/go.mod h1:+Ywpsq7O8HXn0nuIou7OrIPyXbp3wmkHB+jjWRnGsAI=
 github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=
 github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMnBNeIyt5eFwwo7qiLfzFZmjNmxjkiQlU=
@@ -550,6 +552,7 @@ github.com/lib/pq v1.2.0 h1:LXpIM/LZ5xGFhOpXAQUIMM1HdyqzVYM13zNdjCEEcA0=
 github.com/lib/pq v1.2.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
 github.com/lib/pq v1.8.0 h1:9xohqzkUwzR4Ga4ivdTcawVS89YSDVxXMa3xJX3cGzg=
 github.com/lib/pq v1.8.0/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
+github.com/lib/pq v1.10.0/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
 github.com/lightstep/lightstep-tracer-common/golang/gogo v0.0.0-20190605223551-bc2310a04743/go.mod h1:qklhhLq1aX+mtWk9cPHPzaBjWImj5ULL6C7HFJtXQMM=
 github.com/lightstep/lightstep-tracer-go v0.18.1/go.mod h1:jlF1pusYV4pidLvZ+XD0UBX0ZE6WURAspgAczcDHrL4=
 github.com/lunixbochs/vtclean v1.0.0/go.mod h1:pHhQNgMf3btfWnGBVipUOjRYhoOsdGqdm/+2c2E2WMI=

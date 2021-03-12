@@ -11,7 +11,7 @@ require (
 	github.com/DataDog/zstd v1.4.5 // indirect
 	github.com/Shopify/sarama v1.27.1 // indirect
 	github.com/aws/aws-sdk-go v1.35.7 // indirect
-	github.com/chrislusf/seaweedfs v0.0.0-20210306222627-1bd880dcdb87
+	github.com/chrislusf/seaweedfs v0.0.0-20210312083638-7d57664c2d80
 	github.com/container-storage-interface/spec v1.2.0
 	github.com/coreos/bbolt v1.3.3 // indirect
 	github.com/coreos/etcd v3.3.15+incompatible // indirect
@@ -28,7 +28,6 @@ require (
 	github.com/klauspost/compress v1.11.1 // indirect
 	github.com/klauspost/cpuid v1.3.1 // indirect
 	github.com/klauspost/reedsolomon v1.9.9 // indirect
-	github.com/lib/pq v1.8.0 // indirect
 	github.com/magiconair/properties v1.8.4 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0
