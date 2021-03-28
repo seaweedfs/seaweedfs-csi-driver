@@ -11,7 +11,7 @@
 * Already have a working Kubernetes cluster (includes `kubectl`)
 * Already have a working SeaweedFS cluster
 
-## Utilize exiting SeaweedFS storage for your Kubernetes cluster (bare metal)
+## Utilize existing SeaweedFS storage for your Kubernetes cluster (bare metal)
 
 1. Git clone this repository and add your SeaweedFS master IP to `deploy/kubernetes/seaweedfs-csi.yaml` (2 places)
 
