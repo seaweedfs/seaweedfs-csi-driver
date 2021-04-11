@@ -51,6 +51,9 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 	if seaweedFs.driver.ConcurrentWriters > 0 {
 		args = append(args, fmt.Sprintf("-concurrentWriters=%d", seaweedFs.driver.ConcurrentWriters))
 	}
+	if seaweedFs.driver.CacheDir != "" {
+		args = append(args, fmt.Sprintf("-cacheDir=%s", seaweedFs.driver.CacheDir))
+	}
 	err := fuseMount(target, seaweedFsCmd, args)
 	if err != nil {
 		glog.Errorf("mount %s %s to %s: %s", seaweedFs.driver.filer, seaweedFs.bucketName, target, err)

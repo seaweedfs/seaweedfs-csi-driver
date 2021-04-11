@@ -17,6 +17,7 @@ var (
 	version           = flag.Bool("version", false, "Print the version and exit.")
 	concurrentWriters = flag.Int("concurrentWriters", 32, "limit concurrent goroutine writers if not 0")
 	cacheSizeMB       = flag.Int64("cacheCapacityMB", 1000, "local file chunk cache capacity in MB (0 will disable cache)")
+	cacheDir          = flag.String("cacheDir", os.TempDir(), "local cache directory for file chunks and meta data")
 )
 
 func main() {
@@ -37,5 +38,6 @@ func main() {
 	drv := driver.NewSeaweedFsDriver(*filer, *nodeID, *endpoint)
 	drv.ConcurrentWriters = *concurrentWriters
 	drv.CacheSizeMB = *cacheSizeMB
+	drv.CacheDir = *cacheDir
 	drv.Run()
 }
