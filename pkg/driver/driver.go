@@ -38,6 +38,7 @@ type SeaweedFsDriver struct {
 	filer             string
 	grpcDialOption    grpc.DialOption
 	ConcurrentWriters int
+	CacheSizeMB       int64
 }
 
 func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {

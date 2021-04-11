@@ -36,6 +36,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 		fmt.Sprintf("-collection=%s", seaweedFs.bucketName),
 		fmt.Sprintf("-filer=%s", seaweedFs.driver.filer),
 		fmt.Sprintf("-filer.path=/buckets/%s", seaweedFs.bucketName),
+		fmt.Sprintf("-cacheCapacityMB=%d", seaweedFs.driver.CacheSizeMB),
 	}
 
 	for arg, value := range seaweedFs.volContext {
