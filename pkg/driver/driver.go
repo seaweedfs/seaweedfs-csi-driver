@@ -46,6 +46,8 @@ func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
 
 	glog.Infof("Driver: %v version: %v", driverName, version)
 
+	util.LoadConfiguration("security", false)
+
 	n := &SeaweedFsDriver{
 		endpoint:       endpoint,
 		nodeID:         nodeID,
