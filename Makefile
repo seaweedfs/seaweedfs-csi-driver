@@ -13,6 +13,8 @@ container: build
 	docker build -t $(IMAGE_TAG) -f cmd/seaweedfs-csi-driver/Dockerfile.dev .
 push: container
 	docker push $(IMAGE_TAG)
+release: container
+	VERSION=latest docker push $(IMAGE_TAG)
 clean:
 	go clean -r -x
 	-rm -rf _output
