@@ -12,7 +12,7 @@ RUN cd /go/src/github.com/seaweedfs/seaweedfs-csi-driver && go build -o /seaweed
 FROM alpine AS final
 RUN apk add fuse
 LABEL author="Chris Lu"
-COPY --from=builder /root/go/bin/weed /usr/bin/
+COPY --from=builder /go/bin/weed /usr/bin/
 COPY --from=builder /seaweedfs-csi-driver /
 
 RUN chmod +x /seaweedfs-csi-driver
