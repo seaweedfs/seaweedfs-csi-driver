@@ -1,4 +1,4 @@
-FROM frolvlad/alpine-glibc as builder
+FROM amd64/golang:1.16-alpine as builder
 RUN apk add git go g++
 
 RUN mkdir -p /go/src/github.com/chrislusf/
