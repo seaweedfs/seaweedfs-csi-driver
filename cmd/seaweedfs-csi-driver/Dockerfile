@@ -1,5 +1,8 @@
-FROM frolvlad/alpine-glibc as builder
+FROM amd64/golang:1.16-alpine as builder
+
 RUN apk add git go g++ curl jq
+
+WORKDIR /
 
 RUN curl -sL \
     $(curl -s https://api.github.com/repos/chrislusf/seaweedfs/releases/latest \
