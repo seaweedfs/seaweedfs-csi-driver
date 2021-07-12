@@ -1,18 +1,21 @@
 FROM amd64/golang:1.16-alpine as builder
-RUN apk add git go g++
 
-RUN mkdir -p /go/src/github.com/chrislusf/
-RUN git clone https://github.com/chrislusf/seaweedfs /go/src/github.com/chrislusf/seaweedfs
-RUN cd /go/src/github.com/chrislusf/seaweedfs/weed && go install
+RUN apk add git go g++ curl jq
 
-RUN mkdir -p /go/src/github.com/seaweedfs/
-RUN git clone https://github.com/seaweedfs/seaweedfs-csi-driver /go/src/github.com/seaweedfs/seaweedfs-csi-driver
-RUN cd /go/src/github.com/seaweedfs/seaweedfs-csi-driver && go build -o /seaweedfs-csi-driver ./cmd/seaweedfs-csi-driver/main.go
+WORKDIR /
+
+RUN curl -sL \
+    $(curl -s https://api.github.com/repos/chrislusf/seaweedfs/releases/latest \
+    | jq -r '.assets[]|select(.name=="linux_amd64.tar.gz")|.browser_download_url') \
+    | tar xzvf -
+
+COPY ../../ /src
+RUN cd /src && go build -o /seaweedfs-csi-driver ./cmd/seaweedfs-csi-driver/main.go
 
 FROM alpine AS final
 RUN apk add fuse
 LABEL author="Chris Lu"
-COPY --from=builder /go/bin/weed /usr/bin/
+COPY --from=builder /weed /usr/bin/
 COPY --from=builder /seaweedfs-csi-driver /
 
 RUN chmod +x /seaweedfs-csi-driver

@@ -35,7 +35,7 @@ jobs:
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
       - name: Get the current tag name
-        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" | sed 's/\//_/g' >> $GITHUB_ENV
 
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v1
