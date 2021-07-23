@@ -12,7 +12,7 @@ require (
 	github.com/Shopify/sarama v1.27.1 // indirect
 	github.com/andybalholm/brotli v1.0.3 // indirect
 	github.com/aws/aws-sdk-go v1.38.69 // indirect
-	github.com/chrislusf/seaweedfs v0.0.0-20210629054649-24e11d1e90c2
+	github.com/chrislusf/seaweedfs v0.0.0-20210723063554-bdb632fa62bf
 	github.com/container-storage-interface/spec v1.5.0
 	github.com/coreos/bbolt v1.3.3 // indirect
 	github.com/coreos/etcd v3.3.15+incompatible // indirect
@@ -46,12 +46,10 @@ require (
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/viper v1.8.1 // indirect
 	github.com/streadway/amqp v1.0.0 // indirect
-	github.com/tidwall/gjson v1.6.1 // indirect
 	github.com/valyala/fasthttp v1.27.0 // indirect
 	github.com/viant/toolbox v0.34.4 // indirect
 	github.com/willf/bitset v1.1.11 // indirect
 	go.etcd.io/etcd v3.3.25+incompatible // indirect
-	go.mongodb.org/mongo-driver v1.4.2 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	gocloud.dev/pubsub/natspubsub v0.20.0 // indirect
 	gocloud.dev/pubsub/rabbitpubsub v0.20.0 // indirect
