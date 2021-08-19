@@ -13,7 +13,7 @@
 
 ## Utilize existing SeaweedFS storage for your Kubernetes cluster (bare metal)
 
-1. Git clone this repository and add your SeaweedFS master IP to `deploy/kubernetes/seaweedfs-csi.yaml` (2 places)
+1. Git clone this repository and adjust your SeaweedFS Filer address via variable SEAWEEDFS_FILER in `deploy/kubernetes/seaweedfs-csi.yaml` (2 places)
 
 2. Apply the container storage interface for SeaweedFS for your cluster
 ```
