@@ -40,6 +40,8 @@ type SeaweedFsDriver struct {
 	ConcurrentWriters int
 	CacheSizeMB       int64
 	CacheDir          string
+	UidMap            string
+	GidMap            string
 }
 
 func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {

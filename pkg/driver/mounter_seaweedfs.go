@@ -39,6 +39,9 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 		fmt.Sprintf("-cacheCapacityMB=%d", seaweedFs.driver.CacheSizeMB),
 	}
 
+	// came from https://github.com/seaweedfs/seaweedfs-csi-driver/pull/12
+	// preferring explicit settings
+	// keeping this for backward compatibility
 	for arg, value := range seaweedFs.volContext {
 		switch arg {
 		case "map.uid":
@@ -53,6 +56,12 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 	}
 	if seaweedFs.driver.CacheDir != "" {
 		args = append(args, fmt.Sprintf("-cacheDir=%s", seaweedFs.driver.CacheDir))
+	}
+	if seaweedFs.driver.UidMap != "" {
+		args = append(args, fmt.Sprintf("-map.uid=%s", seaweedFs.driver.UidMap))
+	}
+	if seaweedFs.driver.GidMap != "" {
+		args = append(args, fmt.Sprintf("-map.gid=%s", seaweedFs.driver.GidMap))
 	}
 	err := fuseMount(target, seaweedFsCmd, args)
 	if err != nil {
