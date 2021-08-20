@@ -299,6 +299,8 @@ spec:
             - "--nodeid=$(NODE_ID)"
             - "--cacheCapacityMB=$(SEAWEEDFS_CACHE_CAPACITY_MB)"
             - "--cacheDir=$(SEAWEEDFS_CACHE_DIR)"
+            - "--map.uid=$(SEAWEEDFS_MAP_UID)"
+            - "--map.gid=$(SEAWEEDFS_MAP_GID)"
           env:
             - name: CSI_ENDPOINT
               value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
@@ -312,6 +314,10 @@ spec:
               value: "1000"
             - name: SEAWEEDFS_CACHE_DIR
               value: /tmp
+            - name: SEAWEEDFS_MAP_UID
+              value: ""
+            - name: SEAWEEDFS_MAP_GID
+              value: ""
           imagePullPolicy: "Always"
           volumeMounts:
             - name: socket-dir
@@ -373,6 +379,8 @@ spec:
             - "--nodeid=$(NODE_ID)"
             - "--cacheCapacityMB=$(SEAWEEDFS_CACHE_CAPACITY_MB)"
             - "--cacheDir=$(SEAWEEDFS_CACHE_DIR)"
+            - "--map.uid=$(SEAWEEDFS_MAP_UID)"
+            - "--map.gid=$(SEAWEEDFS_MAP_GID)"
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
@@ -386,6 +394,10 @@ spec:
               value: "1000"
             - name: SEAWEEDFS_CACHE_DIR
               value: /tmp
+            - name: SEAWEEDFS_MAP_UID
+              value: ""
+            - name: SEAWEEDFS_MAP_GID
+              value: ""
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - name: plugin-dir
