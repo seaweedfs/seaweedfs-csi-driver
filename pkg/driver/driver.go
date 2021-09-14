@@ -35,7 +35,7 @@ type SeaweedFsDriver struct {
 	vcap  []*csi.VolumeCapability_AccessMode
 	cscap []*csi.ControllerServiceCapability
 
-	filer             string
+	filer             pb.ServerAddress
 	grpcDialOption    grpc.DialOption
 	ConcurrentWriters int
 	CacheSizeMB       int64
@@ -55,7 +55,7 @@ func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
 		nodeID:         nodeID,
 		name:           driverName,
 		version:        version,
-		filer:          filer,
+		filer:          pb.ServerAddress(filer),
 		grpcDialOption: security.LoadClientTLS(util.GetViper(), "grpc.client"),
 	}
 
@@ -131,15 +131,10 @@ var _ = filer_pb.FilerClient(&SeaweedFsDriver{})
 
 func (d *SeaweedFsDriver) WithFilerClient(fn func(filer_pb.SeaweedFilerClient) error) error {
 
-	filerGrpcAddress, parseErr := pb.ParseServerToGrpcAddress(d.filer)
-	if parseErr != nil {
-		return fmt.Errorf("failed to parse filer %v: %v", filerGrpcAddress, parseErr)
-	}
-
 	return pb.WithCachedGrpcClient(func(grpcConnection *grpc.ClientConn) error {
 		client := filer_pb.NewSeaweedFilerClient(grpcConnection)
 		return fn(client)
-	}, filerGrpcAddress, d.grpcDialOption)
+	}, d.filer.ToGrpcAddress(), d.grpcDialOption)
 
 }
 func (d *SeaweedFsDriver) AdjustedUrl(location *filer_pb.Location) string {
