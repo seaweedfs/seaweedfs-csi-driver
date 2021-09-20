@@ -1,12 +1,12 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"os"
 
 	"github.com/chrislusf/seaweedfs/weed/glog"
+	flag "github.com/chrislusf/seaweedfs/weed/util/fla9"
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/driver"
 )
 
