@@ -4,6 +4,7 @@ seaweedfsFiler: ""
 storageClassName: seaweedfs-storage
 isDefaultStorageClass: false
 tlsSecret: ""
+#logVerbosity: 4
 
 imagePullPolicy: "IfNotPresent"
 

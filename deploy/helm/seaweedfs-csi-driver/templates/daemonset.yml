@@ -55,6 +55,9 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--filer=$(SEAWEEDFS_FILER)"
             - "--nodeid=$(NODE_ID)"
+            {{- if .Values.logVerbosity }}
+            - "-v={{ .Values.logVerbosity }}"
+            {{- end }}
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
