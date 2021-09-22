@@ -68,4 +68,5 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           file: ./cmd/seaweedfs-csi-driver/Dockerfile
           platforms: linux/amd64, linux/arm, linux/arm64, linux/386
+          tags: latest
           labels: ${{ steps.docker_meta.outputs.labels }}
