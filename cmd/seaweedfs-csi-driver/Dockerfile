@@ -1,6 +1,6 @@
-FROM amd64/golang:1.16-alpine as builder
+FROM amd64/golang:1.17-alpine as builder
 
-RUN apk add git go g++ curl jq
+RUN apk add git g++ curl jq
 
 WORKDIR /
 
