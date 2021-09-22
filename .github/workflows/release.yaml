@@ -51,7 +51,7 @@ jobs:
         with:
           # username: ${{ secrets.DOCKERHUB_USERNAME }}
           username: chrislusf
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build
         # if: ${{ startsWith(github.ref, 'refs/tags/') }}
