@@ -26,6 +26,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
+      - name: Docker meta
+        id: docker_meta
+        uses: docker/metadata-action@v3
+        with:
+          images: |
+            chrislusf/seaweedfs-csi-driver
+          tags: |
+            type=raw,value=dev
+          flavor: |
+            latest=true
+          labels: |
+            org.opencontainers.image.title=seaweedfs-csi-driver
+            org.opencontainers.image.description=SeaweedFS is a distributed storage system for blobs, objects, files, and data lake, to store and serve billions of files fast!
+            org.opencontainers.image.vendor=Chris Lu
+
       - name: Fetch history
         run: git fetch --prune --unshallow
 
@@ -61,5 +76,5 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           file: ./cmd/seaweedfs-csi-driver/Dockerfile
           platforms: linux/amd64, linux/arm, linux/arm64, linux/386
-          tags: chrislusf/seaweedfs-csi-driver:latest
+          tags: ${{ steps.docker_meta.outputs.tags }}
           labels: ${{ steps.docker_meta.outputs.labels }}
