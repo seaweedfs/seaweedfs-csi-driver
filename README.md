@@ -67,13 +67,72 @@ When update DaemonSet ( DS ) break processes who implements fuse mount.
 And now new pod not remount net device
 
 For better safe update use ``node.updateStrategy.type: OnDelete`` in this need manual update. Steps:
- - delete DS pods on node where no exists seaweefs PV
+ - delete DS pods on node where no exists seaweedfs PV
  - cordon or taint node 
  - evict or delete pods with seaweedfs PV
  - delete DS pod on node
  - uncordon or remove taint on node
- - repeat all steps on all nodes 
-  
+ - repeat all steps on [all nodes 
+
+# Static and dynamic provisioning
+
+By default, driver will create separate folder (`/buckets/<volume-id>`) and will use separate collection (`volume-id`)
+for each request. Sometimes we need to use exact collection name or change replication options.
+It can be done via creating separate storage class with options:
+
+```
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: seaweedfs-special
+provisioner: seaweedfs-csi-driver
+parameters:
+  collection: mycollection
+  replication: "011"
+```
+
+There is another use case when we need to access one folder from different pods with ro/rw access.
+In this case we do not need additional StorageClass. We need to create PersistentVolume:
+
+```
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: seaweedfs-static
+spec:
+  accessModes:
+  - ReadWriteMany
+  capacity:
+    storage: 1Gi
+  csi:
+    driver: seaweedfs-csi-driver
+    volumeHandle: dfs-test
+    volumeAttributes:
+      collection: default
+      replication: "011"
+      path: /path/to/files
+    readOnly: true
+  persistentVolumeReclaimPolicy: Retain
+  volumeMode: Filesystem
+```
+
+and bind ~~PersistentVolumeClaim(s) to it:
+
+```
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seaweedfs-static
+spec:
+  storageClassName: ""
+  volumeName: seaweedfs-static
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests~~:
+      storage: 1Gi
+```
+
 # License
 [Apache v2 license](https://www.apache.org/licenses/LICENSE-2.0)
 
