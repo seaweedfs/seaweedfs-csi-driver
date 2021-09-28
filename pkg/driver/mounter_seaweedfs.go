@@ -2,13 +2,14 @@ package driver
 
 import (
 	"fmt"
-
 	"github.com/chrislusf/seaweedfs/weed/glog"
 )
 
 // Implements Mounter
 type seaweedFsMounter struct {
-	bucketName string
+	path       string
+	collection string
+	readOnly   bool
 	driver     *SeaweedFsDriver
 	volContext map[string]string
 }
@@ -17,25 +18,27 @@ const (
 	seaweedFsCmd = "weed"
 )
 
-func newSeaweedFsMounter(bucketName string, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
+func newSeaweedFsMounter(path string, collection string, readOnly bool, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
 	return &seaweedFsMounter{
-		bucketName: bucketName,
+		path:       path,
+		collection: collection,
+		readOnly:   readOnly,
 		driver:     driver,
 		volContext: volContext,
 	}, nil
 }
 
 func (seaweedFs *seaweedFsMounter) Mount(target string) error {
-	glog.V(0).Infof("mounting %s %s to %s", seaweedFs.driver.filer, seaweedFs.bucketName, target)
+	glog.V(0).Infof("mounting %s %s to %s", seaweedFs.driver.filer, seaweedFs.path, target)
 
 	args := []string{
 		"mount",
 		"-dirAutoCreate=true",
 		"-umask=000",
 		fmt.Sprintf("-dir=%s", target),
-		fmt.Sprintf("-collection=%s", seaweedFs.bucketName),
+		fmt.Sprintf("-collection=%s", seaweedFs.collection),
 		fmt.Sprintf("-filer=%s", seaweedFs.driver.filer),
-		fmt.Sprintf("-filer.path=/buckets/%s", seaweedFs.bucketName),
+		fmt.Sprintf("-filer.path=%s", seaweedFs.path),
 		fmt.Sprintf("-cacheCapacityMB=%d", seaweedFs.driver.CacheSizeMB),
 	}
 
@@ -48,7 +51,13 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 			args = append(args, fmt.Sprintf("-map.uid=%s", value))
 		case "map.gid":
 			args = append(args, fmt.Sprintf("-map.gid=%s", value))
+		case "replication":
+			args = append(args, fmt.Sprintf("-replication=%s", value))
 		}
+	}
+
+	if seaweedFs.readOnly {
+		args = append(args, "-readOnly")
 	}
 
 	if seaweedFs.driver.ConcurrentWriters > 0 {
@@ -63,9 +72,10 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 	if seaweedFs.driver.GidMap != "" {
 		args = append(args, fmt.Sprintf("-map.gid=%s", seaweedFs.driver.GidMap))
 	}
+
 	err := fuseMount(target, seaweedFsCmd, args)
 	if err != nil {
-		glog.Errorf("mount %s %s to %s: %s", seaweedFs.driver.filer, seaweedFs.bucketName, target, err)
+		glog.Errorf("mount %s %s to %s: %s", seaweedFs.driver.filer, seaweedFs.path, target, err)
 	}
 	return err
 }

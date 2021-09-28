@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
@@ -50,14 +51,19 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
-	mo := req.GetVolumeCapability().GetMount().GetMountFlags()
-	if req.GetReadonly() {
-		mo = append(mo, "ro")
-	}
-
 	volContext := req.GetVolumeContext()
 
-	mounter, err := newMounter(volumeID, ns.Driver, volContext)
+	path, ok := volContext["path"]
+	if !ok {
+		path = fmt.Sprintf("/buckets/%s", volumeID)
+	}
+
+	collection, ok := volContext["collection"]
+	if !ok {
+		collection = volumeID
+	}
+
+	mounter, err := newMounter(path, collection, req.GetReadonly(), ns.Driver, volContext)
 	if err != nil {
 		return nil, err
 	}

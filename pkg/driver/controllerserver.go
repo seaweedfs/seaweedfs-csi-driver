@@ -39,16 +39,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	params := req.GetParameters()
-	glog.V(4).Info("params:%v", params)
+	glog.V(4).Infof("params:%v", params)
 	capacity := req.GetCapacityRange().GetRequiredBytes()
-	capacityGB := capacity >> 30
-	if capacityGB == 0 {
-		return nil, status.Error(codes.InvalidArgument, "required bytes less than 1GB")
-	}
-	seaweedFsVolumeCount := capacityGB / 30
-	if seaweedFsVolumeCount == 0 {
-		seaweedFsVolumeCount = 1
-	}
 
 	if err := filer_pb.Mkdir(cs.Driver, "/buckets", volumeId, nil); err != nil {
 		return nil, fmt.Errorf("Error setting bucket metadata: %v", err)
@@ -59,7 +51,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			VolumeId:      volumeId,
-			CapacityBytes: capacity, // 0, // seaweedFsVolumeCount * 1024 * 1024 * 30,
+			CapacityBytes: capacity,
 			VolumeContext: params,
 		},
 	}, nil
