@@ -8,6 +8,9 @@ tlsSecret: ""
 
 imagePullPolicy: "IfNotPresent"
 
+#imagePullSecrets:
+#- name: mycredentials
+
 csiProvisioner:
   image: quay.io/k8scsi/csi-provisioner:v1.6.1
   resources: {}
