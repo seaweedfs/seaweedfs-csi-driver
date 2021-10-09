@@ -116,7 +116,7 @@ spec:
   volumeMode: Filesystem
 ```
 
-and bind ~~PersistentVolumeClaim(s) to it:
+and bind PersistentVolumeClaim(s) to it:
 
 ```
 apiVersion: v1
@@ -129,7 +129,7 @@ spec:
   accessModes:
   - ReadWriteMany
   resources:
-    requests~~:
+    requests:
       storage: 1Gi
 ```
 
