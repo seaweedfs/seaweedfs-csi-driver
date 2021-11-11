@@ -35,7 +35,8 @@ type SeaweedFsDriver struct {
 	vcap  []*csi.VolumeCapability_AccessMode
 	cscap []*csi.ControllerServiceCapability
 
-	filer             pb.ServerAddress
+	filers            []pb.ServerAddress
+	filerIndex        int
 	grpcDialOption    grpc.DialOption
 	ConcurrentWriters int
 	CacheSizeMB       int64
@@ -55,7 +56,7 @@ func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
 		nodeID:         nodeID,
 		name:           driverName,
 		version:        version,
-		filer:          pb.ServerAddress(filer),
+		filers:         pb.ServerAddresses(filer).ToAddresses(),
 		grpcDialOption: security.LoadClientTLS(util.GetViper(), "grpc.client"),
 	}
 
@@ -129,10 +130,33 @@ var _ = filer_pb.FilerClient(&SeaweedFsDriver{})
 
 func (d *SeaweedFsDriver) WithFilerClient(fn func(filer_pb.SeaweedFilerClient) error) error {
 
-	return pb.WithCachedGrpcClient(func(grpcConnection *grpc.ClientConn) error {
-		client := filer_pb.NewSeaweedFilerClient(grpcConnection)
-		return fn(client)
-	}, d.filer.ToGrpcAddress(), d.grpcDialOption)
+	return util.Retry("filer grpc", func() error {
+
+		i := d.filerIndex
+		n := len(d.filers)
+		var err error
+		for x := 0; x < n; x++ {
+
+			err = pb.WithCachedGrpcClient(func(grpcConnection *grpc.ClientConn) error {
+				client := filer_pb.NewSeaweedFilerClient(grpcConnection)
+				return fn(client)
+			}, d.filers[i].ToGrpcAddress(), d.grpcDialOption)
+
+			if err != nil {
+				glog.V(0).Infof("WithFilerClient %d %v: %v", x, d.filers[i], err)
+			} else {
+				d.filerIndex = i
+				return nil
+			}
+
+			i++
+			if i >= n {
+				i = 0
+			}
+
+		}
+		return err
+	})
 
 }
 func (d *SeaweedFsDriver) AdjustedUrl(location *filer_pb.Location) string {

@@ -3,6 +3,7 @@ package driver
 import (
 	"fmt"
 	"github.com/chrislusf/seaweedfs/weed/glog"
+	"strings"
 )
 
 // Implements Mounter
@@ -29,7 +30,12 @@ func newSeaweedFsMounter(path string, collection string, readOnly bool, driver *
 }
 
 func (seaweedFs *seaweedFsMounter) Mount(target string) error {
-	glog.V(0).Infof("mounting %s %s to %s", seaweedFs.driver.filer, seaweedFs.path, target)
+	glog.V(0).Infof("mounting %v %s to %s", seaweedFs.driver.filers, seaweedFs.path, target)
+
+	var filers []string
+	for _, address := range seaweedFs.driver.filers {
+		filers = append(filers, string(address))
+	}
 
 	args := []string{
 		"mount",
@@ -37,7 +43,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 		"-umask=000",
 		fmt.Sprintf("-dir=%s", target),
 		fmt.Sprintf("-collection=%s", seaweedFs.collection),
-		fmt.Sprintf("-filer=%s", seaweedFs.driver.filer),
+		fmt.Sprintf("-filer=%s", strings.Join(filers, ",")),
 		fmt.Sprintf("-filer.path=%s", seaweedFs.path),
 		fmt.Sprintf("-cacheCapacityMB=%d", seaweedFs.driver.CacheSizeMB),
 	}
@@ -75,7 +81,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 
 	err := fuseMount(target, seaweedFsCmd, args)
 	if err != nil {
-		glog.Errorf("mount %s %s to %s: %s", seaweedFs.driver.filer, seaweedFs.path, target, err)
+		glog.Errorf("mount %v %s to %s: %s", seaweedFs.driver.filers, seaweedFs.path, target, err)
 	}
 	return err
 }
