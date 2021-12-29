@@ -128,7 +128,7 @@ func (d *SeaweedFsDriver) ValidateControllerServiceRequest(c csi.ControllerServi
 
 var _ = filer_pb.FilerClient(&SeaweedFsDriver{})
 
-func (d *SeaweedFsDriver) WithFilerClient(fn func(filer_pb.SeaweedFilerClient) error) error {
+func (d *SeaweedFsDriver) WithFilerClient(streamingMode bool, fn func(filer_pb.SeaweedFilerClient) error) error {
 
 	return util.Retry("filer grpc", func() error {
 
@@ -137,7 +137,7 @@ func (d *SeaweedFsDriver) WithFilerClient(fn func(filer_pb.SeaweedFilerClient) e
 		var err error
 		for x := 0; x < n; x++ {
 
-			err = pb.WithCachedGrpcClient(func(grpcConnection *grpc.ClientConn) error {
+			err = pb.WithGrpcClient(streamingMode, func(grpcConnection *grpc.ClientConn) error {
 				client := filer_pb.NewSeaweedFilerClient(grpcConnection)
 				return fn(client)
 			}, d.filers[i].ToGrpcAddress(), d.grpcDialOption)

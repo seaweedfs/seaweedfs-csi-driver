@@ -1,3 +1,4 @@
+# VERSION=latest make push
 .PHONY: build container clean
 
 REGISTRY_NAME=chrislusf
@@ -13,8 +14,6 @@ container: build
 	docker build -t $(IMAGE_TAG) -f cmd/seaweedfs-csi-driver/Dockerfile.dev .
 push: container
 	docker push $(IMAGE_TAG)
-release: container
-	VERSION=latest docker push $(IMAGE_TAG)
 clean:
 	go clean -r -x
 	-rm -rf _output
