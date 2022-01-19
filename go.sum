@@ -81,6 +81,8 @@ github.com/chrislusf/seaweedfs v0.0.0-20211229014101-498661e3bb6f h1:6E9fpSbSPm1
 github.com/chrislusf/seaweedfs v0.0.0-20211229014101-498661e3bb6f/go.mod h1:gULpUj0SQGSA0HZ1tY8TBGU8A2uFLcptDtjWDQrelKA=
 github.com/chrislusf/seaweedfs v0.0.0-20220103010519-5799a20f7149 h1:KBBWMdmQiJknzS6kgH5EJd4HjuAlKTEyN2/HEXtVdLE=
 github.com/chrislusf/seaweedfs v0.0.0-20220103010519-5799a20f7149/go.mod h1:B35zB+jjq8ophcs9xFA3vgOQ2Gg6IcryQLCaTal6YOk=
+github.com/chrislusf/seaweedfs v0.0.0-20220118200440-77362700e16c h1:Axt4WhnZK9wDY3YRGxdMw95BD8Ra0+G3R6eIjnUb3Dw=
+github.com/chrislusf/seaweedfs v0.0.0-20220118200440-77362700e16c/go.mod h1:6tjg7iQ+rT4kmqHNycM0SEt6X8czh4XpBQTAC7mdOjc=
 github.com/chzyer/logex v1.1.10/go.mod h1:+Ywpsq7O8HXn0nuIou7OrIPyXbp3wmkHB+jjWRnGsAI=
 github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=
 github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMnBNeIyt5eFwwo7qiLfzFZmjNmxjkiQlU=
@@ -590,6 +592,9 @@ golang.org/x/sys v0.0.0-20210908233432-aa78b53d3365 h1:6wSTsvPddg9gc/mVEEyk9oOAo
 golang.org/x/sys v0.0.0-20210908233432-aa78b53d3365/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e h1:fLOSk5Q00efkSvAm+4xcoXD+RRmLmmulPn5I3Y9F2EM=
 golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.0.0-20220111092808-5a964db01320/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.0.0-20220114195835-da31bd327af9 h1:XfKQ4OlFl8okEOr5UvAqFRVj8pY/4yfcXrddB8qAbU0=
+golang.org/x/sys v0.0.0-20220114195835-da31bd327af9/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/term v0.0.0-20201117132131-f5c789dd3221/go.mod h1:Nr5EML6q2oocZ2LXRh80K7BxOlk5/8JxuGnuhpl+muw=
 golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
 golang.org/x/term v0.0.0-20210220032956-6a3ed077a48d/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
