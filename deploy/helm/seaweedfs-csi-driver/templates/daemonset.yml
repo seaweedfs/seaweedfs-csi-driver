@@ -55,9 +55,6 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--filer=$(SEAWEEDFS_FILER)"
             - "--nodeid=$(NODE_ID)"
-            {{- if .Values.logVerbosity }}
-            - "-v={{ .Values.logVerbosity }}"
-            {{- end }}
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
@@ -74,6 +71,10 @@ spec:
               value: /var/run/secrets/app/tls/tls.crt
             - name: WEED_GRPC_CA
               value: /var/run/secrets/app/tls/ca.crt
+            {{- end }}
+            {{- if .Values.logVerbosity }}
+            - name: WEED_V
+              value: {{ .Values.logVerbosity | quote }}
             {{- end }}
           resources:
             {{ toYaml .Values.seaweedfsCsiPlugin.resources | nindent 12 }}
