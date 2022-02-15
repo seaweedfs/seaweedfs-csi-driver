@@ -3,7 +3,7 @@ module github.com/seaweedfs/seaweedfs-csi-driver
 go 1.17
 
 require (
-	github.com/chrislusf/seaweedfs v0.0.0-20220118200440-77362700e16c
+	github.com/chrislusf/seaweedfs v0.0.0-20220215003801-ebc22625b4d4
 	github.com/container-storage-interface/spec v1.5.0
 	github.com/mitchellh/go-ps v1.0.0
 	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d

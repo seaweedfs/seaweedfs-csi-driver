@@ -83,6 +83,8 @@ github.com/chrislusf/seaweedfs v0.0.0-20220103010519-5799a20f7149 h1:KBBWMdmQiJk
 github.com/chrislusf/seaweedfs v0.0.0-20220103010519-5799a20f7149/go.mod h1:B35zB+jjq8ophcs9xFA3vgOQ2Gg6IcryQLCaTal6YOk=
 github.com/chrislusf/seaweedfs v0.0.0-20220118200440-77362700e16c h1:Axt4WhnZK9wDY3YRGxdMw95BD8Ra0+G3R6eIjnUb3Dw=
 github.com/chrislusf/seaweedfs v0.0.0-20220118200440-77362700e16c/go.mod h1:6tjg7iQ+rT4kmqHNycM0SEt6X8czh4XpBQTAC7mdOjc=
+github.com/chrislusf/seaweedfs v0.0.0-20220215003801-ebc22625b4d4 h1:g00x1k8gu983VCDg2gRroT+EKTL1xIpN1GWkeZ4LxnE=
+github.com/chrislusf/seaweedfs v0.0.0-20220215003801-ebc22625b4d4/go.mod h1:yAOSMp2obuJJ3QRVY/mzlDTMyiCJQr7a80jbDKIWzTU=
 github.com/chzyer/logex v1.1.10/go.mod h1:+Ywpsq7O8HXn0nuIou7OrIPyXbp3wmkHB+jjWRnGsAI=
 github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=
 github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMnBNeIyt5eFwwo7qiLfzFZmjNmxjkiQlU=
