@@ -1,0 +1,432 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  creationTimestamp: null
+  name: csinodeinfos.csi.storage.k8s.io
+  annotations:
+    "api-approved.kubernetes.io": "https://github.com/kubernetes/enhancements/pull/1111 - though obvi it's not approved, but that's why"
+spec:
+  group: csi.storage.k8s.io
+  names:
+    kind: CSINodeInfo
+    plural: csinodeinfos
+  scope: Cluster
+  versions:
+    - name: v1alpha1      
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            csiDrivers:
+              description: List of CSI drivers running on the node and their properties.
+              items:
+                type: object
+                properties:
+                  driver:
+                    description: The CSI driver that this object refers to.
+                    type: string
+                  nodeID:
+                    description: The node from the driver point of view.
+                    type: string
+                  topologyKeys:
+                    description: List of keys supported by the driver.
+                    items:
+                      type: string
+                    type: array
+              type: array
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: seaweedfs-storage
+  namespace: kube-system
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: seaweedfs-csi-driver
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: csi-seaweedfs-controller-sa
+  namespace: kube-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: csi-seaweedfs-node-sa
+  namespace: kube-system
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-seaweedfs-provisioner-role
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list", "watch", "create", "update", "patch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["get", "list"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotcontents"]
+    verbs: ["get", "list"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-seaweedfs-provisioner-binding
+subjects:
+  - kind: ServiceAccount
+    name: csi-seaweedfs-controller-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-seaweedfs-provisioner-role
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-seaweedfs-attacher-role
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["csinodes"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattachments/status"]
+    verbs: ["patch"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-seaweedfs-attacher-binding
+subjects:
+  - kind: ServiceAccount
+    name: csi-seaweedfs-controller-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-seaweedfs-attacher-role
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-seaweedfs-snapshotter-role
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshotcontents"]
+    verbs: ["create", "get", "list", "watch", "update", "delete"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["create", "list", "watch", "delete"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-seaweedfs-snapshotter-binding
+subjects:
+  - kind: ServiceAccount
+    name: csi-seaweedfs-controller-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-seaweedfs-snapshotter-role
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-seaweedfs-driver-registrar-controller-role
+rules:
+  - apiGroups: ["csi.storage.k8s.io"]
+    resources: ["csidrivers"]
+    verbs: ["create", "delete"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-seaweedfs-driver-registrar-controller-binding
+subjects:
+  - kind: ServiceAccount
+    name: csi-seaweedfs-controller-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-seaweedfs-driver-registrar-controller-role
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-seaweedfs-driver-registrar-node-role
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["create", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: csi-seaweedfs-driver-registrar-node-binding
+subjects:
+  - kind: ServiceAccount
+    name: csi-seaweedfs-node-sa
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-seaweedfs-driver-registrar-node-role
+  apiGroup: rbac.authorization.k8s.io
+---
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: csi-seaweedfs-controller
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: csi-seaweedfs-controller
+  serviceName: "csi-seaweedfs"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: csi-seaweedfs-controller
+        role: csi-seaweedfs
+    spec:
+      priorityClassName: system-cluster-critical
+      serviceAccount: csi-seaweedfs-controller-sa
+      containers:
+        # provisioner
+        - name: csi-provisioner
+          image: k8s.gcr.io/sig-storage/csi-provisioner:v2.0.4
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--v=5"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: "Always"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+        # attacher
+        - name: csi-attacher
+          image: k8s.gcr.io/sig-storage/csi-attacher:v3.0.2
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--timeout=120s"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: "Always"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+        # Driver registrar
+        - name: csi-driver-registrar
+          image: quay.io/k8scsi/csi-cluster-driver-registrar:v1.0.1
+          args:
+            - "--v=5"
+            - "--pod-info-mount-version=\"v1\""
+            - "--csi-address=$(ADDRESS)"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+        # SeaweedFs Plugin
+        - name: seaweedfs-csi-plugin
+          image: chrislusf/seaweedfs-csi-driver:latest
+          args :
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--filer=$(SEAWEEDFS_FILER)"
+            - "--nodeid=$(NODE_ID)"
+            - "--cacheCapacityMB=$(SEAWEEDFS_CACHE_CAPACITY_MB)"
+            - "--cacheDir=$(SEAWEEDFS_CACHE_DIR)"
+            - "--map.uid=$(SEAWEEDFS_MAP_UID)"
+            - "--map.gid=$(SEAWEEDFS_MAP_GID)"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
+            - name: SEAWEEDFS_FILER
+              value: "192.168.2.7:8888" # host and port of your SeaweedFs filer
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SEAWEEDFS_CACHE_CAPACITY_MB
+              value: "1000"
+            - name: SEAWEEDFS_CACHE_DIR
+              value: /tmp
+            - name: SEAWEEDFS_MAP_UID
+              value: ""
+            - name: SEAWEEDFS_MAP_GID
+              value: ""
+          imagePullPolicy: "Always"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+      volumes:
+        - name: socket-dir
+          emptyDir: {}
+---
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: csi-seaweedfs-node
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: csi-seaweedfs-node
+  template:
+    metadata:
+      labels:
+        app: csi-seaweedfs-node
+        role: csi-seaweedfs
+    spec:
+      priorityClassName: system-node-critical
+      serviceAccount: csi-seaweedfs-node-sa
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: driver-registrar
+          image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.0.1
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: /var/lib/kubelet/plugins/seaweedfs-csi-driver/csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi/
+            - name: registration-dir
+              mountPath: /registration/
+        - name: csi-seaweedfs-plugin
+          securityContext:
+            privileged: true
+            capabilities:
+              add: ["SYS_ADMIN"]
+            allowPrivilegeEscalation: true
+          image: chrislusf/seaweedfs-csi-driver:latest
+          args :
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--filer=$(SEAWEEDFS_FILER)"
+            - "--nodeid=$(NODE_ID)"
+            - "--cacheCapacityMB=$(SEAWEEDFS_CACHE_CAPACITY_MB)"
+            - "--cacheDir=$(SEAWEEDFS_CACHE_DIR)"
+            - "--map.uid=$(SEAWEEDFS_MAP_UID)"
+            - "--map.gid=$(SEAWEEDFS_MAP_GID)"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: SEAWEEDFS_FILER
+              value: "192.168.2.7:8888" # host and port of your SeaweedFs filer, could also be K8S DNS entry like seaweedfs-filer.seaweed-namespace.svc:8888
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SEAWEEDFS_CACHE_CAPACITY_MB
+              value: "1000"
+            - name: SEAWEEDFS_CACHE_DIR
+              value: /tmp
+            - name: SEAWEEDFS_MAP_UID
+              value: ""
+            - name: SEAWEEDFS_MAP_GID
+              value: ""
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet
+              mountPropagation: "Bidirectional"
+            - mountPath: /dev
+              name: device-dir
+      volumes:
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: DirectoryOrCreate
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/seaweedfs-csi-driver
+            type: DirectoryOrCreate
+        - name: pods-mount-dir
+          hostPath:
+            path: /var/lib/kubelet
+            type: Directory
+        - name: device-dir
+          hostPath:
+            path: /dev
