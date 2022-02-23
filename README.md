@@ -15,7 +15,12 @@
 
 1. Git clone this repository and adjust your SeaweedFS Filer address via variable SEAWEEDFS_FILER in `deploy/kubernetes/seaweedfs-csi.yaml` (2 places)
 
-2. Apply the container storage interface for SeaweedFS for your cluster
+2. Apply the container storage interface for SeaweedFS for your cluster.  Use the '-pre-1.17' version for any cluster pre kubernetes version 1.17.  To generate an up to date manifest from the helm chart, do:
+
+``
+helm template seaweedfs ./deploy/helm/seaweedfs-csi-driver > deploy/kubernetes/seaweedfs-csi.yaml
+```
+Then apply the manifest.
 ```
 $ kubectl apply -f deploy/kubernetes/seaweedfs-csi.yaml
 ```
