@@ -38,6 +38,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 	}
 
 	args := []string{
+		"-logtostderr=true",
 		"mount",
 		"-dirAutoCreate=true",
 		"-umask=000",
