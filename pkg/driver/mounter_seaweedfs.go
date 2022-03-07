@@ -36,6 +36,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 	for _, address := range seaweedFs.driver.filers {
 		filers = append(filers, string(address))
 	}
+	capacityMB := seaweedFs.driver.Capacity / 1024 / 1024
 
 	args := []string{
 		"-logtostderr=true",
@@ -44,6 +45,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 		"-umask=000",
 		fmt.Sprintf("-dir=%s", target),
 		fmt.Sprintf("-collection=%s", seaweedFs.collection),
+		fmt.Sprintf("-collectionQuotaMB=%d", capacityMB),
 		fmt.Sprintf("-filer=%s", strings.Join(filers, ",")),
 		fmt.Sprintf("-filer.path=%s", seaweedFs.path),
 		fmt.Sprintf("-cacheCapacityMB=%d", seaweedFs.driver.CacheSizeMB),
