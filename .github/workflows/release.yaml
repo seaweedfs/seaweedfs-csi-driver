@@ -2,16 +2,8 @@ name: Build & release Docker images
 
 on:
   push:
-    branches:
-      - "**"
     tags:
       - 'v*'
-    paths:
-      - 'cmd/seaweedfs-csi-driver/Dockerfile'
-      - 'cmd/seaweedfs-csi-driver/*.go'
-      - 'pkg/driver/**'
-      - 'go.*'
-      - '.github/**'
 
   # Build on PR
   pull_request:
@@ -33,7 +25,7 @@ jobs:
           images: |
             chrislusf/seaweedfs-csi-driver
           tags: |
-            type=raw,value=dev
+            type=raw,value=latest
           flavor: |
             latest=true
           labels: |
