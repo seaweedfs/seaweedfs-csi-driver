@@ -44,6 +44,7 @@ type SeaweedFsDriver struct {
 	UidMap            string
 	GidMap            string
 	Capacity          int64
+	DiskType          string
 }
 
 func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {

@@ -82,6 +82,10 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 		args = append(args, fmt.Sprintf("-map.gid=%s", seaweedFs.driver.GidMap))
 	}
 
+	if seaweedFs.driver.DiskType != "" {
+		args = append(args, fmt.Sprintf("-disk=%s", seaweedFs.driver.DiskType))
+	}
+
 	err := fuseMount(target, seaweedFsCmd, args)
 	if err != nil {
 		glog.Errorf("mount %v %s to %s: %s", seaweedFs.driver.filers, seaweedFs.path, target, err)

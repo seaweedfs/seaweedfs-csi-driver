@@ -42,6 +42,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	glog.V(4).Infof("params:%v", params)
 	capacity := req.GetCapacityRange().GetLimitBytes()
 	cs.Driver.Capacity = capacity
+	cs.Driver.DiskType = params["diskType"]
 
 	if err := filer_pb.Mkdir(cs.Driver, "/buckets", volumeId, nil); err != nil {
 		return nil, fmt.Errorf("Error setting bucket metadata: %v", err)
