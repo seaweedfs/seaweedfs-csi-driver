@@ -63,6 +63,10 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		collection = volumeID
 	}
 
+	if diskType, ok := volContext["diskType"]; ok {
+		ns.Driver.DiskType = diskType
+	}
+
 	mounter, err := newMounter(path, collection, req.GetReadonly(), ns.Driver, volContext)
 	if err != nil {
 		return nil, err

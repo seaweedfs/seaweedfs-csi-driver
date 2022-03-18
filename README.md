@@ -94,6 +94,7 @@ provisioner: seaweedfs-csi-driver
 parameters:
   collection: mycollection
   replication: "011"
+  diskType: "ssd"
 ```
 
 There is another use case when we need to access one folder from different pods with ro/rw access.
@@ -116,6 +117,7 @@ spec:
       collection: default
       replication: "011"
       path: /path/to/files
+      diskType: "ssd"
     readOnly: true
   persistentVolumeReclaimPolicy: Retain
   volumeMode: Filesystem
