@@ -40,7 +40,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	params := req.GetParameters()
 	glog.V(4).Infof("params:%v", params)
-	capacity := req.GetCapacityRange().GetRequiredBytes()
+	capacity := req.GetCapacityRange().GetLimitBytes()
 	cs.Driver.Capacity = capacity
 
 	if err := filer_pb.Mkdir(cs.Driver, "/buckets", volumeId, nil); err != nil {
