@@ -7,5 +7,5 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi # In case of EP, this value does not have any effect
+      storage: 5Gi # This value is enforced after 2022/03/18
   storageClassName: seaweedfs-storage
