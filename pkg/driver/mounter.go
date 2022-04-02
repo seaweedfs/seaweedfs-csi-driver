@@ -38,9 +38,14 @@ func fuseMount(path string, command string, args []string) error {
 }
 
 func fuseUnmount(path string) error {
-	if err := mount.New("").Unmount(path); err != nil {
-		return err
+	m := mount.New("")
+
+	if ok, _ := m.IsLikelyNotMountPoint(path); !ok {
+		if err := m.Unmount(path); err != nil {
+			return err
+		}
 	}
+
 	// as fuse quits immediately, we will try to wait until the process is done
 	process, err := findFuseMountProcess(path)
 	if err != nil {
