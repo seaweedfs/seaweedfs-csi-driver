@@ -1,8 +1,8 @@
 package driver
 
 import (
-	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/chrislusf/seaweedfs/weed/glog"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/net/context"
 )
 
@@ -35,15 +35,13 @@ func (ids *IdentityServer) GetPluginCapabilities(ctx context.Context, req *csi.G
 					},
 				},
 			},
-			/* // TODO add later
-				{
-					Type: &csi.PluginCapability_VolumeExpansion_{
-						VolumeExpansion: &csi.PluginCapability_VolumeExpansion{
-							Type: csi.PluginCapability_VolumeExpansion_ONLINE,
-						},
+			{
+				Type: &csi.PluginCapability_VolumeExpansion_{
+					VolumeExpansion: &csi.PluginCapability_VolumeExpansion{
+						Type: csi.PluginCapability_VolumeExpansion_ONLINE,
 					},
 				},
-			*/
+			},
 		},
 	}, nil
 }

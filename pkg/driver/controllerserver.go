@@ -5,14 +5,17 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
-	"io"
-	"strings"
-
 	"github.com/chrislusf/seaweedfs/weed/glog"
 	"github.com/chrislusf/seaweedfs/weed/pb/filer_pb"
+	"github.com/chrislusf/seaweedfs/weed/pb/mount_pb"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	_ "google.golang.org/grpc/resolver/passthrough"
 	"google.golang.org/grpc/status"
+	"io"
+	"strings"
 )
 
 type ControllerServer struct {
@@ -165,7 +168,22 @@ func (cs *ControllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 }
 
 func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+
+	clientConn, err := grpc.Dial("passthrough:///unix://"+cs.Driver.mountSocket, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
+	defer clientConn.Close()
+
+	client := mount_pb.NewSeaweedMountClient(clientConn)
+	_, err = client.Configure(context.Background(), &mount_pb.ConfigureRequest{
+		CollectionCapacity: req.CapacityRange.LimitBytes,
+	})
+
+	return &csi.ControllerExpandVolumeResponse{
+		CapacityBytes: req.CapacityRange.LimitBytes,
+	}, err
+
 }
 
 func (cs *ControllerServer) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {

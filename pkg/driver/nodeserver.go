@@ -3,15 +3,17 @@ package driver
 import (
 	"context"
 	"fmt"
-	"os"
-	"strings"
-
 	"github.com/chrislusf/seaweedfs/weed/glog"
-
+	"github.com/chrislusf/seaweedfs/weed/pb/mount_pb"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	_ "google.golang.org/grpc/resolver/passthrough"
 	"google.golang.org/grpc/status"
 	"k8s.io/utils/mount"
+	"os"
+	"strings"
 )
 
 type NodeServer struct {
@@ -159,7 +161,21 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 }
 
 func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
-	return &csi.NodeExpandVolumeResponse{}, status.Error(codes.Unimplemented, "NodeExpandVolume is not implemented")
+
+	clientConn, err := grpc.Dial("passthrough:///unix://"+ns.Driver.mountSocket, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
+	defer clientConn.Close()
+
+	client := mount_pb.NewSeaweedMountClient(clientConn)
+	_, err = client.Configure(context.Background(), &mount_pb.ConfigureRequest{
+		CollectionCapacity: req.CapacityRange.LimitBytes,
+	})
+
+	return &csi.NodeExpandVolumeResponse{
+		CapacityBytes: req.CapacityRange.LimitBytes,
+	}, err
 }
 
 func checkMount(targetPath string) (bool, error) {

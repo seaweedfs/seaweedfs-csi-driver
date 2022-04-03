@@ -49,6 +49,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 		fmt.Sprintf("-filer=%s", strings.Join(filers, ",")),
 		fmt.Sprintf("-filer.path=%s", seaweedFs.path),
 		fmt.Sprintf("-cacheCapacityMB=%d", seaweedFs.driver.CacheSizeMB),
+		fmt.Sprintf("-localSocket=%s", seaweedFs.driver.mountSocket),
 	}
 
 	// came from https://github.com/seaweedfs/seaweedfs-csi-driver/pull/12
