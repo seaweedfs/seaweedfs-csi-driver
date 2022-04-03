@@ -40,7 +40,7 @@ func fuseMount(path string, command string, args []string) error {
 func fuseUnmount(path string) error {
 	m := mount.New("")
 
-	if ok, _ := m.IsLikelyNotMountPoint(path); !ok {
+	if ok, err := m.IsLikelyNotMountPoint(path); !ok || mount.IsCorruptedMnt(err) {
 		if err := m.Unmount(path); err != nil {
 			return err
 		}
