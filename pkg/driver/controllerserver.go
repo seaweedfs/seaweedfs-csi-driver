@@ -5,6 +5,10 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"strconv"
+	"strings"
+
 	"github.com/chrislusf/seaweedfs/weed/glog"
 	"github.com/chrislusf/seaweedfs/weed/pb/filer_pb"
 	"github.com/chrislusf/seaweedfs/weed/pb/mount_pb"
@@ -14,8 +18,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	_ "google.golang.org/grpc/resolver/passthrough"
 	"google.golang.org/grpc/status"
-	"io"
-	"strings"
 )
 
 type ControllerServer struct {
@@ -42,10 +44,18 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	params := req.GetParameters()
+	if params == nil {
+		params = make(map[string]string)
+	}
 	glog.V(4).Infof("params:%v", params)
-	capacity := req.GetCapacityRange().GetLimitBytes()
+	capacity := req.GetCapacityRange().GetRequiredBytes()
 	cs.Driver.Capacity = capacity
 	cs.Driver.DiskType = params["diskType"]
+
+	if capacity > 0 {
+		glog.V(4).Infof("volume capacity: %d", capacity)
+		params["volumeCapacity"] = strconv.FormatInt(capacity, 10)
+	}
 
 	if err := filer_pb.Mkdir(cs.Driver, "/buckets", volumeId, nil); err != nil {
 		return nil, fmt.Errorf("Error setting bucket metadata: %v", err)
