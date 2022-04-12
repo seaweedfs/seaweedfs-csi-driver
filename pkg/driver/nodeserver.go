@@ -3,6 +3,10 @@ package driver
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
+
 	"github.com/chrislusf/seaweedfs/weed/glog"
 	"github.com/chrislusf/seaweedfs/weed/pb/mount_pb"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -12,8 +16,6 @@ import (
 	_ "google.golang.org/grpc/resolver/passthrough"
 	"google.golang.org/grpc/status"
 	"k8s.io/utils/mount"
-	"os"
-	"strings"
 )
 
 type NodeServer struct {
@@ -67,6 +69,15 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	if diskType, ok := volContext["diskType"]; ok {
 		ns.Driver.DiskType = diskType
+	}
+
+	if volumeCapacity, ok := volContext["volumeCapacity"]; ok {
+		vCap, err := strconv.ParseInt(volumeCapacity, 10, 64)
+		if err != nil {
+			glog.Errorf("volumeCapacity %s can not be parsed to Int64, err is: %v", volumeCapacity, err)
+		} else {
+			ns.Driver.Capacity = vCap
+		}
 	}
 
 	mounter, err := newMounter(path, collection, req.GetReadonly(), ns.Driver, volContext)
