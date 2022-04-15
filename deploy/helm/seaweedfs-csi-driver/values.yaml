@@ -19,6 +19,10 @@ csiAttacher:
   image: k8s.gcr.io/sig-storage/csi-attacher:v3.4.0
   resources: {}
 
+csiResizer:
+  image: k8s.gcr.io/sig-storage/csi-resizer:v1.4.0
+  resources: {}
+
 csiNodeDriverRegistrar:
   image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0
   resources: {}

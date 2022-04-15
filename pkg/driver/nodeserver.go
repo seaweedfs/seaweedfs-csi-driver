@@ -136,7 +136,8 @@ func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetC
 				Type: &csi.NodeServiceCapability_Rpc{
 					Rpc: &csi.NodeServiceCapability_RPC{
 						// Type: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
-						Type: csi.NodeServiceCapability_RPC_UNKNOWN,
+						//Type: csi.NodeServiceCapability_RPC_UNKNOWN,
+						Type: csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 					},
 				},
 			},
@@ -181,11 +182,11 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 
 	client := mount_pb.NewSeaweedMountClient(clientConn)
 	_, err = client.Configure(context.Background(), &mount_pb.ConfigureRequest{
-		CollectionCapacity: req.CapacityRange.LimitBytes,
+		CollectionCapacity: req.CapacityRange.RequiredBytes,
 	})
 
 	return &csi.NodeExpandVolumeResponse{
-		CapacityBytes: req.CapacityRange.LimitBytes,
+		CapacityBytes: req.CapacityRange.RequiredBytes,
 	}, err
 }
 
