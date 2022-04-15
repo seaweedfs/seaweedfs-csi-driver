@@ -49,6 +49,22 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
+        # resizer
+        - name: csi-resizer
+          image: {{ .Values.csiResizer.image }}
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--leader-election=false"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          resources:
+            {{ toYaml .Values.csiAttacher.resources | nindent 12 }}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
         # SeaweedFs Plugin
         - name: seaweedfs-csi-plugin
           image: {{.Values.seaweedfsCsiPlugin.image}}

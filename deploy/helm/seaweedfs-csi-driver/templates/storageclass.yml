@@ -8,4 +8,5 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "true"
     {{- end }}
 provisioner: {{ .Values.driverName }}
+allowVolumeExpansion: true
 {{- end }}

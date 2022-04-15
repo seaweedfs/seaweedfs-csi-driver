@@ -187,11 +187,11 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 
 	client := mount_pb.NewSeaweedMountClient(clientConn)
 	_, err = client.Configure(context.Background(), &mount_pb.ConfigureRequest{
-		CollectionCapacity: req.CapacityRange.LimitBytes,
+		CollectionCapacity: req.CapacityRange.RequiredBytes,
 	})
 
 	return &csi.ControllerExpandVolumeResponse{
-		CapacityBytes: req.CapacityRange.LimitBytes,
+		CapacityBytes: req.CapacityRange.RequiredBytes,
 	}, err
 
 }
