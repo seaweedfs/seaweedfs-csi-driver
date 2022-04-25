@@ -19,6 +19,12 @@ spec:
       serviceAccountName: {{ template "seaweedfs-csi-driver.name" . }}-node-sa
       #hostNetwork: true
       #dnsPolicy: ClusterFirstWithHostNet
+      {{- with .Values.node.affinity }}
+      affinity: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.node.tolerations }}
+      tolerations: {{ toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: driver-registrar
           image: {{ .Values.csiNodeDriverRegistrar.image }}

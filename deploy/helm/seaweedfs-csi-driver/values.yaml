@@ -34,6 +34,10 @@ seaweedfsCsiPlugin:
 # NOT Change, for future releases. Must be equal Name in GetPluginInfoResponse
 driverName: seaweedfs-csi-driver
 
+controller:
+  #affinity:
+  #tolerations:
+
 node:
   # Deploy node daemonset
   enabled: true
@@ -43,5 +47,5 @@ node:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 25%
-
-
+  #affinity:
+  #tolerations:
