@@ -1,4 +1,4 @@
-# Container Storage Interface (CSI) for SeaweedFs
+# Container Storage Interface (CSI) for SeaweedFS
 
 [![Docker Pulls](https://img.shields.io/docker/pulls/chrislusf/seaweedfs-csi-driver.svg?maxAge=4800)](https://hub.docker.com/r/chrislusf/seaweedfs-csi-driver/)
 
