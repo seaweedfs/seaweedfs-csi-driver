@@ -18,6 +18,7 @@ metadata:
   name: seaweedfs-storage
   annotations:
 provisioner: seaweedfs-csi-driver
+allowVolumeExpansion: true
 ---
 # Source: seaweedfs-csi-driver/templates/rbac.yml
 kind: ClusterRole
@@ -34,6 +35,9 @@ rules:
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
     verbs: ["get", "list", "watch", "update"]
+  - apiGroups: [ "" ]
+    resources: [ "persistentvolumeclaims/status" ]
+    verbs: [ "get", "list", "watch", "update", "patch" ]
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses"]
     verbs: ["get", "list", "watch"]
@@ -46,6 +50,9 @@ rules:
   - apiGroups: ["snapshot.storage.k8s.io"]
     resources: ["volumesnapshotcontents"]
     verbs: ["get", "list"]
+  - apiGroups: [ "" ]
+    resources: [ "pods" ]
+    verbs: [ "get", "list", "watch" ]
 ---
 # Source: seaweedfs-csi-driver/templates/rbac.yml
 kind: ClusterRole
@@ -263,7 +270,7 @@ spec:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
             - name: SEAWEEDFS_FILER
-              value: "SEAWEEDFS_FILER"
+              value: "SEAWEEDFS_FILER:8888"
             - name: NODE_ID
               valueFrom:
                 fieldRef:
@@ -349,6 +356,23 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
+        # resizer
+        - name: csi-resizer
+          image: k8s.gcr.io/sig-storage/csi-resizer:v1.4.0
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--leader-election=false"
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          imagePullPolicy: IfNotPresent
+          resources:
+            
+            {}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
         # SeaweedFs Plugin
         - name: seaweedfs-csi-plugin
           image: chrislusf/seaweedfs-csi-driver:latest
@@ -361,7 +385,7 @@ spec:
             - name: CSI_ENDPOINT
               value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
             - name: SEAWEEDFS_FILER
-              value: "SEAWEEDFS_FILER"
+              value: "SEAWEEDFS_FILER:8888"
             - name: NODE_ID
               valueFrom:
                 fieldRef:
