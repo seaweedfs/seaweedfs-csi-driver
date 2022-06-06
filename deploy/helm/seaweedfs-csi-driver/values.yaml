@@ -1,6 +1,5 @@
-
 # host and port of your SeaweedFs filer
-seaweedfsFiler: "SEAWEEDFS_FILER"
+seaweedfsFiler: "SEAWEEDFS_FILER:8888"
 storageClassName: seaweedfs-storage
 isDefaultStorageClass: false
 tlsSecret: ""
@@ -35,8 +34,8 @@ seaweedfsCsiPlugin:
 driverName: seaweedfs-csi-driver
 
 controller:
-  #affinity:
-  #tolerations:
+  affinity: {}
+  tolerations: {}
 
 node:
   # Deploy node daemonset
@@ -47,5 +46,5 @@ node:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 25%
-  #affinity:
-  #tolerations:
+  affinity: {}
+  tolerations: {}

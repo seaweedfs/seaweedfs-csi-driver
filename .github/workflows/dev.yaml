@@ -2,7 +2,7 @@ name: dev Docker images
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
 
   # Build on PR
   pull_request:
@@ -69,3 +69,13 @@ jobs:
           platforms: linux/amd64, linux/arm, linux/arm64, linux/386
           tags: ${{ steps.docker_meta.outputs.tags }}
           labels: ${{ steps.docker_meta.outputs.labels }}
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Helm check
+        uses: igabaydulin/helm-check-action@0.1.4
+        env:
+          CHART_LOCATION: ./deploy/helm/seaweedfs-csi-driver
+          CHART_VALUES: ./deploy/helm/seaweedfs-csi-driver/values.yaml
