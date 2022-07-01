@@ -2,9 +2,7 @@ package driver
 
 import (
 	"context"
-	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/chrislusf/seaweedfs/weed/glog"
@@ -56,31 +54,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	volContext := req.GetVolumeContext()
-
-	path, ok := volContext["path"]
-	if !ok {
-		path = fmt.Sprintf("/buckets/%s", volumeID)
-	}
-
-	collection, ok := volContext["collection"]
-	if !ok {
-		collection = volumeID
-	}
-
-	if diskType, ok := volContext["diskType"]; ok {
-		ns.Driver.DiskType = diskType
-	}
-
-	if volumeCapacity, ok := volContext["volumeCapacity"]; ok {
-		vCap, err := strconv.ParseInt(volumeCapacity, 10, 64)
-		if err != nil {
-			glog.Errorf("volumeCapacity %s can not be parsed to Int64, err is: %v", volumeCapacity, err)
-		} else {
-			ns.Driver.Capacity = vCap
-		}
-	}
-
-	mounter, err := newMounter(path, collection, req.GetReadonly(), ns.Driver, volContext)
+	mounter, err := newMounter(volumeID, req.GetReadonly(), ns.Driver, volContext)
 	if err != nil {
 		return nil, err
 	}
@@ -173,8 +147,11 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 }
 
 func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+	volumeID := req.GetVolumeId()
+	glog.V(0).Infof("Node expand volume %s to %d bytes", volumeID, req.CapacityRange.RequiredBytes)
 
-	clientConn, err := grpc.Dial("passthrough:///unix://"+ns.Driver.mountSocket, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	localSocket := GetLocalSocket(volumeID)
+	clientConn, err := grpc.Dial("passthrough:///unix://"+localSocket, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}

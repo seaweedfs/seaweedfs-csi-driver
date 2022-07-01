@@ -49,9 +49,6 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 	glog.V(4).Infof("params:%v", params)
 	capacity := req.GetCapacityRange().GetRequiredBytes()
-	cs.Driver.Capacity = capacity
-	cs.Driver.DiskType = params["diskType"]
-
 	if capacity > 0 {
 		glog.V(4).Infof("volume capacity: %d", capacity)
 		params["volumeCapacity"] = strconv.FormatInt(capacity, 10)
@@ -178,8 +175,11 @@ func (cs *ControllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnap
 }
 
 func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+	volumeID := req.GetVolumeId()
+	glog.V(0).Infof("Controller expand volume %s to %d bytes", volumeID, req.CapacityRange.RequiredBytes)
 
-	clientConn, err := grpc.Dial("passthrough:///unix://"+cs.Driver.mountSocket, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	localSocket := GetLocalSocket(volumeID)
+	clientConn, err := grpc.Dial("passthrough:///unix://"+localSocket, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}

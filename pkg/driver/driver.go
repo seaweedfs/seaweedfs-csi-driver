@@ -30,8 +30,7 @@ type SeaweedFsDriver struct {
 	nodeID  string
 	version string
 
-	endpoint    string
-	mountSocket string
+	endpoint string
 
 	vcap  []*csi.VolumeCapability_AccessMode
 	cscap []*csi.ControllerServiceCapability
@@ -44,8 +43,6 @@ type SeaweedFsDriver struct {
 	CacheDir          string
 	UidMap            string
 	GidMap            string
-	Capacity          int64
-	DiskType          string
 }
 
 func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
@@ -54,12 +51,6 @@ func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
 
 	util.LoadConfiguration("security", false)
 
-	montDirHash := util.HashToInt32([]byte(endpoint))
-	if montDirHash < 0 {
-		montDirHash = -montDirHash
-	}
-	socket := fmt.Sprintf("/tmp/seaweedfs-mount-%d.sock", montDirHash)
-
 	n := &SeaweedFsDriver{
 		endpoint:       endpoint,
 		nodeID:         nodeID,
@@ -67,7 +58,6 @@ func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
 		version:        version,
 		filers:         pb.ServerAddresses(filer).ToAddresses(),
 		grpcDialOption: security.LoadClientTLS(util.GetViper(), "grpc.client"),
-		mountSocket:    socket,
 	}
 
 	n.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{

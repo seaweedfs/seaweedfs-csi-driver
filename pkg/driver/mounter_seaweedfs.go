@@ -2,12 +2,16 @@ package driver
 
 import (
 	"fmt"
-	"github.com/chrislusf/seaweedfs/weed/glog"
+	"strconv"
 	"strings"
+
+	"github.com/chrislusf/seaweedfs/weed/glog"
+	"github.com/chrislusf/seaweedfs/weed/util"
 )
 
 // Implements Mounter
 type seaweedFsMounter struct {
+	volumeID   string
 	path       string
 	collection string
 	readOnly   bool
@@ -19,8 +23,9 @@ const (
 	seaweedFsCmd = "weed"
 )
 
-func newSeaweedFsMounter(path string, collection string, readOnly bool, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
+func newSeaweedFsMounter(volumeID string, path string, collection string, readOnly bool, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
 	return &seaweedFsMounter{
+		volumeID:   volumeID,
 		path:       path,
 		collection: collection,
 		readOnly:   readOnly,
@@ -36,7 +41,6 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 	for _, address := range seaweedFs.driver.filers {
 		filers = append(filers, string(address))
 	}
-	capacityMB := seaweedFs.driver.Capacity / 1024 / 1024
 
 	args := []string{
 		"-logtostderr=true",
@@ -45,11 +49,10 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 		"-umask=000",
 		fmt.Sprintf("-dir=%s", target),
 		fmt.Sprintf("-collection=%s", seaweedFs.collection),
-		fmt.Sprintf("-collectionQuotaMB=%d", capacityMB),
 		fmt.Sprintf("-filer=%s", strings.Join(filers, ",")),
 		fmt.Sprintf("-filer.path=%s", seaweedFs.path),
 		fmt.Sprintf("-cacheCapacityMB=%d", seaweedFs.driver.CacheSizeMB),
-		fmt.Sprintf("-localSocket=%s", seaweedFs.driver.mountSocket),
+		fmt.Sprintf("-localSocket=%s", GetLocalSocket(seaweedFs.volumeID)),
 	}
 
 	// came from https://github.com/seaweedfs/seaweedfs-csi-driver/pull/12
@@ -63,6 +66,11 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 			args = append(args, fmt.Sprintf("-map.gid=%s", value))
 		case "replication":
 			args = append(args, fmt.Sprintf("-replication=%s", value))
+		case "diskType":
+			args = append(args, fmt.Sprintf("-disk=%s", value))
+		case "volumeCapacity":
+			capacityMB := parseVolumeCapacity(value)
+			args = append(args, fmt.Sprintf("-collectionQuotaMB=%d", capacityMB))
 		}
 	}
 
@@ -83,13 +91,32 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 		args = append(args, fmt.Sprintf("-map.gid=%s", seaweedFs.driver.GidMap))
 	}
 
-	if seaweedFs.driver.DiskType != "" {
-		args = append(args, fmt.Sprintf("-disk=%s", seaweedFs.driver.DiskType))
-	}
-
 	err := fuseMount(target, seaweedFsCmd, args)
 	if err != nil {
 		glog.Errorf("mount %v %s to %s: %s", seaweedFs.driver.filers, seaweedFs.path, target, err)
 	}
 	return err
+}
+
+func GetLocalSocket(volumeID string) string {
+	montDirHash := util.HashToInt32([]byte(volumeID))
+	if montDirHash < 0 {
+		montDirHash = -montDirHash
+	}
+
+	socket := fmt.Sprintf("/tmp/seaweedfs-mount-%d.sock", montDirHash)
+	return socket
+}
+
+func parseVolumeCapacity(volumeCapacity string) int64 {
+	var capacity int64
+
+	if vCap, err := strconv.ParseInt(volumeCapacity, 10, 64); err != nil {
+		glog.Errorf("volumeCapacity %s can not be parsed to Int64, err is: %v", volumeCapacity, err)
+	} else {
+		capacity = vCap
+	}
+
+	capacityMB := capacity / 1024 / 1024
+	return capacityMB
 }
