@@ -20,8 +20,18 @@ type Mounter interface {
 	Mount(target string) error
 }
 
-func newMounter(path string, collection string, readOnly bool, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
-	return newSeaweedFsMounter(path, collection, readOnly, driver, volContext)
+func newMounter(volumeID string, readOnly bool, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
+	path, ok := volContext["path"]
+	if !ok {
+		path = fmt.Sprintf("/buckets/%s", volumeID)
+	}
+
+	collection, ok := volContext["collection"]
+	if !ok {
+		collection = volumeID
+	}
+
+	return newSeaweedFsMounter(volumeID, path, collection, readOnly, driver, volContext)
 }
 
 func fuseMount(path string, command string, args []string) error {
