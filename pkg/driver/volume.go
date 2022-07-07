@@ -7,7 +7,6 @@ import (
 
 	"github.com/chrislusf/seaweedfs/weed/glog"
 	"github.com/chrislusf/seaweedfs/weed/pb/mount_pb"
-	"github.com/chrislusf/seaweedfs/weed/util"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -136,12 +135,8 @@ func (vol *Volume) getLocalSocket() string {
 		return vol.localSocket
 	}
 
-	montDirHash := util.HashToInt32([]byte(vol.VolumeId))
-	if montDirHash < 0 {
-		montDirHash = -montDirHash
-	}
+	socket := GetLocalSocket(vol.VolumeId)
 
-	socket := fmt.Sprintf("/tmp/seaweedfs-mount-%d.sock", montDirHash)
 	vol.localSocket = socket
 	return socket
 }

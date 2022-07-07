@@ -44,6 +44,13 @@ func fuseMount(path string, command string, args []string) error {
 		return fmt.Errorf("Error fuseMount command: %s\nargs: %s\nerror: %v", command, args, err)
 	}
 
+	// avoid zombie processes
+	go func() {
+		if err := cmd.Wait(); err != nil {
+			glog.Errorf("weed mount process %d exit: %v", cmd.Process.Pid, err)
+		}
+	}()
+
 	return waitForMount(path, 10*time.Second)
 }
 
