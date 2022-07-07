@@ -87,6 +87,9 @@ spec:
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
+            - name: plugins-dir
+              mountPath: /var/lib/kubelet/plugins
+              mountPropagation: "Bidirectional"
             - name: pods-mount-dir
               mountPath: /var/lib/kubelet/pods
               mountPropagation: "Bidirectional"
@@ -105,6 +108,10 @@ spec:
           hostPath:
             path: /var/lib/kubelet/plugins/{{ .Values.driverName }}
             type: DirectoryOrCreate
+        - name: plugins-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins
+            type: Directory
         - name: pods-mount-dir
           hostPath:
             path: /var/lib/kubelet/pods
