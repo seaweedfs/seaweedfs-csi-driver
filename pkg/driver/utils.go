@@ -2,18 +2,23 @@ package driver
 
 import (
 	"fmt"
+	"os"
 	"strings"
+	"sync"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/chrislusf/seaweedfs/weed/glog"
+	"github.com/chrislusf/seaweedfs/weed/util"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"k8s.io/utils/mount"
 )
 
 func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
 
 	return &NodeServer{
-		Driver: n,
+		Driver:        n,
+		volumeMutexes: NewKeyMutex(32),
 	}
 }
 
@@ -57,4 +62,40 @@ func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, h
 	}
 	glog.V(3).Infof("GRPC %s response %+v", info.FullMethod, resp)
 	return resp, err
+}
+
+func checkMount(targetPath string) (bool, error) {
+	notMnt, err := mount.New("").IsLikelyNotMountPoint(targetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			if err = os.MkdirAll(targetPath, 0750); err != nil {
+				return false, err
+			}
+			notMnt = true
+		} else {
+			return false, err
+		}
+	}
+	return notMnt, nil
+}
+
+type KeyMutex struct {
+	mutexes []sync.RWMutex
+	size    int32
+}
+
+func NewKeyMutex(size int32) *KeyMutex {
+	return &KeyMutex{
+		mutexes: make([]sync.RWMutex, size),
+		size:    size,
+	}
+}
+
+func (km *KeyMutex) GetMutex(key string) *sync.RWMutex {
+	index := util.HashToInt32([]byte(key))
+	if index < 0 {
+		index = -index
+	}
+
+	return &km.mutexes[index%km.size]
 }
