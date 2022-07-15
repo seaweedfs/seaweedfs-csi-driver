@@ -9,6 +9,7 @@ import (
 	"github.com/chrislusf/seaweedfs/weed/pb/mount_pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"k8s.io/utils/mount"
 )
 
 type Volume struct {
@@ -57,13 +58,24 @@ func (vol *Volume) Stage(stagingTargetPath string) error {
 	return nil
 }
 
-func (vol *Volume) Publish(targetPath string) error {
-	if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
+func (vol *Volume) Publish(targetPath string, readOnly bool) error {
+	// check whether it can be mounted
+	if notMnt, err := checkMount(targetPath); err != nil {
 		return err
+	} else if !notMnt {
+		// maybe already mounted?
+		return nil
 	}
 
-	if err := os.Symlink(vol.stagingTargetPath, targetPath); err != nil {
-		return err
+	// Use bind mount to create an alias of the real mount point.
+	mountOptions := []string{"bind"}
+	if readOnly {
+		mountOptions = append(mountOptions, "ro")
+	}
+
+	mounter := mount.New("")
+	if err := mounter.Mount(vol.stagingTargetPath, targetPath, "", mountOptions); err != nil {
+		return nil
 	}
 
 	vol.targetPaths[targetPath] = true
@@ -98,12 +110,13 @@ func (vol *Volume) Unpublish(targetPath string) error {
 		return nil
 	}
 
-	delete(vol.targetPaths, targetPath)
-
-	if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
+	// Try unmounting target path and deleting it.
+	mounter := mount.New("")
+	if err := mount.CleanupMountPoint(targetPath, mounter, true); err != nil {
 		return err
 	}
 
+	delete(vol.targetPaths, targetPath)
 	return nil
 }
 
