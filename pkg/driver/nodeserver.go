@@ -111,7 +111,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	// When pod uses a volume in read-only mode, k8s will automatically
 	// mount the volume as a read-only file system.
-	if err := volume.(*Volume).Publish(targetPath); err != nil {
+	if err := volume.(*Volume).Publish(targetPath, req.GetReadonly()); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
