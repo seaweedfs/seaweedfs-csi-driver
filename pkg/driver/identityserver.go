@@ -1,8 +1,8 @@
 package driver
 
 import (
-	"github.com/chrislusf/seaweedfs/weed/glog"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"golang.org/x/net/context"
 )
 

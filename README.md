@@ -4,7 +4,7 @@
 
 [Container storage interface](https://kubernetes-csi.github.io/docs/) is an [industry standard](https://github.com/container-storage-interface/spec/blob/master/spec.md) that enables storage vendors to develop a plugin once and have it work across a number of container orchestration systems.
 
-[SeaweedFS](https://github.com/chrislusf/seaweedfs) is a simple and highly scalable distributed file system, to store and serve billions of files fast!
+[SeaweedFS](https://github.com/seaweedfs/seaweedfs) is a simple and highly scalable distributed file system, to store and serve billions of files fast!
 
 # Deployment (Kubernetes)
 #### Prerequisites:

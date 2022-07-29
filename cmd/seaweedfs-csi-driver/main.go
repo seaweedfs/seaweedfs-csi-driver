@@ -5,9 +5,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/chrislusf/seaweedfs/weed/glog"
-	flag "github.com/chrislusf/seaweedfs/weed/util/fla9"
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/driver"
+	"github.com/seaweedfs/seaweedfs/weed/glog"
+	flag "github.com/seaweedfs/seaweedfs/weed/util/fla9"
 )
 
 var (
