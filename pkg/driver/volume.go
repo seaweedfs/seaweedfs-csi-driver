@@ -75,7 +75,7 @@ func (vol *Volume) Publish(targetPath string, readOnly bool) error {
 
 	mounter := mount.New("")
 	if err := mounter.Mount(vol.stagingTargetPath, targetPath, "", mountOptions); err != nil {
-		return nil
+		return err
 	}
 
 	vol.targetPaths[targetPath] = true
