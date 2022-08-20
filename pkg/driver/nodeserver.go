@@ -139,6 +139,11 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	volume, ok := ns.volumes.Load(volumeID)
 	if !ok {
 		glog.Warningf("volume %s hasn't been published", volumeID)
+
+		// make sure there is no any garbage
+		mounter := mount.New("")
+		_ = mount.CleanupMountPoint(targetPath, mounter, true)
+
 		return &csi.NodeUnpublishVolumeResponse{}, nil
 	}
 
@@ -206,6 +211,11 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	volume, ok := ns.volumes.Load(volumeID)
 	if !ok {
 		glog.Warningf("volume %s hasn't been staged", volumeID)
+
+		// make sure there is no any garbage
+		mounter := mount.New("")
+		_ = mount.CleanupMountPoint(stagingTargetPath, mounter, true)
+
 		return &csi.NodeUnstageVolumeResponse{}, nil
 	}
 
