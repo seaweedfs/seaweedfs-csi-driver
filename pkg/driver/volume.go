@@ -18,11 +18,6 @@ type Volume struct {
 	// volume's real mount point
 	stagingTargetPath string
 
-	// Target paths to which the volume has been published.
-	// These paths are symbolic links to the real mount point.
-	// So multiple pods using the same volume can share a mount.
-	targetPaths map[string]bool
-
 	mounter Mounter
 
 	// unix socket used to manage volume
@@ -31,9 +26,8 @@ type Volume struct {
 
 func NewVolume(volumeID string, mounter Mounter) *Volume {
 	return &Volume{
-		VolumeId:    volumeID,
-		mounter:     mounter,
-		targetPaths: make(map[string]bool),
+		VolumeId: volumeID,
+		mounter:  mounter,
 	}
 }
 
@@ -78,7 +72,6 @@ func (vol *Volume) Publish(targetPath string, readOnly bool) error {
 		return err
 	}
 
-	vol.targetPaths[targetPath] = true
 	return nil
 }
 
@@ -104,19 +97,12 @@ func (vol *Volume) Expand(sizeByte int64) error {
 }
 
 func (vol *Volume) Unpublish(targetPath string) error {
-	// Check whether the volume is published to the target path.
-	if _, ok := vol.targetPaths[targetPath]; !ok {
-		glog.Warningf("volume %s hasn't been published to %s", vol.VolumeId, targetPath)
-		return nil
-	}
-
 	// Try unmounting target path and deleting it.
 	mounter := mount.New("")
 	if err := mount.CleanupMountPoint(targetPath, mounter, true); err != nil {
 		return err
 	}
 
-	delete(vol.targetPaths, targetPath)
 	return nil
 }
 
