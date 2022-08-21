@@ -1,4 +1,6 @@
 FROM golang:1.19-alpine as builder
+# Can be removed at golang 1.20
+ENV CGO_CFLAGS=-fno-stack-protector
 
 RUN apk add git g++
 
