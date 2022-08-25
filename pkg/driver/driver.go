@@ -143,7 +143,7 @@ func (d *SeaweedFsDriver) WithFilerClient(streamingMode bool, fn func(filer_pb.S
 			err = pb.WithGrpcClient(streamingMode, func(grpcConnection *grpc.ClientConn) error {
 				client := filer_pb.NewSeaweedFilerClient(grpcConnection)
 				return fn(client)
-			}, d.filers[i].ToGrpcAddress(), d.grpcDialOption)
+			}, d.filers[i].ToGrpcAddress(), false, d.grpcDialOption)
 
 			if err != nil {
 				glog.V(0).Infof("WithFilerClient %d %v: %v", x, d.filers[i], err)
@@ -164,4 +164,7 @@ func (d *SeaweedFsDriver) WithFilerClient(streamingMode bool, fn func(filer_pb.S
 }
 func (d *SeaweedFsDriver) AdjustedUrl(location *filer_pb.Location) string {
 	return location.Url
+}
+func (d *SeaweedFsDriver) GetDataCenter() string {
+	return ""
 }
