@@ -34,7 +34,7 @@ func newSeaweedFsMounter(volumeID string, path string, collection string, readOn
 	}, nil
 }
 
-func (seaweedFs *seaweedFsMounter) Mount(target string) error {
+func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 	glog.V(0).Infof("mounting %v %s to %s", seaweedFs.driver.filers, seaweedFs.path, target)
 
 	var filers []string
@@ -91,11 +91,11 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) error {
 		args = append(args, fmt.Sprintf("-map.gid=%s", seaweedFs.driver.GidMap))
 	}
 
-	err := fuseMount(target, seaweedFsCmd, args)
+	u, err := fuseMount(target, seaweedFsCmd, args)
 	if err != nil {
 		glog.Errorf("mount %v %s to %s: %s", seaweedFs.driver.filers, seaweedFs.path, target, err)
 	}
-	return err
+	return u, err
 }
 
 func GetLocalSocket(volumeID string) string {
