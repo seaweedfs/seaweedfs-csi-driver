@@ -19,15 +19,15 @@ type Config struct {
 	Filer string
 }
 
-type Mount interface {
+type Unmounter interface {
 	Unmount() error
 }
 
 type Mounter interface {
-	Mount(target string) (Mount, error)
+	Mount(target string) (Unmounter, error)
 }
 
-type fuseMount struct {
+type fuseUnmounter struct {
 	path string
 	cmd  *exec.Cmd
 
@@ -48,7 +48,7 @@ func newMounter(volumeID string, readOnly bool, driver *SeaweedFsDriver, volCont
 	return newSeaweedFsMounter(volumeID, path, collection, readOnly, driver, volContext)
 }
 
-func newFuseMount(path string, command string, args []string) (Mount, error) {
+func fuseMount(path string, command string, args []string) (Unmounter, error) {
 	cmd := exec.Command(command, args...)
 	glog.V(0).Infof("Mounting fuse with command: %s and args: %s", command, args)
 
@@ -62,7 +62,7 @@ func newFuseMount(path string, command string, args []string) (Mount, error) {
 		return nil, fmt.Errorf("Error fuseMount command: %s\nargs: %s\nerror: %v", command, args, err)
 	}
 
-	m := &fuseMount{
+	fu := &fuseUnmounter{
 		path: path,
 		cmd:  cmd,
 
@@ -77,28 +77,28 @@ func newFuseMount(path string, command string, args []string) (Mount, error) {
 			glog.Infof("weed mount exit, pid: %d, path: %v", cmd.Process.Pid, path)
 		}
 
-		close(m.finished)
+		close(fu.finished)
 	}()
 
 	if err = waitForMount(path, 10*time.Second); err != nil {
 		glog.Errorf("weed mount timeout, pid: %d, path: %v", cmd.Process.Pid, path)
 
-		_ = m.finish(time.Second * 10)
+		_ = fu.finish(time.Second * 10)
 		return nil, err
 	} else {
-		return m, nil
+		return fu, nil
 	}
 }
 
-func (fm *fuseMount) finish(timeout time.Duration) error {
+func (fu *fuseUnmounter) finish(timeout time.Duration) error {
 	// ignore error, just inform we want process to exit
-	_ = fm.cmd.Process.Signal(syscall.Signal(1))
+	_ = fu.cmd.Process.Signal(syscall.Signal(1))
 
-	if err := fm.waitFinished(timeout); err != nil {
-		glog.Errorf("weed mount terminate timeout, pid: %d, path: %v", fm.cmd.Process.Pid, fm.path)
-		_ = fm.cmd.Process.Kill()
-		if err = fm.waitFinished(time.Second * 1); err != nil {
-			glog.Errorf("weed mount kill timeout, pid: %d, path: %v", fm.cmd.Process.Pid, fm.path)
+	if err := fu.waitFinished(timeout); err != nil {
+		glog.Errorf("weed mount terminate timeout, pid: %d, path: %v", fu.cmd.Process.Pid, fu.path)
+		_ = fu.cmd.Process.Kill()
+		if err = fu.waitFinished(time.Second * 1); err != nil {
+			glog.Errorf("weed mount kill timeout, pid: %d, path: %v", fu.cmd.Process.Pid, fu.path)
 			return err
 		}
 	}
@@ -106,25 +106,25 @@ func (fm *fuseMount) finish(timeout time.Duration) error {
 	return nil
 }
 
-func (fm *fuseMount) waitFinished(timeout time.Duration) error {
+func (fu *fuseUnmounter) waitFinished(timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	select {
 	case <-ctx.Done():
 		return context.DeadlineExceeded
-	case <-fm.finished:
+	case <-fu.finished:
 		return nil
 	}
 }
 
-func (fm *fuseMount) Unmount() error {
+func (fu *fuseUnmounter) Unmount() error {
 	m := mount.New("")
 
-	if ok, err := m.IsLikelyNotMountPoint(fm.path); !ok || mount.IsCorruptedMnt(err) {
-		if err := m.Unmount(fm.path); err != nil {
+	if ok, err := m.IsLikelyNotMountPoint(fu.path); !ok || mount.IsCorruptedMnt(err) {
+		if err := m.Unmount(fu.path); err != nil {
 			return err
 		}
 	}
 
-	return fm.finish(time.Second * 30)
+	return fu.finish(time.Second * 30)
 }

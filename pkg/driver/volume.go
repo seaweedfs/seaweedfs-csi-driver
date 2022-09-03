@@ -15,8 +15,8 @@ import (
 type Volume struct {
 	VolumeId string
 
-	mounter Mounter
-	mount   Mount
+	mounter   Mounter
+	unmounter Unmounter
 
 	// unix socket used to manage volume
 	localSocket string
@@ -39,8 +39,8 @@ func (vol *Volume) Stage(stagingTargetPath string) error {
 		_ = mount.New("").Unmount(stagingTargetPath)
 	}
 
-	if m, err := vol.mounter.Mount(stagingTargetPath); err == nil {
-		vol.mount = m
+	if u, err := vol.mounter.Mount(stagingTargetPath); err == nil {
+		vol.unmounter = u
 		return nil
 	} else {
 		return err
@@ -100,12 +100,12 @@ func (vol *Volume) Unpublish(targetPath string) error {
 func (vol *Volume) Unstage(stagingTargetPath string) error {
 	glog.V(0).Infof("unmounting volume %s from %s", vol.VolumeId, stagingTargetPath)
 
-	if vol.mount == nil {
+	if vol.unmounter == nil {
 		glog.Errorf("volume is not mounted: %s, path", vol.VolumeId, stagingTargetPath)
 		return nil
 	}
 
-	if err := vol.mount.Unmount(); err != nil {
+	if err := vol.unmounter.Unmount(); err != nil {
 		return err
 	}
 
