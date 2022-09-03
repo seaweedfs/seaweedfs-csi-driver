@@ -1,7 +1,10 @@
 package driver
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"syscall"
 	"time"
 
 	"os/exec"
@@ -16,8 +19,19 @@ type Config struct {
 	Filer string
 }
 
+type Mount interface {
+	Unmount() error
+}
+
 type Mounter interface {
-	Mount(target string) error
+	Mount(target string) (Mount, error)
+}
+
+type fuseMount struct {
+	path string
+	cmd  *exec.Cmd
+
+	finished chan struct{}
 }
 
 func newMounter(volumeID string, readOnly bool, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
@@ -34,52 +48,83 @@ func newMounter(volumeID string, readOnly bool, driver *SeaweedFsDriver, volCont
 	return newSeaweedFsMounter(volumeID, path, collection, readOnly, driver, volContext)
 }
 
-func fuseMount(path string, command string, args []string) error {
+func newFuseMount(path string, command string, args []string) (Mount, error) {
 	cmd := exec.Command(command, args...)
 	glog.V(0).Infof("Mounting fuse with command: %s and args: %s", command, args)
+
+	// log fuse process messages - we need an easy way to investigate crashes in case it happens
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
 
 	err := cmd.Start()
 	if err != nil {
 		glog.Errorf("running weed mount: %v", err)
-		return fmt.Errorf("Error fuseMount command: %s\nargs: %s\nerror: %v", command, args, err)
+		return nil, fmt.Errorf("Error fuseMount command: %s\nargs: %s\nerror: %v", command, args, err)
+	}
+
+	m := &fuseMount{
+		path: path,
+		cmd:  cmd,
+
+		finished: make(chan struct{}),
 	}
 
 	// avoid zombie processes
 	go func() {
 		if err := cmd.Wait(); err != nil {
-			glog.Errorf("weed mount process %d exit: %v", cmd.Process.Pid, err)
+			glog.Errorf("weed mount exit, pid: %d, path: %v, error: %v", cmd.Process.Pid, path, err)
+		} else {
+			glog.Infof("weed mount exit, pid: %d, path: %v", cmd.Process.Pid, path)
 		}
+
+		close(m.finished)
 	}()
 
-	return waitForMount(path, 10*time.Second)
+	if err = waitForMount(path, 10*time.Second); err != nil {
+		glog.Errorf("weed mount timeout, pid: %d, path: %v", cmd.Process.Pid, path)
+
+		_ = m.finish(time.Second * 10)
+		return nil, err
+	} else {
+		return m, nil
+	}
 }
 
-func fuseUnmount(path string) error {
-	m := mount.New("")
+func (fm *fuseMount) finish(timeout time.Duration) error {
+	// ignore error, just inform we want process to exit
+	_ = fm.cmd.Process.Signal(syscall.Signal(1))
 
-	if ok, err := m.IsLikelyNotMountPoint(path); !ok || mount.IsCorruptedMnt(err) {
-		if err := m.Unmount(path); err != nil {
+	if err := fm.waitFinished(timeout); err != nil {
+		glog.Errorf("weed mount terminate timeout, pid: %d, path: %v", fm.cmd.Process.Pid, fm.path)
+		_ = fm.cmd.Process.Kill()
+		if err = fm.waitFinished(time.Second * 1); err != nil {
+			glog.Errorf("weed mount kill timeout, pid: %d, path: %v", fm.cmd.Process.Pid, fm.path)
 			return err
 		}
 	}
 
-	// as fuse quits immediately, we will try to wait until the process is done
-	process, err := findFuseMountProcess(path)
-	if err != nil {
-		glog.Errorf("Error getting PID of fuse mount: %s", err)
-		return nil
-	}
-	if process == nil {
-		glog.Warningf("Unable to find PID of fuse mount %s, it must have finished already", path)
-		return nil
-	}
-	glog.Infof("Found fuse pid %v of mount %s, checking if it still runs", process.Pid, path)
-	return waitForProcess(process, 1)
+	return nil
 }
 
-func newConfigFromSecrets(secrets map[string]string) *Config {
-	t := &Config{
-		Filer: secrets["filer"],
+func (fm *fuseMount) waitFinished(timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	select {
+	case <-ctx.Done():
+		return context.DeadlineExceeded
+	case <-fm.finished:
+		return nil
 	}
-	return t
+}
+
+func (fm *fuseMount) Unmount() error {
+	m := mount.New("")
+
+	if ok, err := m.IsLikelyNotMountPoint(fm.path); !ok || mount.IsCorruptedMnt(err) {
+		if err := m.Unmount(fm.path); err != nil {
+			return err
+		}
+	}
+
+	return fm.finish(time.Second * 30)
 }
