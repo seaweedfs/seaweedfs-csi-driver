@@ -4,7 +4,7 @@ ENV CGO_CFLAGS=-fno-stack-protector
 
 RUN apk add git g++
 
-RUN mkdir -p /go/src/github.com/chrislusf/
+RUN mkdir -p /go/src/github.com/seaweedfs/
 RUN git clone https://github.com/seaweedfs/seaweedfs /go/src/github.com/seaweedfs/seaweedfs
 RUN cd /go/src/github.com/seaweedfs/seaweedfs/weed && go install
 
