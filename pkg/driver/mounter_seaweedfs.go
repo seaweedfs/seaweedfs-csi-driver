@@ -34,6 +34,25 @@ func newSeaweedFsMounter(volumeID string, path string, collection string, readOn
 	}, nil
 }
 
+func (seaweedFs *seaweedFsMounter) getOrDefaultContext(key string, defaultValue string) string {
+	v, ok := seaweedFs.volContext[key]
+	if ok {
+		return v
+	}
+	return defaultValue
+}
+
+func (seaweedFs *seaweedFsMounter) getOrDefaultContextInt(key string, defaultValue int) int {
+	v := seaweedFs.getOrDefaultContext(key, "")
+	if v != "" {
+		iv, err := strconv.Atoi(v)
+		if err != nil {
+			return iv
+		}
+	}
+	return defaultValue
+}
+
 func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 	glog.V(0).Infof("mounting %v %s to %s", seaweedFs.driver.filers, seaweedFs.path, target)
 
@@ -51,7 +70,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		fmt.Sprintf("-collection=%s", seaweedFs.collection),
 		fmt.Sprintf("-filer=%s", strings.Join(filers, ",")),
 		fmt.Sprintf("-filer.path=%s", seaweedFs.path),
-		fmt.Sprintf("-cacheCapacityMB=%d", seaweedFs.driver.CacheSizeMB),
+		fmt.Sprintf("-cacheCapacityMB=%d", seaweedFs.getOrDefaultContextInt("cacheSizeMB", seaweedFs.driver.CacheSizeMB)),
 		fmt.Sprintf("-localSocket=%s", GetLocalSocket(seaweedFs.volumeID)),
 	}
 
@@ -78,17 +97,18 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		args = append(args, "-readOnly")
 	}
 
-	if seaweedFs.driver.ConcurrentWriters > 0 {
-		args = append(args, fmt.Sprintf("-concurrentWriters=%d", seaweedFs.driver.ConcurrentWriters))
-	}
 	if seaweedFs.driver.CacheDir != "" {
 		args = append(args, fmt.Sprintf("-cacheDir=%s", seaweedFs.driver.CacheDir))
 	}
-	if seaweedFs.driver.UidMap != "" {
-		args = append(args, fmt.Sprintf("-map.uid=%s", seaweedFs.driver.UidMap))
+
+	if cw := seaweedFs.getOrDefaultContextInt("concurrentWriters", seaweedFs.driver.ConcurrentWriters); cw > 0 {
+		args = append(args, fmt.Sprintf("-concurrentWriters=%d", cw))
 	}
-	if seaweedFs.driver.GidMap != "" {
-		args = append(args, fmt.Sprintf("-map.gid=%s", seaweedFs.driver.GidMap))
+	if uidMap := seaweedFs.getOrDefaultContext("uidMap", seaweedFs.driver.UidMap); uidMap != "" {
+		args = append(args, fmt.Sprintf("-map.uid=%s", uidMap))
+	}
+	if gidMap := seaweedFs.getOrDefaultContext("gidMap", seaweedFs.driver.GidMap); gidMap != "" {
+		args = append(args, fmt.Sprintf("-map.gid=%s", gidMap))
 	}
 
 	u, err := fuseMount(target, seaweedFsCmd, args)

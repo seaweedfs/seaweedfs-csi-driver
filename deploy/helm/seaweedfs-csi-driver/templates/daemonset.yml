@@ -61,6 +61,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--filer=$(SEAWEEDFS_FILER)"
             - "--nodeid=$(NODE_ID)"
+            - "--cacheDir=/var/cache/seaweedfs"
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
@@ -99,6 +100,8 @@ spec:
             - name: tls
               mountPath: /var/run/secrets/app/tls
             {{- end }}
+            - name: cache
+              mountPath: /var/cache/seaweedfs
       volumes:
         - name: registration-dir
           hostPath:
@@ -119,6 +122,8 @@ spec:
         - name: device-dir
           hostPath:
             path: /dev
+        - name: cache
+          emptyDir: {}
         {{- if .Values.tlsSecret }}
         - name: tls
           secret:
