@@ -60,11 +60,16 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	mounter, err := newMounter(volumeID, readOnly, ns.Driver, volContext)
 	if err != nil {
+		// node stage is unsuccessfull
+		ns.removeVolumeMutex(volumeID)
 		return nil, err
 	}
 
 	volume := NewVolume(volumeID, mounter)
 	if err := volume.Stage(stagingTargetPath); err != nil {
+		// node stage is unsuccessfull
+		ns.removeVolumeMutex(volumeID)
+
 		if os.IsPermission(err) {
 			return nil, status.Error(codes.PermissionDenied, err.Error())
 		}
@@ -83,6 +88,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	targetPath := req.GetTargetPath()
+	stagingTargetPath := req.GetStagingTargetPath()
 
 	glog.V(0).Infof("node publish volume %s to %s", volumeID, targetPath)
 
@@ -99,6 +105,9 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if targetPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
 	}
+	if stagingTargetPath == "" {
+		return nil, status.Error(codes.InvalidArgument, "Staging target path missing in request")
+	}
 
 	volumeMutex := ns.getVolumeMutex(volumeID)
 	volumeMutex.Lock()
@@ -111,7 +120,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	// When pod uses a volume in read-only mode, k8s will automatically
 	// mount the volume as a read-only file system.
-	if err := volume.(*Volume).Publish(targetPath, req.GetReadonly()); err != nil {
+	if err := volume.(*Volume).Publish(stagingTargetPath, targetPath, req.GetReadonly()); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -215,16 +224,16 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		// make sure there is no any garbage
 		mounter := mount.New("")
 		_ = mount.CleanupMountPoint(stagingTargetPath, mounter, true)
-
-		return &csi.NodeUnstageVolumeResponse{}, nil
-	}
-
-	if err := volume.(*Volume).Unstage(stagingTargetPath); err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
 	} else {
-		ns.volumes.Delete(volumeID)
+		if err := volume.(*Volume).Unstage(stagingTargetPath); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		} else {
+			ns.volumes.Delete(volumeID)
+		}
 	}
 
+	// remove mutex on successfull unstage
+	ns.volumeMutexes.RemoveMutex(volumeID)
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
@@ -246,8 +255,12 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	return &csi.NodeExpandVolumeResponse{}, nil
 }
 
-func (ns *NodeServer) getVolumeMutex(volumeID string) *sync.RWMutex {
+func (ns *NodeServer) getVolumeMutex(volumeID string) *sync.Mutex {
 	return ns.volumeMutexes.GetMutex(volumeID)
+}
+
+func (ns *NodeServer) removeVolumeMutex(volumeID string) {
+	ns.volumeMutexes.RemoveMutex(volumeID)
 }
 
 func isVolumeReadOnly(req *csi.NodeStageVolumeRequest) bool {
