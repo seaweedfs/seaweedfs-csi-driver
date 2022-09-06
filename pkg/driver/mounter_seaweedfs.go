@@ -2,6 +2,8 @@ package driver
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -17,6 +19,11 @@ type seaweedFsMounter struct {
 	readOnly   bool
 	driver     *SeaweedFsDriver
 	volContext map[string]string
+}
+
+type seaweedFsUnmounter struct {
+	unmounter Unmounter
+	cacheDir  string
 }
 
 const (
@@ -46,7 +53,7 @@ func (seaweedFs *seaweedFsMounter) getOrDefaultContextInt(key string, defaultVal
 	v := seaweedFs.getOrDefaultContext(key, "")
 	if v != "" {
 		iv, err := strconv.Atoi(v)
-		if err != nil {
+		if err == nil {
 			return iv
 		}
 	}
@@ -97,9 +104,10 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		args = append(args, "-readOnly")
 	}
 
-	if seaweedFs.driver.CacheDir != "" {
-		args = append(args, fmt.Sprintf("-cacheDir=%s", seaweedFs.driver.CacheDir))
-	}
+	// CacheDir should be always defined - we use temp dir in case it is not defined
+	// we need to use predictable cache path, because we need to clean it up on unstage
+	cacheDir := filepath.Join(seaweedFs.driver.CacheDir, seaweedFs.volumeID)
+	args = append(args, fmt.Sprintf("-cacheDir=%s", cacheDir))
 
 	if cw := seaweedFs.getOrDefaultContextInt("concurrentWriters", seaweedFs.driver.ConcurrentWriters); cw > 0 {
 		args = append(args, fmt.Sprintf("-concurrentWriters=%d", cw))
@@ -115,7 +123,14 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 	if err != nil {
 		glog.Errorf("mount %v %s to %s: %s", seaweedFs.driver.filers, seaweedFs.path, target, err)
 	}
-	return u, err
+
+	return &seaweedFsUnmounter{unmounter: u, cacheDir: cacheDir}, err
+}
+
+func (su *seaweedFsUnmounter) Unmount() error {
+	err := su.unmounter.Unmount()
+	_ = os.RemoveAll(su.cacheDir)
+	return err
 }
 
 func GetLocalSocket(volumeID string) string {
