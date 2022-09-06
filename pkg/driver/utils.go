@@ -3,6 +3,7 @@ package driver
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -14,6 +15,10 @@ import (
 )
 
 func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
+	if err := removeDirContent(n.CacheDir); err != nil {
+		glog.Warning("error cleaning up cache dir")
+	}
+
 	return &NodeServer{
 		Driver:        n,
 		volumeMutexes: NewKeyMutex(),
@@ -81,6 +86,22 @@ func checkMount(targetPath string) (bool, error) {
 		}
 	}
 	return notMnt, nil
+}
+
+func removeDirContent(path string) error {
+	files, err := filepath.Glob(filepath.Join(path, "*"))
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		err = os.RemoveAll(file)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 type KeyMutex struct {
