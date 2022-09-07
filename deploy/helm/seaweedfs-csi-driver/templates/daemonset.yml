@@ -37,7 +37,7 @@ spec:
             - name: ADDRESS
               value: /csi/csi.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: /var/lib/kubelet/plugins/{{ .Values.driverName }}/csi.sock
+              value: {{ .Values.node.volumes.plugins_dir }}/{{ .Values.driverName }}/csi.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -89,10 +89,10 @@ spec:
             - name: plugin-dir
               mountPath: /csi
             - name: plugins-dir
-              mountPath: /var/lib/kubelet/plugins
+              mountPath: {{ .Values.node.volumes.plugins_dir }}
               mountPropagation: "Bidirectional"
             - name: pods-mount-dir
-              mountPath: /var/lib/kubelet/pods
+              mountPath: {{ .Values.node.volumes.pods_mount_dir }}
               mountPropagation: "Bidirectional"
             - mountPath: /dev
               name: device-dir
