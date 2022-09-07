@@ -30,7 +30,7 @@ seaweedfsCsiPlugin:
   image: chrislusf/seaweedfs-csi-driver:latest
   resources: {}
 
-# NOT Change, for future releases. Must be equal Name in GetPluginInfoResponse
+# DO NOT Change. Reserved for future releases. Must be equal Name in GetPluginInfoResponse
 driverName: seaweedfs-csi-driver
 
 controller:
@@ -40,11 +40,17 @@ controller:
 node:
   # Deploy node daemonset
   enabled: true
-  # When pod on node be recreated all pod on same node lost PV.
-  # For safe update use updateStrategy.type: OnDelete and manual move pods who use PV and delete damonset pod
+  # When seaweedfs-csi-driver-node pod on node is recreated, all pods on same node using seaweed-csi PV will stop working.
+  # For safe update set updateStrategy.type: OnDelete and manually move pods who use seaweed-csi PV, then delete  seaweedfs-csi-driver-node damonset pod
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 25%
   affinity: {}
   tolerations: {}
+
+  ## Change if not using standard kubernetes deployments, like k0s
+  volumes:
+    registration_dir: /var/lib/kubelet/plugins_registry
+    plugins_dir: /var/lib/kubelet/plugins
+    pods_mount_dir: /var/lib/kubelet/pods

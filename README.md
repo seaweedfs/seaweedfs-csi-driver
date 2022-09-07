@@ -44,7 +44,7 @@ $ kubectl apply -f deploy/kubernetes/sample-busybox-pod.yaml
 ```
 $ kubectl exec my-csi-app -- df -h
 ```
-8. Clean up 
+8. Clean up
 ```
 $ kubectl delete -f deploy/kubernetes/sample-busybox-pod.yaml
 $ kubectl delete -f deploy/kubernetes/sample-seaweedfs-pvc.yaml
@@ -53,7 +53,7 @@ $ kubectl delete -f deploy/kubernetes/seaweedfs-csi.yaml
 
 # Deployment by helm chart
 
-1. Clone project 
+1. Clone project
 ```bash
 git clone https://github.com/seaweedfs/seaweedfs-csi-driver.git
 ```
@@ -68,16 +68,17 @@ helm uninstall seaweedfs-csi-driver
 ```
 
 # Safe rollout update
-When update DaemonSet ( DS ) break processes who implements fuse mount. 
-And now new pod not remount net device
+Updating seaweed-csi-driver DaemonSet (DS) will break processeses who implement fuse mount:
+newly created pods will not remount net device.
 
-For better safe update use ``node.updateStrategy.type: OnDelete`` in this need manual update. Steps:
- - delete DS pods on node where no exists seaweedfs PV
- - cordon or taint node 
- - evict or delete pods with seaweedfs PV
- - delete DS pod on node
- - uncordon or remove taint on node
- - repeat all steps on [all nodes 
+For safe update set `node.updateStrategy.type: OnDelete` for manual update. Steps:
+
+  1. delete DS pods on the node where there is no seaweedfs PV
+  2. cordon or taint node
+  3. evict or delete pods with seaweedfs PV
+  4. delete DS pod on node
+  5. uncordon or remove taint on node
+  6. repeat all steps on [all nodes]
 
 # Static and dynamic provisioning
 
