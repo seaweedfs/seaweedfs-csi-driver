@@ -105,19 +105,19 @@ spec:
       volumes:
         - name: registration-dir
           hostPath:
-            path: /var/lib/kubelet/plugins_registry/
+            path: {{ .Values.node.volumes.registration_dir }}
             type: DirectoryOrCreate
         - name: plugin-dir
           hostPath:
-            path: /var/lib/kubelet/plugins/{{ .Values.driverName }}
+            path: {{ .Values.node.volumes.plugins_dir }}/{{ .Values.driverName }}
             type: DirectoryOrCreate
         - name: plugins-dir
           hostPath:
-            path: /var/lib/kubelet/plugins
+            path: {{ .Values.node.volumes.plugins_dir }}
             type: Directory
         - name: pods-mount-dir
           hostPath:
-            path: /var/lib/kubelet/pods
+            path: {{ .Values.node.volumes.pods_mount_dir }}
             type: Directory
         - name: device-dir
           hostPath:
