@@ -37,7 +37,7 @@ spec:
             - name: ADDRESS
               value: /csi/csi.sock
             - name: DRIVER_REG_SOCK_PATH
-              value: /var/lib/kubelet/plugins/{{ .Values.driverName }}/csi.sock
+              value: {{ .Values.node.volumes.plugins_dir }}/{{ .Values.driverName }}/csi.sock
             - name: KUBE_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -61,6 +61,7 @@ spec:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--filer=$(SEAWEEDFS_FILER)"
             - "--nodeid=$(NODE_ID)"
+            - "--cacheDir=/var/cache/seaweedfs"
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
@@ -88,10 +89,10 @@ spec:
             - name: plugin-dir
               mountPath: /csi
             - name: plugins-dir
-              mountPath: /var/lib/kubelet/plugins
+              mountPath: {{ .Values.node.volumes.plugins_dir }}
               mountPropagation: "Bidirectional"
             - name: pods-mount-dir
-              mountPath: /var/lib/kubelet/pods
+              mountPath: {{ .Values.node.volumes.pods_mount_dir }}
               mountPropagation: "Bidirectional"
             - mountPath: /dev
               name: device-dir
@@ -99,26 +100,30 @@ spec:
             - name: tls
               mountPath: /var/run/secrets/app/tls
             {{- end }}
+            - name: cache
+              mountPath: /var/cache/seaweedfs
       volumes:
         - name: registration-dir
           hostPath:
-            path: /var/lib/kubelet/plugins_registry/
+            path: {{ .Values.node.volumes.registration_dir }}
             type: DirectoryOrCreate
         - name: plugin-dir
           hostPath:
-            path: /var/lib/kubelet/plugins/{{ .Values.driverName }}
+            path: {{ .Values.node.volumes.plugins_dir }}/{{ .Values.driverName }}
             type: DirectoryOrCreate
         - name: plugins-dir
           hostPath:
-            path: /var/lib/kubelet/plugins
+            path: {{ .Values.node.volumes.plugins_dir }}
             type: Directory
         - name: pods-mount-dir
           hostPath:
-            path: /var/lib/kubelet/pods
+            path: {{ .Values.node.volumes.pods_mount_dir }}
             type: Directory
         - name: device-dir
           hostPath:
             path: /dev
+        - name: cache
+          emptyDir: {}
         {{- if .Values.tlsSecret }}
         - name: tls
           secret:

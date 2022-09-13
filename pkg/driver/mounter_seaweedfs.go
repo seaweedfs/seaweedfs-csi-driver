@@ -2,6 +2,8 @@ package driver
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -19,6 +21,11 @@ type seaweedFsMounter struct {
 	volContext map[string]string
 }
 
+type seaweedFsUnmounter struct {
+	unmounter Unmounter
+	cacheDir  string
+}
+
 const (
 	seaweedFsCmd = "weed"
 )
@@ -32,6 +39,25 @@ func newSeaweedFsMounter(volumeID string, path string, collection string, readOn
 		driver:     driver,
 		volContext: volContext,
 	}, nil
+}
+
+func (seaweedFs *seaweedFsMounter) getOrDefaultContext(key string, defaultValue string) string {
+	v, ok := seaweedFs.volContext[key]
+	if ok {
+		return v
+	}
+	return defaultValue
+}
+
+func (seaweedFs *seaweedFsMounter) getOrDefaultContextInt(key string, defaultValue int) int {
+	v := seaweedFs.getOrDefaultContext(key, "")
+	if v != "" {
+		iv, err := strconv.Atoi(v)
+		if err == nil {
+			return iv
+		}
+	}
+	return defaultValue
 }
 
 func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
@@ -51,7 +77,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		fmt.Sprintf("-collection=%s", seaweedFs.collection),
 		fmt.Sprintf("-filer=%s", strings.Join(filers, ",")),
 		fmt.Sprintf("-filer.path=%s", seaweedFs.path),
-		fmt.Sprintf("-cacheCapacityMB=%d", seaweedFs.driver.CacheSizeMB),
+		fmt.Sprintf("-cacheCapacityMB=%d", seaweedFs.getOrDefaultContextInt("cacheSizeMB", seaweedFs.driver.CacheSizeMB)),
 		fmt.Sprintf("-localSocket=%s", GetLocalSocket(seaweedFs.volumeID)),
 	}
 
@@ -78,24 +104,33 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		args = append(args, "-readOnly")
 	}
 
-	if seaweedFs.driver.ConcurrentWriters > 0 {
-		args = append(args, fmt.Sprintf("-concurrentWriters=%d", seaweedFs.driver.ConcurrentWriters))
+	// CacheDir should be always defined - we use temp dir in case it is not defined
+	// we need to use predictable cache path, because we need to clean it up on unstage
+	cacheDir := filepath.Join(seaweedFs.driver.CacheDir, seaweedFs.volumeID)
+	args = append(args, fmt.Sprintf("-cacheDir=%s", cacheDir))
+
+	if cw := seaweedFs.getOrDefaultContextInt("concurrentWriters", seaweedFs.driver.ConcurrentWriters); cw > 0 {
+		args = append(args, fmt.Sprintf("-concurrentWriters=%d", cw))
 	}
-	if seaweedFs.driver.CacheDir != "" {
-		args = append(args, fmt.Sprintf("-cacheDir=%s", seaweedFs.driver.CacheDir))
+	if uidMap := seaweedFs.getOrDefaultContext("uidMap", seaweedFs.driver.UidMap); uidMap != "" {
+		args = append(args, fmt.Sprintf("-map.uid=%s", uidMap))
 	}
-	if seaweedFs.driver.UidMap != "" {
-		args = append(args, fmt.Sprintf("-map.uid=%s", seaweedFs.driver.UidMap))
-	}
-	if seaweedFs.driver.GidMap != "" {
-		args = append(args, fmt.Sprintf("-map.gid=%s", seaweedFs.driver.GidMap))
+	if gidMap := seaweedFs.getOrDefaultContext("gidMap", seaweedFs.driver.GidMap); gidMap != "" {
+		args = append(args, fmt.Sprintf("-map.gid=%s", gidMap))
 	}
 
 	u, err := fuseMount(target, seaweedFsCmd, args)
 	if err != nil {
 		glog.Errorf("mount %v %s to %s: %s", seaweedFs.driver.filers, seaweedFs.path, target, err)
 	}
-	return u, err
+
+	return &seaweedFsUnmounter{unmounter: u, cacheDir: cacheDir}, err
+}
+
+func (su *seaweedFsUnmounter) Unmount() error {
+	err := su.unmounter.Unmount()
+	_ = os.RemoveAll(su.cacheDir)
+	return err
 }
 
 func GetLocalSocket(volumeID string) string {

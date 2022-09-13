@@ -39,7 +39,7 @@ type SeaweedFsDriver struct {
 	filerIndex        int
 	grpcDialOption    grpc.DialOption
 	ConcurrentWriters int
-	CacheSizeMB       int64
+	CacheSizeMB       int
 	CacheDir          string
 	UidMap            string
 	GidMap            string
