@@ -77,6 +77,10 @@ func fuseMount(path string, command string, args []string) (Unmounter, error) {
 			glog.Infof("weed mount exit, pid: %d, path: %v", cmd.Process.Pid, path)
 		}
 
+		// make sure we'll have no stale mounts
+		time.Sleep(time.Millisecond * 100)
+		_ = mount.New("").Unmount(path)
+
 		close(fu.finished)
 	}()
 
