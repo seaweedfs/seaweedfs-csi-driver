@@ -58,7 +58,15 @@ git clone https://github.com/seaweedfs/seaweedfs-csi-driver.git
 ```
 $ helm template seaweedfs ./deploy/helm/seaweedfs-csi-driver > deploy/kubernetes/seaweedfs-csi.yaml
 ```
-Then apply the manifest.
+Check the kubelet root directory ,Execute the following command
+```
+ps -ef | grep kubelet | grep root-dir
+```
+If the result returned from the previous check command is not empty, the root directory (eg:--root-dir=/data/k8s/kubelet/data) representing the kubelet is not the default value (/var/lib/kubelet), so you need to update the kubelet root-dir in the CSI driven deployment file and deploy:
+```
+sed 's+/var/lib/kubelet+/data/k8s/kubelet/data+g'  deploy/kubernetes/seaweedfs-csi.yaml | kubectl apply -f - 
+```
+If the result returned by the previous check command is null, you can directly deploy it without modifying the configuration:
 ```
 $ kubectl apply -f deploy/kubernetes/seaweedfs-csi.yaml
 ```
