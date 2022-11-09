@@ -51,13 +51,10 @@ spec:
               mountPath: /registration/
         - name: csi-seaweedfs-plugin
           securityContext:
-            privileged: true
-            capabilities:
-              add: ["SYS_ADMIN"]
-            allowPrivilegeEscalation: true
+            {{ toYaml .Values.seaweedfsCsiPlugin.securityContext | nindent 12 }}
           image: {{.Values.seaweedfsCsiPlugin.image }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
-          args :
+          args:
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--filer=$(SEAWEEDFS_FILER)"
             - "--nodeid=$(NODE_ID)"

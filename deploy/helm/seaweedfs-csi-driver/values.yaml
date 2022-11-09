@@ -29,6 +29,11 @@ csiNodeDriverRegistrar:
 seaweedfsCsiPlugin:
   image: chrislusf/seaweedfs-csi-driver:latest
   resources: {}
+  securityContext:
+    privileged: true
+    capabilities:
+      add: ["SYS_ADMIN"]
+    allowPrivilegeEscalation: true
 
 # DO NOT Change. Reserved for future releases. Must be equal Name in GetPluginInfoResponse
 driverName: seaweedfs-csi-driver
