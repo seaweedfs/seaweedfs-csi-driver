@@ -144,7 +144,6 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: seaweedfs-controller-sa
-    namespace: default
 roleRef:
   kind: ClusterRole
   name: seaweedfs-provisioner-role
@@ -158,7 +157,6 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: seaweedfs-controller-sa
-    namespace: default
 roleRef:
   kind: ClusterRole
   name: seaweedfs-attacher-role
@@ -172,7 +170,6 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: seaweedfs-controller-sa
-    namespace: default
 roleRef:
   kind: ClusterRole
   name: seaweedfs-snapshotter-role
@@ -186,7 +183,6 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: seaweedfs-controller-sa
-    namespace: default
 roleRef:
   kind: ClusterRole
   name: seaweedfs-driver-registrar-controller-role
@@ -200,7 +196,6 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: seaweedfs-node-sa
-    namespace: default
 roleRef:
   kind: ClusterRole
   name: seaweedfs-driver-registrar-node-role
