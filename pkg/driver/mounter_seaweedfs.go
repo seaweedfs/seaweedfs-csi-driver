@@ -79,7 +79,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		"collection": 			seaweedFs.collection,
 		"filer": 				strings.Join(filers, ","),
 		"filer.path":			seaweedFs.path,
-		"cacheCapacityMB":		fmt.Sprint(seaweedFs.driver.CacheSizeMB),
+		"cacheCapacityMB":		fmt.Sprint(seaweedFs.driver.CacheCapacityMB),
 		"concurrentWriters":	fmt.Sprint(seaweedFs.driver.ConcurrentWriters),
 		"map.uid":				seaweedFs.driver.UidMap,
 		"map.gid":				seaweedFs.driver.GidMap,
