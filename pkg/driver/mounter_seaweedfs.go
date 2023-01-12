@@ -112,7 +112,9 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 
 	// Convert Args-Map to args
 	for arg, value := range argsMap{
-		args = append(args, fmt.Sprintf("-%s=%s", arg, value))
+		if(value != ""){	// ignore empty values
+			args = append(args, fmt.Sprintf("-%s=%s", arg, value))
+		}
 	}
 
 	u, err := fuseMount(target, seaweedFsCmd, args)
