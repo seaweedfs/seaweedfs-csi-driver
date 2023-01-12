@@ -41,25 +41,6 @@ func newSeaweedFsMounter(volumeID string, path string, collection string, readOn
 	}, nil
 }
 
-func (seaweedFs *seaweedFsMounter) getOrDefaultContext(key string, defaultValue string) string {
-	v, ok := seaweedFs.volContext[key]
-	if ok {
-		return v
-	}
-	return defaultValue
-}
-
-func (seaweedFs *seaweedFsMounter) getOrDefaultContextInt(key string, defaultValue int) int {
-	v := seaweedFs.getOrDefaultContext(key, "")
-	if v != "" {
-		iv, err := strconv.Atoi(v)
-		if err == nil {
-			return iv
-		}
-	}
-	return defaultValue
-}
-
 func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 	glog.V(0).Infof("mounting %v %s to %s", seaweedFs.driver.filers, seaweedFs.path, target)
 
@@ -68,55 +49,72 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		filers = append(filers, string(address))
 	}
 
+	// CacheDir should be always defined - we use temp dir in case it is not defined
+	// we need to use predictable cache path, because we need to clean it up on unstage
+	cacheDir := filepath.Join(seaweedFs.driver.CacheDir, seaweedFs.volumeID)
+
+	// Final args
 	args := []string{
 		"-logtostderr=true",
 		"mount",
 		"-dirAutoCreate=true",
 		"-umask=000",
 		fmt.Sprintf("-dir=%s", target),
-		fmt.Sprintf("-collection=%s", seaweedFs.collection),
-		fmt.Sprintf("-filer=%s", strings.Join(filers, ",")),
-		fmt.Sprintf("-filer.path=%s", seaweedFs.path),
-		fmt.Sprintf("-cacheCapacityMB=%d", seaweedFs.getOrDefaultContextInt("cacheSizeMB", seaweedFs.driver.CacheSizeMB)),
 		fmt.Sprintf("-localSocket=%s", GetLocalSocket(seaweedFs.volumeID)),
-	}
-
-	// came from https://github.com/seaweedfs/seaweedfs-csi-driver/pull/12
-	// preferring explicit settings
-	// keeping this for backward compatibility
-	for arg, value := range seaweedFs.volContext {
-		switch arg {
-		case "map.uid":
-			args = append(args, fmt.Sprintf("-map.uid=%s", value))
-		case "map.gid":
-			args = append(args, fmt.Sprintf("-map.gid=%s", value))
-		case "replication":
-			args = append(args, fmt.Sprintf("-replication=%s", value))
-		case "diskType":
-			args = append(args, fmt.Sprintf("-disk=%s", value))
-		case "volumeCapacity":
-			capacityMB := parseVolumeCapacity(value)
-			args = append(args, fmt.Sprintf("-collectionQuotaMB=%d", capacityMB))
-		}
+		fmt.Sprintf("-cacheDir=%s", cacheDir),
 	}
 
 	if seaweedFs.readOnly {
 		args = append(args, "-readOnly")
 	}
 
-	// CacheDir should be always defined - we use temp dir in case it is not defined
-	// we need to use predictable cache path, because we need to clean it up on unstage
-	cacheDir := filepath.Join(seaweedFs.driver.CacheDir, seaweedFs.volumeID)
-	args = append(args, fmt.Sprintf("-cacheDir=%s", cacheDir))
+	// Handle volumeCapacity from controllerserver.go:51
+	if value, ok := seaweedFs.volContext["volumeCapacity"]; ok{
+		capacityMB := parseVolumeCapacity(value)
+		args = append(args, fmt.Sprintf("-collectionQuotaMB=%d", capacityMB))
+	}
 
-	if cw := seaweedFs.getOrDefaultContextInt("concurrentWriters", seaweedFs.driver.ConcurrentWriters); cw > 0 {
-		args = append(args, fmt.Sprintf("-concurrentWriters=%d", cw))
+	// Initial values for override-able args
+	argsMap := map[string]string {
+		"collection": 			seaweedFs.collection,
+		"filer": 				strings.Join(filers, ","),
+		"filer.path":			seaweedFs.path,
+		"cacheCapacityMB":		fmt.Sprint(seaweedFs.driver.CacheCapacityMB),
+		"concurrentWriters":	fmt.Sprint(seaweedFs.driver.ConcurrentWriters),
+		"map.uid":				seaweedFs.driver.UidMap,
+		"map.gid":				seaweedFs.driver.GidMap,
 	}
-	if uidMap := seaweedFs.getOrDefaultContext("uidMap", seaweedFs.driver.UidMap); uidMap != "" {
-		args = append(args, fmt.Sprintf("-map.uid=%s", uidMap))
+
+	// volContext-parameter -> mount-arg
+	parameterArgMap := map[string]string{
+		"uidMap":		"map.uid",
+		"gidMap":		"map.gid",
+		"filerPath":	"filer.path",
+		// volumeContext has "diskType", but mount-option is "disk", converting for backwards compatability
+		"diskType":		"disk",
 	}
-	if gidMap := seaweedFs.getOrDefaultContext("gidMap", seaweedFs.driver.GidMap); gidMap != "" {
-		args = append(args, fmt.Sprintf("-map.gid=%s", gidMap))
+
+	//	Merge volContext into argsMap with key-mapping
+	for arg, value := range seaweedFs.volContext {
+		if(arg == "volumeCapacity"){	// Ignore volumeCapacity, not the nicest solution like this :/
+			continue
+		}
+
+		// Check if key-mapping exists
+		newArg, ok := parameterArgMap[arg]
+		if(ok){
+			arg = newArg
+		}
+
+		// Write to args-map
+		argsMap[arg] = value
+	}
+
+	// Convert Args-Map to args
+	for arg, value := range argsMap{
+		if(value != ""){	// ignore empty values
+			args = append(args, fmt.Sprintf("-%s=%s", arg, value))
+		}
 	}
 
 	u, err := fuseMount(target, seaweedFsCmd, args)
