@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/datalocality"
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/driver"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	flag "github.com/seaweedfs/seaweedfs/weed/util/fla9"
@@ -20,6 +21,9 @@ var (
 	cacheDir          = flag.String("cacheDir", os.TempDir(), "local cache directory for file chunks and meta data")
 	uidMap            = flag.String("map.uid", "", "map local uid to uid on filer, comma-separated <local_uid>:<filer_uid>")
 	gidMap            = flag.String("map.gid", "", "map local gid to gid on filer, comma-separated <local_gid>:<filer_gid>")
+	dataCenter		  = flag.String("dataCenter", "", "dataCenter this node is running in (locality-definition)")
+	dataLocalityStr	  = flag.String("dataLocality", "", "which volume-nodes pods will use for activity (one-of: 'write_preferLocalDc'). Requires used locality-definitions to be set")
+	dataLocality      datalocality.DataLocality
 )
 
 func main() {
@@ -35,6 +39,18 @@ func main() {
 		os.Exit(0)
 	}
 
+	err := convertRequiredValues()
+	if(err != nil){
+		glog.Error("Failed converting flag: ", err);
+		os.Exit(1);
+	}
+
+	err = checkPreconditions()
+	if(err != nil){
+		glog.Error("Precondition failed: ", err);
+		os.Exit(1);
+	}
+
 	glog.Infof("connect to filer %s", *filer)
 
 	drv := driver.NewSeaweedFsDriver(*filer, *nodeID, *endpoint)
@@ -43,5 +59,29 @@ func main() {
 	drv.CacheDir = *cacheDir
 	drv.UidMap = *uidMap
 	drv.GidMap = *gidMap
+	drv.DataCenter = *dataCenter
+	drv.DataLocality = dataLocality
+
 	drv.Run()
+}
+
+func convertRequiredValues() error {
+	// Convert DataLocalityStr to DataLocality
+	if(*dataLocalityStr != ""){
+		var ok bool
+		dataLocality, ok = datalocality.FromString(*dataLocalityStr)
+		if(!ok){
+			return fmt.Errorf("dataLocality invalid value")
+		}
+	}
+
+	return nil
+}
+
+func checkPreconditions() error {
+	if(dataLocality != datalocality.None && *dataCenter == ""){
+		return fmt.Errorf("dataLocality set, but not all locality-definitions were set! ('dataCenter')")
+	}
+
+	return nil
 }

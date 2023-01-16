@@ -10,6 +10,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
 	"github.com/seaweedfs/seaweedfs/weed/security"
 	"github.com/seaweedfs/seaweedfs/weed/util"
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/datalocality"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -43,6 +44,8 @@ type SeaweedFsDriver struct {
 	CacheDir          string
 	UidMap            string
 	GidMap            string
+	DataCenter        string
+	DataLocality	  datalocality.DataLocality
 }
 
 func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
