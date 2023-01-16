@@ -16,7 +16,7 @@ var (
 	nodeID            = flag.String("nodeid", "", "node id")
 	version           = flag.Bool("version", false, "Print the version and exit.")
 	concurrentWriters = flag.Int("concurrentWriters", 32, "limit concurrent goroutine writers if not 0")
-	cacheSizeMB       = flag.Int("cacheCapacityMB", 0, "local file chunk cache capacity in MB")
+	cacheCapacityMB       = flag.Int("cacheCapacityMB", 0, "local file chunk cache capacity in MB")
 	cacheDir          = flag.String("cacheDir", os.TempDir(), "local cache directory for file chunks and meta data")
 	uidMap            = flag.String("map.uid", "", "map local uid to uid on filer, comma-separated <local_uid>:<filer_uid>")
 	gidMap            = flag.String("map.gid", "", "map local gid to gid on filer, comma-separated <local_gid>:<filer_gid>")
@@ -39,7 +39,7 @@ func main() {
 
 	drv := driver.NewSeaweedFsDriver(*filer, *nodeID, *endpoint)
 	drv.ConcurrentWriters = *concurrentWriters
-	drv.CacheSizeMB = *cacheSizeMB
+	drv.CacheCapacityMB = *cacheCapacityMB
 	drv.CacheDir = *cacheDir
 	drv.UidMap = *uidMap
 	drv.GidMap = *gidMap
