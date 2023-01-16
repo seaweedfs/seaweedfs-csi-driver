@@ -86,6 +86,11 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		"map.gid":				seaweedFs.driver.GidMap,
 		"disk":					"",
 		"dataCenter":			"",
+		"replication":			"",
+		"ttl":					"",
+		"chunkSizeLimitMB":		"",
+		"volumeServerAccess":	"",
+		"readRetryTime":		"",
 	}
 
 	// volContext-parameter -> mount-arg
