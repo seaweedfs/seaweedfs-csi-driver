@@ -74,7 +74,8 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		args = append(args, fmt.Sprintf("-collectionQuotaMB=%d", capacityMB))
 	}
 
-	// Initial values for override-able args
+	// Values for override-able args
+	//  Whitelist for merging with volContext
 	argsMap := map[string]string {
 		"collection": 			seaweedFs.collection,
 		"filer": 				strings.Join(filers, ","),
@@ -83,6 +84,13 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		"concurrentWriters":	fmt.Sprint(seaweedFs.driver.ConcurrentWriters),
 		"map.uid":				seaweedFs.driver.UidMap,
 		"map.gid":				seaweedFs.driver.GidMap,
+		"disk":					"",
+		"dataCenter":			"",
+		"replication":			"",
+		"ttl":					"",
+		"chunkSizeLimitMB":		"",
+		"volumeServerAccess":	"",
+		"readRetryTime":		"",
 	}
 
 	// volContext-parameter -> mount-arg
@@ -93,17 +101,26 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		// volumeContext has "diskType", but mount-option is "disk", converting for backwards compatability
 		"diskType":		"disk",
 	}
+	
+	// Explicitly ignored volContext args e.g. handled somewhere else
+	ignoreArgs := []string{
+		"volumeCapacity",
+	}
 
 	//	Merge volContext into argsMap with key-mapping
 	for arg, value := range seaweedFs.volContext {
-		if(arg == "volumeCapacity"){	// Ignore volumeCapacity, not the nicest solution like this :/
-			continue
-		}
+		if(in_arr(ignoreArgs, arg)){continue}
 
 		// Check if key-mapping exists
 		newArg, ok := parameterArgMap[arg]
 		if(ok){
 			arg = newArg
+		}
+
+		// Check if arg can be applied
+		if _, ok := argsMap[arg]; !ok {
+			glog.Warningf("VolumeContext '%s' ignored", arg)
+			continue
 		}
 
 		// Write to args-map
@@ -152,4 +169,13 @@ func parseVolumeCapacity(volumeCapacity string) int64 {
 
 	capacityMB := capacity / 1024 / 1024
 	return capacityMB
+}
+
+func in_arr(arr []string, val string) bool {
+	for _, v := range arr {
+		if(val == v) {
+			return true
+		}
+	}
+	return false
 }
