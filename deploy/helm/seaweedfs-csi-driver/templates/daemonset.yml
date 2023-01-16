@@ -60,6 +60,9 @@ spec:
             - "--nodeid=$(NODE_ID)"
             - "--cacheDir=/var/cache/seaweedfs"
             - "--dataLocality={{ .Values.dataLocality }}"
+            {{- if .Values.node.injectTopologyInfoFromNodeLabel.enabled }}
+            - "--dataCenter=$(DATACENTER)"
+            {{- end }}
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
@@ -69,6 +72,13 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            {{- if .Values.node.injectTopologyInfoFromNodeLabel.enabled }}
+            - name: DATACENTER
+              valueFrom:
+                fieldRef:
+                  # Injected by ModRule 'inject-topology-labels'
+                  fieldPath: metadata.labels['{{ .Values.node.injectTopologyInfoFromNodeLabel.labels.dataCenter }}']
+            {{- end }}
             {{- if .Values.tlsSecret }}
             - name: WEED_GRPC_CLIENT_KEY
               value: /var/run/secrets/app/tls/tls.key

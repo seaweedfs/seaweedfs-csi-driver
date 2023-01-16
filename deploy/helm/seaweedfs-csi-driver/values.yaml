@@ -60,6 +60,14 @@ node:
   affinity: {}
   tolerations: {}
 
+  # Auto-Inject Topology-Info from Kubernetes node-labels using KubeMod (https://github.com/kubemod/kubemod)
+  #  Necessary because DownwardAPI doesnt support passing node-labels (see: https://github.com/kubernetes/kubernetes/issues/40610)
+  # Requires KubeMod to be installed
+  injectTopologyInfoFromNodeLabel:
+    enabled: false
+    labels:
+      dataCenter: "topology.kubernetes.io/zone"
+
   ## Change if not using standard kubernetes deployments, like k0s
   volumes:
     registration_dir: /var/lib/kubelet/plugins_registry

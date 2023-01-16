@@ -1,0 +1,29 @@
+# Based on https://github.com/kubernetes/kubernetes/issues/40610#issuecomment-1364368282
+{{- if .Values.node.injectTopologyInfoFromNodeLabel.enabled }}
+apiVersion: api.kubemod.io/v1beta1
+kind: ModRule
+metadata:
+  name: inject-topology-labels
+  #namespace: kubemod-system
+spec:
+  type: Patch
+  targetNamespaceRegex: ".*"
+  admissionOperations:
+    - UPDATE
+
+  match:
+    # Match pods...
+    - select: '{{ template "seaweedfs-csi-driver.name" . }}-node'
+      matchValue: 'Pod'
+    # ...which have access to the node's manifest through the synthetic ref injected by KubeMod.
+    - select: '$.syntheticRefs.node.metadata.labels'
+
+  patch:
+    # Grab the node's region and zone and put them in the pod's corresponding labels.
+    - op: add
+      path: /metadata/labels/topology.kubernetes.io~1region
+      value: '"{{ index .Target.syntheticRefs.node.metadata.labels "topology.kubernetes.io/region"}}"'
+    - op: add
+      path: /metadata/labels/topology.kubernetes.io~1zone
+      value: '"{{ index .Target.syntheticRefs.node.metadata.labels "topology.kubernetes.io/zone"}}"'
+{{- end }}
