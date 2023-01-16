@@ -59,6 +59,7 @@ spec:
             - "--filer=$(SEAWEEDFS_FILER)"
             - "--nodeid=$(NODE_ID)"
             - "--cacheDir=/var/cache/seaweedfs"
+            - "--dataLocality={{ .Values.dataLocality }}"
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock

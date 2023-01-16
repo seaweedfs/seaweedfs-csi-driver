@@ -42,6 +42,12 @@ controller:
   affinity: {}
   tolerations: {}
 
+# DataLocality (inspired by Longhorn) allows instructing the storage-driver which volume-locations will be used or preferred in Pods to read & write.
+#  e.g. Allows Pods to write preferrably to its local dataCenter volume-servers
+# Requires Volume-Servers to be correctly labelled and matching Topology-Info to be passed into seaweedfs-csi-driver node
+# Example-Value: "write_preferlocaldc"
+dataLocality: "none"
+
 node:
   # Deploy node daemonset
   enabled: true
