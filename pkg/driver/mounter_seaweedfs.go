@@ -96,9 +96,16 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		// volumeContext has "diskType", but mount-option is "disk", converting for backwards compatability
 		"diskType":		"disk",
 	}
+	
+	// Explicitly ignored volContext args e.g. handled somewhere else
+	ignoreArgs := []string{
+		"volumeCapacity",
+	}
 
 	//	Merge volContext into argsMap with key-mapping
 	for arg, value := range seaweedFs.volContext {
+		if(in_arr(ignoreArgs, arg)){continue}
+
 		// Check if key-mapping exists
 		newArg, ok := parameterArgMap[arg]
 		if(ok){
@@ -157,4 +164,13 @@ func parseVolumeCapacity(volumeCapacity string) int64 {
 
 	capacityMB := capacity / 1024 / 1024
 	return capacityMB
+}
+
+func in_arr(arr []string, val string) bool {
+	for _, v := range arr {
+		if(val == v) {
+			return true
+		}
+	}
+	return false
 }
