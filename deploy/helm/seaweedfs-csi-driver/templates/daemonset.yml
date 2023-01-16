@@ -82,7 +82,7 @@ spec:
               valueFrom:
                 fieldRef:
                   # Injected by ModRule 'inject-topology-labels'
-                  fieldPath: metadata.labels['{{ .Values.node.injectTopologyInfoFromNodeLabel.labels.dataCenter }}']
+                  fieldPath: metadata.labels['dataCenter']
             {{- end }}
             {{- if .Values.tlsSecret }}
             - name: WEED_GRPC_CLIENT_KEY
