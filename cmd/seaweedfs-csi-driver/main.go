@@ -79,8 +79,8 @@ func convertRequiredValues() error {
 }
 
 func checkPreconditions() error {
-	if(dataLocality != datalocality.None && *dataCenter == ""){
-		return fmt.Errorf("dataLocality set, but not all locality-definitions were set! ('dataCenter')")
+	if err := driver.CheckDataLocality(&dataLocality, dataCenter); err != nil {
+		return err
 	}
 
 	return nil

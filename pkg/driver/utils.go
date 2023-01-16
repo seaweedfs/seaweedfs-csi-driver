@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/datalocality"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -120,4 +121,11 @@ func (km *KeyMutex) GetMutex(key string) *sync.Mutex {
 
 func (km *KeyMutex) RemoveMutex(key string) {
 	km.mutexes.Delete(key)
+}
+
+func CheckDataLocality(dataLocality *datalocality.DataLocality, dataCenter *string) error {
+	if(*dataLocality != datalocality.None && *dataCenter == ""){
+		return fmt.Errorf("dataLocality set, but not all locality-definitions were set")
+	}
+	return nil
 }

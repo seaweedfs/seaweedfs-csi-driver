@@ -106,6 +106,9 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 			dataLocality = dataLocalityRes
 		}
 	}
+	if err := CheckDataLocality(&dataLocality, &seaweedFs.driver.DataCenter); err != nil {
+		return nil, err
+	}
 	// Settings based on type
 	switch(dataLocality){
 	case datalocality.Write_preferLocalDc:
