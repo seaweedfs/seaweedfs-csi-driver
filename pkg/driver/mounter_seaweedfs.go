@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/datalocality"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/util"
 )
@@ -93,6 +94,27 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		"readRetryTime":		"",
 	}
 
+	// Handle DataLocality
+	dataLocality := seaweedFs.driver.DataLocality;
+	// Try to override when set in context
+	if dataLocalityStr, ok := seaweedFs.volContext["dataLocality"]; ok{
+		// Convert to enum
+		dataLocalityRes, ok := datalocality.FromString(dataLocalityStr)
+		if(!ok){
+			glog.Warning("volumeContext 'dataLocality' invalid");
+		}else{
+			dataLocality = dataLocalityRes
+		}
+	}
+	if err := CheckDataLocality(&dataLocality, &seaweedFs.driver.DataCenter); err != nil {
+		return nil, err
+	}
+	// Settings based on type
+	switch(dataLocality){
+	case datalocality.Write_preferLocalDc:
+		argsMap["dataCenter"] = seaweedFs.driver.DataCenter;
+	}
+
 	// volContext-parameter -> mount-arg
 	parameterArgMap := map[string]string{
 		"uidMap":		"map.uid",
@@ -101,10 +123,11 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		// volumeContext has "diskType", but mount-option is "disk", converting for backwards compatability
 		"diskType":		"disk",
 	}
-	
+
 	// Explicitly ignored volContext args e.g. handled somewhere else
 	ignoreArgs := []string{
 		"volumeCapacity",
+		"dataLocality",
 	}
 
 	//	Merge volContext into argsMap with key-mapping
