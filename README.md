@@ -141,6 +141,66 @@ spec:
       storage: 1Gi
 ```
 
+<br>
+
+# DataLocality
+
+DataLocality (inspired by [Longhorn](https://longhorn.io/docs/latest/high-availability/data-locality/)) allows instructing the storage-driver which volume-locations will be used or preferred in Pods to read & write.
+
+It auto-sets mount-options based on the location a pod is scheduled in and the locality-option wanted.
+The option can be set and overridden in *Driver*, *StorageClass* and *PersistentVolume*.
+
+<br>
+
+## Setup
+
+Change the type of locality
+
+Level               | Location
+------------------- | --------
+Driver              | Helm: `values.yaml` -> `dataLocality` <br> Or `DaemonSet` -> Container `csi-seaweedfs-plugin` -> args `--dataLocality=`
+StorageClass        | `parameter.dataLocality`
+PersistentVolume    | `spec.csi.volumeAttributes.dataLocality`
+
+Driver < StorageClass < PersistentVolume
+
+<br>
+
+## Available options
+
+Option                  | Effect
+----------------------- | ------
+`none`*                 | Changes nothing
+`write_preferLocalDc`   | Sets the `DataCenter`-mount-option to the current Node-DataCenter, making writes local and allowing reads to occur wherever read data is stored. [More Details](#`write_preferLocalDc`)
+
+\* Default
+
+<br>
+
+## Requirements
+
+Volume-Servers and the CSI-Driver-Node need to have the locality-option `DataCenter` correctly set (currently only this option is required).
+
+This can be done manually (although quite tedious) or injected by the Container-Orchestration.
+
+<br>
+
+### Automatic injection
+
+**Kubernetes**
+
+Unfortunately Kubernetes doesnt allow grabbing node-labels, which contain well-known region-labels, and setting them as environment-variables.
+The DownwardAPI is very limited in that regard. (see [#40610](https://github.com/kubernetes/kubernetes/issues/40610))
+
+Therefore a workaround must be used. [KubeMod](https://github.com/kubemod/kubemod) can be used based on [this comment](https://github.com/kubernetes/kubernetes/issues/40610#issuecomment-1364368282). This of course requires KubeMod to be installed.
+
+You can activate it in the Helm-Chart `values.yaml` -> `node.injectTopologyInfoFromNodeLabel.enabled`.
+`node.injectTopologyInfoFromNodeLabel.labels` decides which labels are grabbed from the node.
+
+It is recommended to use [well-known labels](https://kubernetes.io/docs/reference/labels-annotations-taints/#topologykubernetesioregion) to avoid confusion.
+
+<br>
+
 # License
 [Apache v2 license](https://www.apache.org/licenses/LICENSE-2.0)
 
