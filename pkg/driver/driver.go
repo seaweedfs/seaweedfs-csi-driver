@@ -43,6 +43,7 @@ type SeaweedFsDriver struct {
 	CacheDir          string
 	UidMap            string
 	GidMap            string
+	signature         int32
 }
 
 func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
@@ -58,6 +59,7 @@ func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
 		version:        version,
 		filers:         pb.ServerAddresses(filer).ToAddresses(),
 		grpcDialOption: security.LoadClientTLS(util.GetViper(), "grpc.client"),
+		signature:      util.RandomInt32(),
 	}
 
 	n.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{
@@ -140,7 +142,7 @@ func (d *SeaweedFsDriver) WithFilerClient(streamingMode bool, fn func(filer_pb.S
 		var err error
 		for x := 0; x < n; x++ {
 
-			err = pb.WithGrpcClient(streamingMode, func(grpcConnection *grpc.ClientConn) error {
+			err = pb.WithGrpcClient(streamingMode, d.signature, func(grpcConnection *grpc.ClientConn) error {
 				client := filer_pb.NewSeaweedFilerClient(grpcConnection)
 				return fn(client)
 			}, d.filers[i].ToGrpcAddress(), false, d.grpcDialOption)
