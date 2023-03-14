@@ -28,6 +28,19 @@
 
 ### Install
 
+#### Helm
+
+1. Add the helm repo;
+
+```sh
+helm repo add seaweedfs-csi-driver https://seaweedfs.github.io/seaweedfs-csi-driver/helm
+"seaweedfs-csi-driver" has been added to your repositories
+```
+
+2. Check versions by `helm repo update seaweedfs-csi-driver` and `helm search repo seaweedfs-csi-driver`
+
+#### Source
+
 1. Clone this repository 
 ```sh
 git clone https://github.com/seaweedfs/seaweedfs-csi-driver.git
