@@ -4,11 +4,11 @@ go 1.17
 
 require (
 	github.com/container-storage-interface/spec v1.8.0
-	golang.org/x/net v0.8.0
+	golang.org/x/net v0.9.0
 	google.golang.org/grpc v1.54.0
 )
 
-require github.com/seaweedfs/seaweedfs v0.0.0-20230321133613-de4545c28b82
+require github.com/seaweedfs/seaweedfs v0.0.0-20230417045743-8ecdf958ab05
 
 require github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd // indirect
 
@@ -50,9 +50,9 @@ require (
 	golang.org/x/crypto v0.7.0 // indirect
 	golang.org/x/image v0.6.0 // indirect
 	golang.org/x/oauth2 v0.6.0 // indirect
-	golang.org/x/sys v0.6.0 // indirect
-	golang.org/x/term v0.6.0 // indirect
-	golang.org/x/text v0.8.0 // indirect
+	golang.org/x/sys v0.7.0 // indirect
+	golang.org/x/term v0.7.0 // indirect
+	golang.org/x/text v0.9.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230320184635-7606e756e683 // indirect
