@@ -13,7 +13,6 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
 	"google.golang.org/grpc/codes"
-	_ "google.golang.org/grpc/resolver/passthrough"
 	"google.golang.org/grpc/status"
 )
 
@@ -71,7 +70,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	volumeId := req.VolumeId
 
 	// Check arguments
-	if volumeId == "" {
+	if len(volumeId) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
 	}
 
@@ -89,10 +88,34 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 }
 
 func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
+
+	// Check arguments
+	volumeId := req.VolumeId
+	if len(volumeId) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+
+	volumePath := req.GetVolumeContext()["volumePath"]
+	if len(volumePath) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume path missing in request")
+	}
+
+	nodeId := req.NodeId
+	if len(nodeId) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Node ID missing in request")
+	}
+
 	return &csi.ControllerPublishVolumeResponse{}, nil
 }
 
 func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
+
+	// Check arguments
+	volumeId := req.VolumeId
+	if len(volumeId) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 

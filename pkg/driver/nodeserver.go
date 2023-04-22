@@ -9,7 +9,6 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"google.golang.org/grpc/codes"
-	_ "google.golang.org/grpc/resolver/passthrough"
 	"google.golang.org/grpc/status"
 	"k8s.io/utils/mount"
 )
@@ -238,7 +237,20 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 }
 
 func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+
 	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+
+	volumePath := req.GetVolumePath()
+	if len(volumePath) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume path missing in request")
+	}
+
+	// TODO Check if volume exists
+	// TODO Check if node exists
+
 	requiredBytes := req.GetCapacityRange().GetRequiredBytes()
 	glog.V(0).Infof("Node expand volume %s to %d bytes", volumeID, requiredBytes)
 
