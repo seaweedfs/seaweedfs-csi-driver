@@ -12,7 +12,7 @@ weed server -dir=/tmp/seaweedfs/data -s3 -volume.max=100 -volume.port=8090
 ## Run CSI Driver
 cd ../seaweedfs-csi-driver
 make build
-./_output/seaweedfs-csi-driver -endpoint="$endpoint" -alsologtostderr -v=5 -filer=localhost:8888
+./_output/seaweedfs-csi-driver -endpoint="$endpoint" -alsologtostderr -v=5 -filer=localhost:8888 -nodeid=test
 
 # Run CSI Sanity Tests
 ../csi-test/cmd/csi-sanity/csi-sanity\
