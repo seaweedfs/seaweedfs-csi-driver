@@ -2,4 +2,4 @@
 *.iml
 
 # go
-_debug_bin
+__debug_bin
