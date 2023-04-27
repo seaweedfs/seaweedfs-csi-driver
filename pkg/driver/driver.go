@@ -91,12 +91,9 @@ func (n *SeaweedFsDriver) initClient() error {
 
 func (n *SeaweedFsDriver) Run() {
 	s := NewNonBlockingGRPCServer()
-
-	c, _ := NewControllerServer(n)
-
 	s.Start(n.endpoint,
 		NewIdentityServer(n),
-		c,
+		NewControllerServer(n)
 		NewNodeServer(n))
 	s.Wait()
 }
