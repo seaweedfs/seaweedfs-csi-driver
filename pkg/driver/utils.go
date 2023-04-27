@@ -12,6 +12,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"k8s.io/client-go/rest"
 	"k8s.io/utils/mount"
 )
 
@@ -32,10 +33,18 @@ func NewIdentityServer(d *SeaweedFsDriver) *IdentityServer {
 	}
 }
 
-func NewControllerServer(d *SeaweedFsDriver) *ControllerServer {
+func NewControllerServer(d *SeaweedFsDriver) (*ControllerServer, error) {
+
+	// Get the Kubernetes configuration
+	c, err := rest.InClusterConfig()
+	if err != nil {
+		fmt.Errorf("failed to get Kubernetes config: %v", err)
+	}
+
 	return &ControllerServer{
 		Driver: d,
-	}
+		config: c,
+	}, nil
 }
 
 func NewControllerServiceCapability(cap csi.ControllerServiceCapability_RPC_Type) *csi.ControllerServiceCapability {
@@ -124,7 +133,7 @@ func (km *KeyMutex) RemoveMutex(key string) {
 }
 
 func CheckDataLocality(dataLocality *datalocality.DataLocality, dataCenter *string) error {
-	if(*dataLocality != datalocality.None && *dataCenter == ""){
+	if *dataLocality != datalocality.None && *dataCenter == "" {
 		return fmt.Errorf("dataLocality set, but not all locality-definitions were set")
 	}
 	return nil

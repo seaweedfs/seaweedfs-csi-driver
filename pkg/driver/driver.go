@@ -91,9 +91,12 @@ func (n *SeaweedFsDriver) initClient() error {
 
 func (n *SeaweedFsDriver) Run() {
 	s := NewNonBlockingGRPCServer()
+
+	c, _ := NewControllerServer(n)
+
 	s.Start(n.endpoint,
 		NewIdentityServer(n),
-		NewControllerServer(n),
+		c,
 		NewNodeServer(n))
 	s.Wait()
 }
@@ -171,5 +174,5 @@ func (d *SeaweedFsDriver) AdjustedUrl(location *filer_pb.Location) string {
 	return location.Url
 }
 func (d *SeaweedFsDriver) GetDataCenter() string {
-	return ""
+	return d.DataCenter
 }

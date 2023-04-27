@@ -95,11 +95,6 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
 	}
 
-	volumePath := req.GetVolumeContext()["volumePath"]
-	if len(volumePath) == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Volume path missing in request")
-	}
-
 	nodeId := req.NodeId
 	if len(nodeId) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "Node ID missing in request")
