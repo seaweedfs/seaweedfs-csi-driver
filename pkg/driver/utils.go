@@ -12,7 +12,6 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"k8s.io/client-go/rest"
 	"k8s.io/utils/mount"
 )
 
@@ -33,18 +32,11 @@ func NewIdentityServer(d *SeaweedFsDriver) *IdentityServer {
 	}
 }
 
-func NewControllerServer(d *SeaweedFsDriver) (*ControllerServer, error) {
-
-	// Get the Kubernetes configuration
-	c, err := rest.InClusterConfig()
-	if err != nil {
-		fmt.Errorf("failed to get Kubernetes config: %v", err)
-	}
+func NewControllerServer(d *SeaweedFsDriver) *ControllerServer {
 
 	return &ControllerServer{
 		Driver: d,
-		config: c,
-	}, nil
+	}
 }
 
 func NewControllerServiceCapability(cap csi.ControllerServiceCapability_RPC_Type) *csi.ControllerServiceCapability {

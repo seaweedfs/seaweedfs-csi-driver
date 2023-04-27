@@ -93,7 +93,7 @@ func (n *SeaweedFsDriver) Run() {
 	s := NewNonBlockingGRPCServer()
 	s.Start(n.endpoint,
 		NewIdentityServer(n),
-		NewControllerServer(n)
+		NewControllerServer(n),
 		NewNodeServer(n))
 	s.Wait()
 }
