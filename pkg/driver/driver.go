@@ -171,5 +171,5 @@ func (d *SeaweedFsDriver) AdjustedUrl(location *filer_pb.Location) string {
 	return location.Url
 }
 func (d *SeaweedFsDriver) GetDataCenter() string {
-	return ""
+	return d.DataCenter
 }

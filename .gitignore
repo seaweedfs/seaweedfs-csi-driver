@@ -1,2 +1,5 @@
 .vscode
 *.iml
+
+# go
+__debug_bin

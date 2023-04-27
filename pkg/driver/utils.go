@@ -33,6 +33,7 @@ func NewIdentityServer(d *SeaweedFsDriver) *IdentityServer {
 }
 
 func NewControllerServer(d *SeaweedFsDriver) *ControllerServer {
+
 	return &ControllerServer{
 		Driver: d,
 	}
@@ -124,7 +125,7 @@ func (km *KeyMutex) RemoveMutex(key string) {
 }
 
 func CheckDataLocality(dataLocality *datalocality.DataLocality, dataCenter *string) error {
-	if(*dataLocality != datalocality.None && *dataCenter == ""){
+	if *dataLocality != datalocality.None && *dataCenter == "" {
 		return fmt.Errorf("dataLocality set, but not all locality-definitions were set")
 	}
 	return nil
