@@ -42,7 +42,9 @@ spec:
             - --nodeid=$(NODE_ID)
             - --driverName=$(DRIVER_NAME)
             - --cacheDir=/var/cache/seaweedfs
-            - --dataLocality={{ .Values.dataLocality }}
+            {{- if ne "none" .Values.dataLocality}}
+            - "--dataLocality={{ .Values.dataLocality }}"
+            {{- end }}
             {{- if .Values.node.injectTopologyInfoFromNodeLabel.enabled }}
             - --dataCenter=$(DATACENTER)
             {{- end }}
