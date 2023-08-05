@@ -3,6 +3,8 @@ package driver
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/datalocality"
@@ -47,9 +49,12 @@ type SeaweedFsDriver struct {
 	signature         int32
 	DataCenter        string
 	DataLocality      datalocality.DataLocality
+
+	RunNode       bool
+	RunController bool
 }
 
-func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
+func NewSeaweedFsDriver(filer, nodeID, endpoint string, enableAttacher bool) *SeaweedFsDriver {
 
 	glog.Infof("Driver: %v version: %v", driverName, version)
 
@@ -73,9 +78,16 @@ func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
 	})
 	n.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{
 		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-		csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
 		csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
+		csi.ControllerServiceCapability_RPC_EXPAND_VOLUME, // ???
 	})
+
+	// we need this just only for csi-attach, but we do nothing for attach/detach
+	if enableAttacher {
+		n.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{
+			csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+		})
+	}
 
 	return n
 }
@@ -90,35 +102,51 @@ func (n *SeaweedFsDriver) initClient() error {
 }
 
 func (n *SeaweedFsDriver) Run() {
+	glog.Infof("starting")
+
+	var controller *ControllerServer
+	if n.RunController {
+		controller = NewControllerServer(n)
+	}
+
+	var node *NodeServer
+	if n.RunNode {
+		node = NewNodeServer(n)
+	}
+
 	s := NewNonBlockingGRPCServer()
 	s.Start(n.endpoint,
 		NewIdentityServer(n),
-		NewControllerServer(n),
-		NewNodeServer(n))
+		controller,
+		node)
+
+	stopChan := make(chan os.Signal)
+	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	<-stopChan
+
+	glog.Infof("stopping")
+
+	s.Stop()
 	s.Wait()
+
+	glog.Infof("cleanup")
+	node.NodeCleanup()
+
+	glog.Infof("stopped")
 }
 
-func (n *SeaweedFsDriver) AddVolumeCapabilityAccessModes(vc []csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability_AccessMode {
-	var vca []*csi.VolumeCapability_AccessMode
+func (n *SeaweedFsDriver) AddVolumeCapabilityAccessModes(vc []csi.VolumeCapability_AccessMode_Mode) {
 	for _, c := range vc {
 		glog.Infof("Enabling volume access mode: %v", c.String())
-		vca = append(vca, &csi.VolumeCapability_AccessMode{Mode: c})
+		n.vcap = append(n.vcap, &csi.VolumeCapability_AccessMode{Mode: c})
 	}
-	n.vcap = vca
-	return vca
 }
 
 func (n *SeaweedFsDriver) AddControllerServiceCapabilities(cl []csi.ControllerServiceCapability_RPC_Type) {
-	var csc []*csi.ControllerServiceCapability
-
 	for _, c := range cl {
 		glog.Infof("Enabling controller service capability: %v", c.String())
-		csc = append(csc, NewControllerServiceCapability(c))
+		n.cscap = append(n.cscap, NewControllerServiceCapability(c))
 	}
-
-	n.cscap = csc
-
-	return
 }
 
 func (d *SeaweedFsDriver) ValidateControllerServiceRequest(c csi.ControllerServiceCapability_RPC_Type) error {

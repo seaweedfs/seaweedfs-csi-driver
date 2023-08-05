@@ -11,24 +11,56 @@ imagePullPolicy: "IfNotPresent"
 #- name: mycredentials
 
 csiProvisioner:
-  image: k8s.gcr.io/sig-storage/csi-provisioner:v3.1.0
+  image: registry.k8s.io/sig-storage/csi-provisioner:v3.5.0
   resources: {}
-
-csiAttacher:
-  image: k8s.gcr.io/sig-storage/csi-attacher:v3.4.0
-  resources: {}
+  livenessProbe:
+    failureThreshold:
+    initialDelaySeconds: 10
+    timeoutSeconds: 3
+    periodSeconds: 60
 
 csiResizer:
-  image: k8s.gcr.io/sig-storage/csi-resizer:v1.4.0
+  image: registry.k8s.io/sig-storage/csi-resizer:v1.8.0
   resources: {}
+  livenessProbe:
+    failureThreshold:
+    initialDelaySeconds: 10
+    timeoutSeconds: 3
+    periodSeconds: 60
+
+csiAttacher:
+  # generally we don't need attacher, cause we do nothing to attach volume to node
+  # we will keep this for a historical reason
+  # you need to delete seaweedfs CSIDriver crd manually before upgrading with attacher disabled
+  # also you need to delete all seaweedfs VolumeAttachment crd manually after upgrade
+  enabled: true
+  image: registry.k8s.io/sig-storage/csi-attacher:v4.3.0
+  resources: {}
+  livenessProbe:
+    failureThreshold:
+    initialDelaySeconds: 10
+    timeoutSeconds: 3
+    periodSeconds: 60
+
+csiSnapshotter:
+  # we do not support snapshots yet
+  enabled: false
 
 csiNodeDriverRegistrar:
-  image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0
+  image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.8.0
+  resources: {}
+  livenessProbe:
+    failureThreshold:
+    initialDelaySeconds: 10
+    timeoutSeconds: 3
+    periodSeconds: 60
+
+csiLivenessProbe:
+  image: registry.k8s.io/sig-storage/livenessprobe:v2.10.0
   resources: {}
 
 seaweedfsCsiPlugin:
   image: chrislusf/seaweedfs-csi-driver:latest
-  resources: {}
   securityContext:
     privileged: true
     capabilities:
@@ -39,8 +71,15 @@ seaweedfsCsiPlugin:
 driverName: seaweedfs-csi-driver
 
 controller:
+  replicas: 1
   affinity: {}
-  tolerations: {}
+  tolerations:
+  resources: {}
+  livenessProbe:
+    failureThreshold:
+    initialDelaySeconds: 10
+    timeoutSeconds: 3
+    periodSeconds: 60
 
 # DataLocality (inspired by Longhorn) allows instructing the storage-driver which volume-locations will be used or preferred in Pods to read & write.
 #  e.g. Allows Pods to write preferrably to its local dataCenter volume-servers
@@ -58,7 +97,12 @@ node:
     rollingUpdate:
       maxUnavailable: 25%
   affinity: {}
-  tolerations: {}
+  tolerations:
+  livenessProbe:
+    failureThreshold:
+    initialDelaySeconds: 10
+    timeoutSeconds: 3
+    periodSeconds: 60
 
   # Auto-Inject Topology-Info from Kubernetes node-labels using KubeMod (https://github.com/kubemod/kubemod)
   #  Necessary because DownwardAPI doesnt support passing node-labels (see: https://github.com/kubernetes/kubernetes/issues/40610)

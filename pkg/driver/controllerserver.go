@@ -17,12 +17,15 @@ import (
 )
 
 type ControllerServer struct {
+	csi.UnimplementedControllerServer
+
 	Driver *SeaweedFsDriver
 }
 
 var _ = csi.ControllerServer(&ControllerServer{})
 
 func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
+	glog.Infof("create volume req: %v", req.GetName())
 
 	volumeId := sanitizeVolumeId(req.GetName())
 
@@ -54,7 +57,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, fmt.Errorf("Error setting bucket metadata: %v", err)
 	}
 
-	glog.V(4).Infof("create volume %s", volumeId)
+	glog.V(4).Infof("volume created %s", volumeId)
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
@@ -66,6 +69,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 }
 
 func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
+	glog.Infof("delete volume req: %v", req.VolumeId)
 
 	volumeId := req.VolumeId
 
@@ -75,10 +79,10 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 
 	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
-		glog.V(3).Infof("Invalid delete volume req: %v", req)
+		glog.V(3).Infof("invalid delete volume req: %v", req)
 		return nil, err
 	}
-	glog.V(4).Infof("Deleting volume %s", volumeId)
+	glog.V(4).Infof("deleting volume %s", volumeId)
 
 	if err := filer_pb.Remove(cs.Driver, "/buckets", volumeId, true, true, true, false, nil); err != nil {
 		return nil, fmt.Errorf("Error setting bucket metadata: %v", err)
@@ -87,7 +91,9 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
+// ControllerPublishVolume we need this just only for csi-attach, but we do nothing here generally
 func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
+	glog.Infof("controller publish volume req: %s", req.VolumeId)
 
 	// Check arguments
 	volumeId := req.VolumeId
@@ -103,7 +109,9 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 	return &csi.ControllerPublishVolumeResponse{}, nil
 }
 
+// ControllerUnpublishVolume we need this just only for csi-attach, but we do nothing here generally
 func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
+	glog.Infof("controller unpublish volume req: %s", req.VolumeId)
 
 	// Check arguments
 	volumeId := req.VolumeId
@@ -115,6 +123,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 }
 
 func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
+	glog.Infof("validate volume capabilities req: %v", req.VolumeId)
 
 	// Check arguments
 	if req.GetVolumeId() == "" {
@@ -159,42 +168,25 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 
 }
 
-func (cs *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
-func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
 // ControllerGetCapabilities implements the default GRPC callout.
 // Default supports all capabilities
 func (cs *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
-	glog.V(3).Infof("Using default ControllerGetCapabilities")
+	glog.V(3).Infof("get capabilities req")
 
 	return &csi.ControllerGetCapabilitiesResponse{
 		Capabilities: cs.Driver.cscap,
 	}, nil
 }
 
-func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
-func (cs *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
-func (cs *ControllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
 func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
+	capacity := req.GetCapacityRange().GetRequiredBytes()
 
-func (cs *ControllerServer) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+	glog.Infof("expand volume req: %v, capcity: %v", req.GetVolumeId(), capacity)
+
+	return &csi.ControllerExpandVolumeResponse{
+		CapacityBytes:         capacity,
+		NodeExpansionRequired: true,
+	}, nil
 }
 
 func sanitizeVolumeId(volumeId string) string {

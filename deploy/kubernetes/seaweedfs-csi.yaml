@@ -144,6 +144,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: seaweedfs-controller-sa
+    namespace: default
 roleRef:
   kind: ClusterRole
   name: seaweedfs-provisioner-role
@@ -157,6 +158,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: seaweedfs-controller-sa
+    namespace: default
 roleRef:
   kind: ClusterRole
   name: seaweedfs-attacher-role
@@ -170,6 +172,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: seaweedfs-controller-sa
+    namespace: default
 roleRef:
   kind: ClusterRole
   name: seaweedfs-snapshotter-role
@@ -183,6 +186,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: seaweedfs-controller-sa
+    namespace: default
 roleRef:
   kind: ClusterRole
   name: seaweedfs-driver-registrar-controller-role
@@ -196,6 +200,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: seaweedfs-node-sa
+    namespace: default
 roleRef:
   kind: ClusterRole
   name: seaweedfs-driver-registrar-node-role
@@ -225,42 +230,22 @@ spec:
       #hostNetwork: true
       #dnsPolicy: ClusterFirstWithHostNet
       containers:
-        - name: driver-registrar
-          image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0
-          imagePullPolicy: IfNotPresent
-          args:
-            - "--v=5"
-            - "--csi-address=$(ADDRESS)"
-            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
-          env:
-            - name: ADDRESS
-              value: /csi/csi.sock
-            - name: DRIVER_REG_SOCK_PATH
-              value: /var/lib/kubelet/plugins/seaweedfs-csi-driver/csi.sock
-            - name: KUBE_NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-          resources:
-            
-            {}
-          volumeMounts:
-            - name: plugin-dir
-              mountPath: /csi/
-            - name: registration-dir
-              mountPath: /registration/
         - name: csi-seaweedfs-plugin
-          securityContext:
-            privileged: true
-            capabilities:
-              add: ["SYS_ADMIN"]
+          securityContext: 
             allowPrivilegeEscalation: true
+            capabilities:
+              add:
+              - SYS_ADMIN
+            privileged: true
           image: chrislusf/seaweedfs-csi-driver:latest
           imagePullPolicy: IfNotPresent
-          args :
-            - "--endpoint=$(CSI_ENDPOINT)"
-            - "--filer=$(SEAWEEDFS_FILER)"
-            - "--nodeid=$(NODE_ID)"
+          args:
+            - --endpoint=$(CSI_ENDPOINT)
+            - --filer=$(SEAWEEDFS_FILER)
+            - --nodeid=$(NODE_ID)
+            - --cacheDir=/var/cache/seaweedfs
+            - --dataLocality=none
+            - --node
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
@@ -270,26 +255,101 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-          resources:
-            
-            {}
+          ports:
+            - containerPort: 9808
+              name: healthz
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
+            periodSeconds: 60
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
+            - name: plugins-dir
+              mountPath: /var/lib/kubelet/plugins
+              mountPropagation: "Bidirectional"
             - name: pods-mount-dir
               mountPath: /var/lib/kubelet/pods
               mountPropagation: "Bidirectional"
             - mountPath: /dev
               name: device-dir
+            - name: cache
+              mountPath: /var/cache/seaweedfs
+          resources: 
+            null
+
+        # driver registrar
+        - name: driver-registrar
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.8.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --csi-address=$(ADDRESS)
+            - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
+            - --http-endpoint=:9809
+            #- --v=5
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: /var/lib/kubelet/plugins/seaweedfs-csi-driver/csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          ports:
+            - containerPort: 9809
+              name: healthz
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
+            periodSeconds: 60
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi/
+            - name: registration-dir
+              mountPath: /registration/
+          resources: 
+            {}
+
+        # liveness probe
+        - name: csi-liveness-probe
+          image: registry.k8s.io/sig-storage/livenessprobe:v2.10.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --csi-address=$(ADDRESS)
+            - --http-endpoint=:9808
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          ports:
+            - containerPort: 9808
+              name: livenessprobe
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+          resources: 
+            {}
+
       volumes:
         - name: registration-dir
           hostPath:
-            path: /var/lib/kubelet/plugins_registry/
+            path: /var/lib/kubelet/plugins_registry
             type: DirectoryOrCreate
         - name: plugin-dir
           hostPath:
             path: /var/lib/kubelet/plugins/seaweedfs-csi-driver
             type: DirectoryOrCreate
+        - name: plugins-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins
+            type: Directory
         - name: pods-mount-dir
           hostPath:
             path: /var/lib/kubelet/pods
@@ -297,9 +357,11 @@ spec:
         - name: device-dir
           hostPath:
             path: /dev
+        - name: cache
+          emptyDir: {}
 ---
 # Source: seaweedfs-csi-driver/templates/statefulset.yml
-kind: StatefulSet
+kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: seaweedfs-controller
@@ -307,7 +369,6 @@ spec:
   selector:
     matchLabels:
       app: seaweedfs-controller
-  serviceName: "csi-seaweedfs"
   replicas: 1
   template:
     metadata:
@@ -316,66 +377,27 @@ spec:
     spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: seaweedfs-controller-sa
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - seaweedfs-controller
+              topologyKey: kubernetes.io/hostname
       containers:
-        # provisioner
-        - name: csi-provisioner
-          image: k8s.gcr.io/sig-storage/csi-provisioner:v3.1.0
-          args:
-            - "--csi-address=$(ADDRESS)"
-            - -v
-            - "9"
-          env:
-            - name: ADDRESS
-              value: /var/lib/csi/sockets/pluginproxy/csi.sock
-          imagePullPolicy: IfNotPresent
-          volumeMounts:
-            - name: socket-dir
-              mountPath: /var/lib/csi/sockets/pluginproxy/
-          resources:
-            
-            {}
-        # attacher
-        - name: csi-attacher
-          image: k8s.gcr.io/sig-storage/csi-attacher:v3.4.0
-          args:
-            - "--v=5"
-            - "--csi-address=$(ADDRESS)"
-            - "--timeout=120s"
-          env:
-            - name: ADDRESS
-              value: /var/lib/csi/sockets/pluginproxy/csi.sock
-          imagePullPolicy: IfNotPresent
-          resources:
-            
-            {}
-          volumeMounts:
-            - name: socket-dir
-              mountPath: /var/lib/csi/sockets/pluginproxy/
-        # resizer
-        - name: csi-resizer
-          image: k8s.gcr.io/sig-storage/csi-resizer:v1.4.0
-          args:
-            - "--v=5"
-            - "--csi-address=$(ADDRESS)"
-            - "--leader-election=false"
-          env:
-            - name: ADDRESS
-              value: /var/lib/csi/sockets/pluginproxy/csi.sock
-          imagePullPolicy: IfNotPresent
-          resources:
-            
-            {}
-          volumeMounts:
-            - name: socket-dir
-              mountPath: /var/lib/csi/sockets/pluginproxy/
         # SeaweedFs Plugin
         - name: seaweedfs-csi-plugin
           image: chrislusf/seaweedfs-csi-driver:latest
           imagePullPolicy: IfNotPresent
           args :
-            - "--endpoint=$(CSI_ENDPOINT)"
-            - "--filer=$(SEAWEEDFS_FILER)"
-            - "--nodeid=$(NODE_ID)"
+            - --endpoint=$(CSI_ENDPOINT)
+            - --filer=$(SEAWEEDFS_FILER)
+            - --nodeid=$(NODE_ID)"
+            - --controller
+            - --attacher
           env:
             - name: CSI_ENDPOINT
               value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
@@ -385,12 +407,112 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+          ports:
+            - containerPort: 9808
+              name: healthz
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
+            periodSeconds: 60
           volumeMounts:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
+          resources: 
+            {}
+
+        # provisioner
+        - name: csi-provisioner
+          image: registry.k8s.io/sig-storage/csi-provisioner:v3.5.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --csi-address=$(ADDRESS)
+            #- --leader-election
+            #- --leader-election-namespace=default
+            - --http-endpoint=:9809
+            #- --v=9
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          ports:
+            - containerPort: 9809
+              name: csi-provisioner
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+          resources: 
+            {}
+
+        # resizer
+        - name: csi-resizer
+          image: registry.k8s.io/sig-storage/csi-resizer:v1.8.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --csi-address=$(ADDRESS)
+            #- --leader-election
+            #- --leader-election-namespace=default
+            - --http-endpoint=:9810
+            #- --v=5
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          ports:
+            - containerPort: 9810
+              name: csi-resizer
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+          resources: 
+            {}
+        # attacher
+        - name: csi-attacher
+          image: registry.k8s.io/sig-storage/csi-attacher:v4.3.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --csi-address=$(ADDRESS)
+            #- --leader-election
+            #- --leader-election-namespace=default
+            - --http-endpoint=:9811
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          ports:
+            - containerPort: 9811
+              name: csi-attacher
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+          resources: 
+            {}
+
+        # liveness probe
+        - name: csi-liveness-probe
+          image: registry.k8s.io/sig-storage/livenessprobe:v2.10.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --csi-address=$(ADDRESS)
+            - --http-endpoint=:9808
+          env:
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/csi.sock
+          ports:
+            - containerPort: 9808
+              name: livenessprobe
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+          resources: 
+            {}
+
       volumes:
         - name: socket-dir
           emptyDir: {}
+---
+# Source: seaweedfs-csi-driver/templates/kubemod_modrule.yml
+# Based on https://github.com/kubernetes/kubernetes/issues/40610#issuecomment-1364368282
 ---
 # Source: seaweedfs-csi-driver/templates/csidriver.yml
 apiVersion: storage.k8s.io/v1

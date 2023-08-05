@@ -14,6 +14,8 @@ import (
 )
 
 type NodeServer struct {
+	csi.UnimplementedNodeServer
+
 	Driver  *SeaweedFsDriver
 	mounter mount.Interface
 
@@ -28,7 +30,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	volumeID := req.GetVolumeId()
 	// mount the fs here
 	stagingTargetPath := req.GetStagingTargetPath()
-	glog.V(0).Infof("node stage volume %s to %s", volumeID, stagingTargetPath)
+
+	glog.Infof("node stage volume %s to %s", volumeID, stagingTargetPath)
 
 	// Check arguments
 	if req.GetVolumeCapability() == nil {
@@ -50,7 +53,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	// The volume has been staged.
 	if _, ok := ns.volumes.Load(volumeID); ok {
-		glog.V(0).Infof("volume %s has been staged", volumeID)
+		glog.Infof("volume %s has been already staged", volumeID)
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
@@ -79,7 +82,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	ns.volumes.Store(volumeID, volume)
-	glog.V(0).Infof("volume %s successfully staged to %s", volumeID, stagingTargetPath)
+	glog.Infof("volume %s successfully staged to %s", volumeID, stagingTargetPath)
 
 	return &csi.NodeStageVolumeResponse{}, nil
 }
@@ -89,7 +92,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	targetPath := req.GetTargetPath()
 	stagingTargetPath := req.GetStagingTargetPath()
 
-	glog.V(0).Infof("node publish volume %s to %s", volumeID, targetPath)
+	glog.Infof("node publish volume %s to %s", volumeID, targetPath)
 
 	// Check arguments
 	if req.GetVolumeCapability() == nil {
@@ -123,14 +126,14 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	glog.V(0).Infof("volume %s successfully published to %s", volumeID, targetPath)
+	glog.Infof("volume %s successfully published to %s", volumeID, targetPath)
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
 func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	targetPath := req.GetTargetPath()
-	glog.V(0).Infof("node unpublish volume %s from %s", volumeID, targetPath)
+	glog.Infof("node unpublish volume %s from %s", volumeID, targetPath)
 
 	if volumeID == "" {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
@@ -159,11 +162,13 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	glog.Infof("volume %s successfully unpublished from %s", volumeID, targetPath)
+
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
 func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	glog.V(3).Infof("Using default NodeGetInfo: nodeID %s", ns.Driver.nodeID)
+	glog.V(3).Infof("node get info: nodeID %s", ns.Driver.nodeID)
 
 	return &csi.NodeGetInfoResponse{
 		NodeId: ns.Driver.nodeID,
@@ -171,7 +176,7 @@ func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 }
 
 func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
-	glog.V(3).Infof("Using default NodeGetCapabilities")
+	glog.V(3).Infof("node get capabilities")
 
 	return &csi.NodeGetCapabilitiesResponse{
 		Capabilities: []*csi.NodeServiceCapability{
@@ -185,8 +190,6 @@ func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetC
 			{
 				Type: &csi.NodeServiceCapability_Rpc{
 					Rpc: &csi.NodeServiceCapability_RPC{
-						// Type: csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
-						//Type: csi.NodeServiceCapability_RPC_UNKNOWN,
 						Type: csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 					},
 				},
@@ -195,14 +198,10 @@ func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetC
 	}, nil
 }
 
-func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
 func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	stagingTargetPath := req.GetStagingTargetPath()
-	glog.V(0).Infof("node unstage volume %s from %s", volumeID, stagingTargetPath)
+	glog.Infof("node unstage volume %s from %s", volumeID, stagingTargetPath)
 
 	// Check arguments
 	if volumeID == "" {
@@ -233,10 +232,14 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 
 	// remove mutex on successfull unstage
 	ns.volumeMutexes.RemoveMutex(volumeID)
+
+	glog.Infof("volume %s successfully unstaged from %s", volumeID, stagingTargetPath)
+
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
 func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+	glog.Infof("node expand volume %s", req.GetVolumeId())
 
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
@@ -265,6 +268,20 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	}
 
 	return &csi.NodeExpandVolumeResponse{}, nil
+}
+
+func (ns *NodeServer) NodeCleanup() {
+	ns.volumes.Range(func(_, vol any) bool {
+		v := vol.(*Volume)
+		if len(v.StagedPath) > 0 {
+			glog.Infof("cleaning up volume %s at %s", v.VolumeId, v.StagedPath)
+			err := v.Unstage(v.StagedPath)
+			if err != nil {
+				glog.Warningf("error cleaning up volume %s at %s, err: %v", v.VolumeId, v.StagedPath, err)
+			}
+		}
+		return true
+	})
 }
 
 func (ns *NodeServer) getVolumeMutex(volumeID string) *sync.Mutex {

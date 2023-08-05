@@ -3,5 +3,5 @@ kind: CSIDriver
 metadata:
   name: {{ .Values.driverName }}
 spec:
-  attachRequired: true
+  attachRequired: {{ .Values.csiAttacher.enabled }}
   podInfoOnMount: true

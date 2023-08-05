@@ -31,7 +31,6 @@ rules:
   - apiGroups: [ "" ]
     resources: [ "pods" ]
     verbs: [ "get", "list", "watch" ]
-
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -45,6 +44,8 @@ roleRef:
   kind: ClusterRole
   name: {{ template "seaweedfs-csi-driver.name" . }}-provisioner-role
   apiGroup: rbac.authorization.k8s.io
+
+{{- if .Values.csiAttacher.enabled }}
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
@@ -63,7 +64,6 @@ rules:
   - apiGroups: ["storage.k8s.io"]
     resources: ["volumeattachments", "volumeattachments/status"]
     verbs: ["get", "list", "watch", "update", "patch"]
-
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -77,6 +77,9 @@ roleRef:
   kind: ClusterRole
   name: {{ template "seaweedfs-csi-driver.name" . }}-attacher-role
   apiGroup: rbac.authorization.k8s.io
+{{- end }}
+
+{{- if .Values.csiSnapshotter.enabled }}
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
@@ -123,6 +126,8 @@ roleRef:
   kind: ClusterRole
   name: {{ template "seaweedfs-csi-driver.name" . }}-snapshotter-role
   apiGroup: rbac.authorization.k8s.io
+{{- end }}
+
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
@@ -148,6 +153,7 @@ roleRef:
   kind: ClusterRole
   name: {{ template "seaweedfs-csi-driver.name" . }}-driver-registrar-controller-role
   apiGroup: rbac.authorization.k8s.io
+
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
@@ -175,4 +181,29 @@ subjects:
 roleRef:
   kind: ClusterRole
   name: {{ template "seaweedfs-csi-driver.name" . }}-driver-registrar-node-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "seaweedfs-csi-driver.name" . }}-leader-election-controller-role
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "watch", "list", "delete", "update", "create"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "seaweedfs-csi-driver.name" . }}-leader-election-controller-binding
+  namespace: {{ .Release.Namespace }}
+subjects:
+  - kind: ServiceAccount
+    namespace: {{ .Release.Namespace }}
+    name: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
+roleRef:
+  kind: Role
+  name: {{ template "seaweedfs-csi-driver.name" . }}-leader-election-controller-role
   apiGroup: rbac.authorization.k8s.io
