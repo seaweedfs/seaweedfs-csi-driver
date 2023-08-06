@@ -96,7 +96,8 @@ func fuseMount(path string, command string, args []string) (Unmounter, error) {
 
 func (fu *fuseUnmounter) finish(timeout time.Duration) error {
 	// ignore error, just inform we want process to exit
-	_ = fu.cmd.Process.Signal(syscall.Signal(1))
+	// SIGHUP is used to reload weed config - we need to use SIGTERM
+	_ = fu.cmd.Process.Signal(syscall.SIGTERM)
 
 	if err := fu.waitFinished(timeout); err != nil {
 		glog.Errorf("weed mount terminate timeout, pid: %d, path: %v", fu.cmd.Process.Pid, fu.path)
@@ -122,11 +123,11 @@ func (fu *fuseUnmounter) waitFinished(timeout time.Duration) error {
 }
 
 func (fu *fuseUnmounter) Unmount() error {
-	if ok, err := mountutil.IsLikelyNotMountPoint(fu.path); !ok || mount.IsCorruptedMnt(err) {
+	if ok, err := mountutil.IsMountPoint(fu.path); ok || mount.IsCorruptedMnt(err) {
 		if err := mountutil.Unmount(fu.path); err != nil {
 			return err
 		}
 	}
 
-	return fu.finish(time.Second * 30)
+	return fu.finish(time.Second * 5)
 }
