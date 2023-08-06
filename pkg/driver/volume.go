@@ -13,7 +13,8 @@ import (
 )
 
 type Volume struct {
-	VolumeId string
+	VolumeId   string
+	StagedPath string
 
 	mounter   Mounter
 	unmounter Unmounter
@@ -40,7 +41,17 @@ func (vol *Volume) Stage(stagingTargetPath string) error {
 	}
 
 	if u, err := vol.mounter.Mount(stagingTargetPath); err == nil {
+		if vol.StagedPath != "" {
+			if vol.StagedPath == stagingTargetPath {
+				glog.Warningf("staged path is already set to %s for volume %s", vol.StagedPath, vol.VolumeId)
+			} else {
+				glog.Warningf("staged path is already set to %s and differs from %s for volume %s", vol.StagedPath, stagingTargetPath, vol.VolumeId)
+			}
+		}
+
+		vol.StagedPath = stagingTargetPath
 		vol.unmounter = u
+
 		return nil
 	} else {
 		return err
@@ -99,15 +110,21 @@ func (vol *Volume) Unstage(stagingTargetPath string) error {
 	glog.V(0).Infof("unmounting volume %s from %s", vol.VolumeId, stagingTargetPath)
 
 	if vol.unmounter == nil {
-		glog.Errorf("volume is not mounted: %s, path", vol.VolumeId, stagingTargetPath)
+		glog.Errorf("volume is not mounted: %s, path: %s", vol.VolumeId, stagingTargetPath)
 		return nil
 	}
 
+	if stagingTargetPath != vol.StagedPath {
+		glog.Warningf("staging path %s differs for volume %s at %s", stagingTargetPath, vol.VolumeId, vol.StagedPath)
+	}
+
 	if err := vol.unmounter.Unmount(); err != nil {
+		glog.Errorf("error unmounting volume during unstage: %s, err: %v", err)
 		return err
 	}
 
 	if err := os.Remove(stagingTargetPath); err != nil && !os.IsNotExist(err) {
+		glog.Errorf("error removing staging path for volume %s at %s, err: %v", vol.VolumeId, stagingTargetPath, err)
 		return err
 	}
 

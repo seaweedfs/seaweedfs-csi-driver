@@ -265,6 +265,20 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	return &csi.NodeExpandVolumeResponse{}, nil
 }
 
+func (ns *NodeServer) NodeCleanup() {
+	ns.volumes.Range(func(_, vol any) bool {
+		v := vol.(*Volume)
+		if len(v.StagedPath) > 0 {
+			glog.Infof("cleaning up volume %s at %s", v.VolumeId, v.StagedPath)
+			err := v.Unstage(v.StagedPath)
+			if err != nil {
+				glog.Warningf("error cleaning up volume %s at %s, err: %v", v.VolumeId, v.StagedPath, err)
+			}
+		}
+		return true
+	})
+}
+
 func (ns *NodeServer) getVolumeMutex(volumeID string) *sync.Mutex {
 	return ns.volumeMutexes.GetMutex(volumeID)
 }
