@@ -34,10 +34,12 @@ type nonBlockingGRPCServer struct {
 }
 
 func (s *nonBlockingGRPCServer) Start(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer) {
-
 	s.wg.Add(1)
 
-	go s.serve(endpoint, ids, cs, ns)
+	go func() {
+		defer s.wg.Done()
+		s.serve(endpoint, ids, cs, ns)
+	}()
 
 	return
 }
@@ -92,5 +94,4 @@ func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, c
 	glog.Infof("Listening for connections on address: %#v", listener.Addr())
 
 	server.Serve(listener)
-
 }

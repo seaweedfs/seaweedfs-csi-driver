@@ -3,6 +3,8 @@ package driver
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/datalocality"
@@ -90,12 +92,31 @@ func (n *SeaweedFsDriver) initClient() error {
 }
 
 func (n *SeaweedFsDriver) Run() {
+	glog.Info("starting")
+
+	controller := NewControllerServer(n)
+	node := NewNodeServer(n)
+
 	s := NewNonBlockingGRPCServer()
 	s.Start(n.endpoint,
 		NewIdentityServer(n),
-		NewControllerServer(n),
-		NewNodeServer(n))
+		controller,
+		node)
 	s.Wait()
+
+	stopChan := make(chan os.Signal)
+	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	<-stopChan
+
+	glog.Infof("stopping")
+
+	s.Stop()
+	s.Wait()
+
+	glog.Infof("node cleanup")
+	node.NodeCleanup()
+
+	glog.Infof("stopped")
 }
 
 func (n *SeaweedFsDriver) AddVolumeCapabilityAccessModes(vc []csi.VolumeCapability_AccessMode_Mode) []*csi.VolumeCapability_AccessMode {
