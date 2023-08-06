@@ -36,7 +36,7 @@ func (vol *Volume) Stage(stagingTargetPath string) error {
 		return err
 	} else if isMnt {
 		// try to unmount before mounting again
-		_ = mount.New("").Unmount(stagingTargetPath)
+		_ = mountutil.Unmount(stagingTargetPath)
 	}
 
 	if u, err := vol.mounter.Mount(stagingTargetPath); err == nil {
@@ -62,8 +62,7 @@ func (vol *Volume) Publish(stagingTargetPath string, targetPath string, readOnly
 		mountOptions = append(mountOptions, "ro")
 	}
 
-	mounter := mount.New("")
-	if err := mounter.Mount(stagingTargetPath, targetPath, "", mountOptions); err != nil {
+	if err := mountutil.Mount(stagingTargetPath, targetPath, "", mountOptions); err != nil {
 		return err
 	}
 
@@ -89,8 +88,7 @@ func (vol *Volume) Expand(sizeByte int64) error {
 
 func (vol *Volume) Unpublish(targetPath string) error {
 	// Try unmounting target path and deleting it.
-	mounter := mount.New("")
-	if err := mount.CleanupMountPoint(targetPath, mounter, true); err != nil {
+	if err := mount.CleanupMountPoint(targetPath, mountutil, true); err != nil {
 		return err
 	}
 
