@@ -10,7 +10,7 @@ import (
 	"os/exec"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
 )
 
 // Config holds values to configure the driver

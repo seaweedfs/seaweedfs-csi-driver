@@ -9,7 +9,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/pb/mount_pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
 )
 
 type Volume struct {
@@ -32,9 +32,9 @@ func NewVolume(volumeID string, mounter Mounter) *Volume {
 
 func (vol *Volume) Stage(stagingTargetPath string) error {
 	// check whether it can be mounted
-	if notMnt, err := checkMount(stagingTargetPath); err != nil {
+	if isMnt, err := checkMount(stagingTargetPath); err != nil {
 		return err
-	} else if !notMnt {
+	} else if isMnt {
 		// try to unmount before mounting again
 		_ = mount.New("").Unmount(stagingTargetPath)
 	}
@@ -49,9 +49,9 @@ func (vol *Volume) Stage(stagingTargetPath string) error {
 
 func (vol *Volume) Publish(stagingTargetPath string, targetPath string, readOnly bool) error {
 	// check whether it can be mounted
-	if notMnt, err := checkMount(targetPath); err != nil {
+	if isMnt, err := checkMount(targetPath); err != nil {
 		return err
-	} else if !notMnt {
+	} else if isMnt {
 		// maybe already mounted?
 		return nil
 	}

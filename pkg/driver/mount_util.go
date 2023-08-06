@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
 )
 
 func waitForMount(path string, timeout time.Duration) error {

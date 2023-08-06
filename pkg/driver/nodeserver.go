@@ -10,7 +10,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
 )
 
 type NodeServer struct {
