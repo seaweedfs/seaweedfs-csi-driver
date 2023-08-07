@@ -167,7 +167,10 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 
 func (su *seaweedFsUnmounter) Unmount() error {
 	err := su.unmounter.Unmount()
-	_ = os.RemoveAll(su.cacheDir)
+	err2 := os.RemoveAll(su.cacheDir)
+	if err2 != nil {
+		glog.Warningf("error removing cache from: %s, err: %v", su.cacheDir, err2)
+	}
 	return err
 }
 
