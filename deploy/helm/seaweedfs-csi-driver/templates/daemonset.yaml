@@ -31,46 +31,21 @@ spec:
       tolerations: {{ toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: driver-registrar
-          image: {{ .Values.csiNodeDriverRegistrar.image }}
-          imagePullPolicy: {{ .Values.imagePullPolicy }}
-          args:
-            - "--v=5"
-            - "--csi-address=$(ADDRESS)"
-            - "--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)"
-          env:
-            - name: ADDRESS
-              value: /csi/csi.sock
-            - name: DRIVER_REG_SOCK_PATH
-              value: {{ .Values.node.volumes.plugins_dir }}/{{ .Values.driverName }}/csi.sock
-            - name: KUBE_NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-          resources:
-            {{ toYaml .Values.csiNodeDriverRegistrar.resources | nindent 12 }}
-          volumeMounts:
-            - name: plugin-dir
-              mountPath: /csi/
-            - name: registration-dir
-              mountPath: /registration/
+        # SeaweedFs Plugin (node)
         - name: csi-seaweedfs-plugin
-          securityContext:
-            {{ toYaml .Values.seaweedfsCsiPlugin.securityContext | nindent 12 }}
+          securityContext: {{ toYaml .Values.seaweedfsCsiPlugin.securityContext | nindent 12 }}
           image: {{.Values.seaweedfsCsiPlugin.image }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           args:
-            - "--endpoint=$(CSI_ENDPOINT)"
-            - "--filer=$(SEAWEEDFS_FILER)"
-            - "--nodeid=$(NODE_ID)"
-            - "--cacheDir=/var/cache/seaweedfs"
-            - "--dataLocality={{ .Values.dataLocality }}"
-            - "--node"
-            - "--controller"
-            - "--attacher"
+            - --endpoint=$(CSI_ENDPOINT)
+            - --filer=$(SEAWEEDFS_FILER)
+            - --nodeid=$(NODE_ID)
+            - --cacheDir=/var/cache/seaweedfs
+            - --dataLocality={{ .Values.dataLocality }}
             {{- if .Values.node.injectTopologyInfoFromNodeLabel.enabled }}
-            - "--dataCenter=$(DATACENTER)"
+            - --dataCenter=$(DATACENTER)
             {{- end }}
+            - --node
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
@@ -95,12 +70,32 @@ spec:
             - name: WEED_GRPC_CA
               value: /var/run/secrets/app/tls/ca.crt
             {{- end }}
-            {{- if .Values.logVerbosity }}
+            {{- with .Values.logVerbosity }}
             - name: WEED_V
-              value: {{ .Values.logVerbosity | quote }}
+              value: {{ . | quote }}
             {{- end }}
-          resources:
-            {{ toYaml .Values.seaweedfsCsiPlugin.resources | nindent 12 }}
+          ports:
+            - containerPort: 9808
+              name: healthz
+              protocol: TCP
+          {{- with .Values.node.livenessProbe }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            {{- with .failureThreshold }}
+            failureThreshold: {{ . }}
+            {{- end }}
+            {{- with .initialDelaySeconds }}
+            initialDelaySeconds: {{ . }}
+            {{- end }}
+            {{- with .timeoutSeconds }}
+            timeoutSeconds: {{ . }}
+            {{- end }}
+            {{- with .periodSeconds }}
+            periodSeconds: {{ . }}
+            {{- end }}
+          {{- end }}
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
@@ -118,6 +113,74 @@ spec:
             {{- end }}
             - name: cache
               mountPath: /var/cache/seaweedfs
+          resources: {{ toYaml .Values.node.resources | nindent 12 }}
+
+        # driver registrar
+        - name: driver-registrar
+          image: {{ .Values.csiNodeDriverRegistrar.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          args:
+            - --csi-address=$(ADDRESS)
+            - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
+            - --http-endpoint=:9809
+            #- --v=5
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: {{ .Values.node.volumes.plugins_dir }}/{{ .Values.driverName }}/csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          {{- with .Values.csiNodeDriverRegistrar.livenessProbe }}
+          ports:
+            - containerPort: 9809
+              name: healthz
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            {{- with .failureThreshold }}
+            failureThreshold: {{ . }}
+            {{- end }}
+            {{- with .initialDelaySeconds }}
+            initialDelaySeconds: {{ . }}
+            {{- end }}
+            {{- with .timeoutSeconds }}
+            timeoutSeconds: {{ . }}
+            {{- end }}
+            {{- with .periodSeconds }}
+            periodSeconds: {{ . }}
+            {{- end }}
+          {{- end }}
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi/
+            - name: registration-dir
+              mountPath: /registration/
+          resources: {{ toYaml .Values.csiNodeDriverRegistrar.resources | nindent 12 }}
+
+        # liveness probe
+        {{- if .Values.node.livenessProbe }}
+        - name: csi-liveness-probe
+          image: {{ .Values.csiLivenessProbe.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          args:
+            - --csi-address=$(ADDRESS)
+            - --http-endpoint=:9808
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          ports:
+            - containerPort: 9808
+              name: livenessprobe
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+          resources: {{ toYaml .Values.csiLivenessProbe.resources | nindent 12 }}
+        {{- end }}
+
       volumes:
         - name: registration-dir
           hostPath:
