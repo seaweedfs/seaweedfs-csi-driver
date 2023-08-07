@@ -12,6 +12,10 @@ import (
 )
 
 var (
+	runNode        = flag.Bool("node", false, "run node server")
+	runController  = flag.Bool("controller", false, "run controller server")
+	enableAttacher = flag.Bool("attacher", false, "enable attacher")
+
 	filer             = flag.String("filer", "localhost:8888", "filer server")
 	endpoint          = flag.String("endpoint", "unix://tmp/seaweedfs-csi.sock", "CSI endpoint to accept gRPC calls")
 	nodeID            = flag.String("nodeid", "", "node id")
@@ -53,7 +57,11 @@ func main() {
 
 	glog.Infof("connect to filer %s", *filer)
 
-	drv := driver.NewSeaweedFsDriver(*filer, *nodeID, *endpoint)
+	drv := driver.NewSeaweedFsDriver(*filer, *nodeID, *endpoint, *enableAttacher)
+
+	drv.RunNode = *runNode
+	drv.RunController = *runController
+
 	drv.ConcurrentWriters = *concurrentWriters
 	drv.CacheCapacityMB = *cacheCapacityMB
 	drv.CacheDir = *cacheDir

@@ -49,9 +49,12 @@ type SeaweedFsDriver struct {
 	signature         int32
 	DataCenter        string
 	DataLocality      datalocality.DataLocality
+
+	RunNode       bool
+	RunController bool
 }
 
-func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
+func NewSeaweedFsDriver(filer, nodeID, endpoint string, enableAttacher bool) *SeaweedFsDriver {
 
 	glog.Infof("Driver: %v version: %v", driverName, version)
 
@@ -75,10 +78,16 @@ func NewSeaweedFsDriver(filer, nodeID, endpoint string) *SeaweedFsDriver {
 	})
 	n.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{
 		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-		csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
 		csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 		csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 	})
+
+	// we need this just only for csi-attach, but we do nothing for attach/detach
+	if enableAttacher {
+		n.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{
+			csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
+		})
+	}
 
 	return n
 }
@@ -95,15 +104,21 @@ func (n *SeaweedFsDriver) initClient() error {
 func (n *SeaweedFsDriver) Run() {
 	glog.Info("starting")
 
-	controller := NewControllerServer(n)
-	node := NewNodeServer(n)
+	var controller *ControllerServer
+	if n.RunController {
+		controller = NewControllerServer(n)
+	}
+
+	var node *NodeServer
+	if n.RunNode {
+		node = NewNodeServer(n)
+	}
 
 	s := NewNonBlockingGRPCServer()
 	s.Start(n.endpoint,
 		NewIdentityServer(n),
 		controller,
 		node)
-	s.Wait()
 
 	stopChan := make(chan os.Signal)
 	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
@@ -114,8 +129,10 @@ func (n *SeaweedFsDriver) Run() {
 	s.Stop()
 	s.Wait()
 
-	glog.Infof("node cleanup")
-	node.NodeCleanup()
+	if node != nil {
+		glog.Infof("node cleanup")
+		node.NodeCleanup()
+	}
 
 	glog.Infof("stopped")
 }
