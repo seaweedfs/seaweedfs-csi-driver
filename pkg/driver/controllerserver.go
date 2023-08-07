@@ -180,6 +180,18 @@ func (cs *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *
 	}, nil
 }
 
+func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+	capacity := req.GetCapacityRange().GetRequiredBytes()
+
+	glog.Infof("expand volume req: %v, capacity: %v", req.GetVolumeId(), capacity)
+
+	// We need to propagate resize requests to node servers
+	return &csi.ControllerExpandVolumeResponse{
+		CapacityBytes:         capacity,
+		NodeExpansionRequired: true,
+	}, nil
+}
+
 func sanitizeVolumeId(volumeId string) string {
 	volumeId = strings.ToLower(volumeId)
 	if len(volumeId) > 63 {
