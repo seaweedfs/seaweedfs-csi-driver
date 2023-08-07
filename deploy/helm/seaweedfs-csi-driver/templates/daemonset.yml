@@ -65,6 +65,9 @@ spec:
             - "--nodeid=$(NODE_ID)"
             - "--cacheDir=/var/cache/seaweedfs"
             - "--dataLocality={{ .Values.dataLocality }}"
+            - "--node"
+            - "--controller"
+            - "--attacher"
             {{- if .Values.node.injectTopologyInfoFromNodeLabel.enabled }}
             - "--dataCenter=$(DATACENTER)"
             {{- end }}
