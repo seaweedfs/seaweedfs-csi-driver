@@ -70,39 +70,39 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 	}
 
 	// Handle volumeCapacity from controllerserver.go:51
-	if value, ok := seaweedFs.volContext["volumeCapacity"]; ok{
+	if value, ok := seaweedFs.volContext["volumeCapacity"]; ok {
 		capacityMB := parseVolumeCapacity(value)
 		args = append(args, fmt.Sprintf("-collectionQuotaMB=%d", capacityMB))
 	}
 
 	// Values for override-able args
 	//  Whitelist for merging with volContext
-	argsMap := map[string]string {
-		"collection": 			seaweedFs.collection,
-		"filer": 				strings.Join(filers, ","),
-		"filer.path":			seaweedFs.path,
-		"cacheCapacityMB":		fmt.Sprint(seaweedFs.driver.CacheCapacityMB),
-		"concurrentWriters":	fmt.Sprint(seaweedFs.driver.ConcurrentWriters),
-		"map.uid":				seaweedFs.driver.UidMap,
-		"map.gid":				seaweedFs.driver.GidMap,
-		"disk":					"",
-		"dataCenter":			"",
-		"replication":			"",
-		"ttl":					"",
-		"chunkSizeLimitMB":		"",
-		"volumeServerAccess":	"",
-		"readRetryTime":		"",
+	argsMap := map[string]string{
+		"collection":         seaweedFs.collection,
+		"filer":              strings.Join(filers, ","),
+		"filer.path":         seaweedFs.path,
+		"cacheCapacityMB":    fmt.Sprint(seaweedFs.driver.CacheCapacityMB),
+		"concurrentWriters":  fmt.Sprint(seaweedFs.driver.ConcurrentWriters),
+		"map.uid":            seaweedFs.driver.UidMap,
+		"map.gid":            seaweedFs.driver.GidMap,
+		"disk":               "",
+		"dataCenter":         "",
+		"replication":        "",
+		"ttl":                "",
+		"chunkSizeLimitMB":   "",
+		"volumeServerAccess": "",
+		"readRetryTime":      "",
 	}
 
 	// Handle DataLocality
-	dataLocality := seaweedFs.driver.DataLocality;
+	dataLocality := seaweedFs.driver.DataLocality
 	// Try to override when set in context
-	if dataLocalityStr, ok := seaweedFs.volContext["dataLocality"]; ok{
+	if dataLocalityStr, ok := seaweedFs.volContext["dataLocality"]; ok {
 		// Convert to enum
 		dataLocalityRes, ok := datalocality.FromString(dataLocalityStr)
-		if(!ok){
-			glog.Warning("volumeContext 'dataLocality' invalid");
-		}else{
+		if !ok {
+			glog.Warning("volumeContext 'dataLocality' invalid")
+		} else {
 			dataLocality = dataLocalityRes
 		}
 	}
@@ -110,18 +110,18 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		return nil, err
 	}
 	// Settings based on type
-	switch(dataLocality){
+	switch dataLocality {
 	case datalocality.Write_preferLocalDc:
-		argsMap["dataCenter"] = seaweedFs.driver.DataCenter;
+		argsMap["dataCenter"] = seaweedFs.driver.DataCenter
 	}
 
 	// volContext-parameter -> mount-arg
 	parameterArgMap := map[string]string{
-		"uidMap":		"map.uid",
-		"gidMap":		"map.gid",
-		"filerPath":	"filer.path",
+		"uidMap":    "map.uid",
+		"gidMap":    "map.gid",
+		"filerPath": "filer.path",
 		// volumeContext has "diskType", but mount-option is "disk", converting for backwards compatability
-		"diskType":		"disk",
+		"diskType": "disk",
 	}
 
 	// Explicitly ignored volContext args e.g. handled somewhere else
@@ -132,11 +132,13 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 
 	//	Merge volContext into argsMap with key-mapping
 	for arg, value := range seaweedFs.volContext {
-		if(in_arr(ignoreArgs, arg)){continue}
+		if in_arr(ignoreArgs, arg) {
+			continue
+		}
 
 		// Check if key-mapping exists
 		newArg, ok := parameterArgMap[arg]
-		if(ok){
+		if ok {
 			arg = newArg
 		}
 
@@ -151,8 +153,8 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 	}
 
 	// Convert Args-Map to args
-	for arg, value := range argsMap{
-		if(value != ""){	// ignore empty values
+	for arg, value := range argsMap {
+		if value != "" { // ignore empty values
 			args = append(args, fmt.Sprintf("-%s=%s", arg, value))
 		}
 	}
@@ -199,7 +201,7 @@ func parseVolumeCapacity(volumeCapacity string) int64 {
 
 func in_arr(arr []string, val string) bool {
 	for _, v := range arr {
-		if(val == v) {
+		if val == v {
 			return true
 		}
 	}
