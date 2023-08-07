@@ -4,14 +4,16 @@ import (
 	"errors"
 	"time"
 
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
 )
+
+var mountutil = mount.New("")
 
 func waitForMount(path string, timeout time.Duration) error {
 	var elapsed time.Duration
 	var interval = 10 * time.Millisecond
 	for {
-		notMount, err := mount.New("").IsLikelyNotMountPoint(path)
+		notMount, err := mountutil.IsLikelyNotMountPoint(path)
 		if err != nil {
 			return err
 		}

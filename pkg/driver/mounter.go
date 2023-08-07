@@ -10,7 +10,7 @@ import (
 	"os/exec"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
 )
 
 // Config holds values to configure the driver
@@ -79,7 +79,7 @@ func fuseMount(path string, command string, args []string) (Unmounter, error) {
 
 		// make sure we'll have no stale mounts
 		time.Sleep(time.Millisecond * 100)
-		_ = mount.New("").Unmount(path)
+		_ = mountutil.Unmount(path)
 
 		close(fu.finished)
 	}()
@@ -122,10 +122,8 @@ func (fu *fuseUnmounter) waitFinished(timeout time.Duration) error {
 }
 
 func (fu *fuseUnmounter) Unmount() error {
-	m := mount.New("")
-
-	if ok, err := m.IsLikelyNotMountPoint(fu.path); !ok || mount.IsCorruptedMnt(err) {
-		if err := m.Unmount(fu.path); err != nil {
+	if ok, err := mountutil.IsLikelyNotMountPoint(fu.path); !ok || mount.IsCorruptedMnt(err) {
+		if err := mountutil.Unmount(fu.path); err != nil {
 			return err
 		}
 	}

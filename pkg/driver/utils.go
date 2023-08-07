@@ -12,7 +12,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
 )
 
 func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
@@ -70,24 +70,23 @@ func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, h
 }
 
 func checkMount(targetPath string) (bool, error) {
-	mounter := mount.New("")
-	notMnt, err := mount.IsNotMountPoint(mounter, targetPath)
+	isMnt, err := mountutil.IsMountPoint(targetPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			if err = os.MkdirAll(targetPath, 0750); err != nil {
 				return false, err
 			}
-			notMnt = true
+			isMnt = false
 		} else if mount.IsCorruptedMnt(err) {
-			if err := mounter.Unmount(targetPath); err != nil {
+			if err := mountutil.Unmount(targetPath); err != nil {
 				return false, err
 			}
-			notMnt, err = mount.IsNotMountPoint(mounter, targetPath)
+			isMnt, err = mountutil.IsMountPoint(targetPath)
 		} else {
 			return false, err
 		}
 	}
-	return notMnt, nil
+	return isMnt, nil
 }
 
 func removeDirContent(path string) error {

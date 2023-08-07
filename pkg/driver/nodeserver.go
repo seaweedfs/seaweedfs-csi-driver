@@ -10,7 +10,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/utils/mount"
+	"k8s.io/mount-utils"
 )
 
 type NodeServer struct {
@@ -149,8 +149,7 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		glog.Warningf("volume %s hasn't been published", volumeID)
 
 		// make sure there is no any garbage
-		mounter := mount.New("")
-		_ = mount.CleanupMountPoint(targetPath, mounter, true)
+		_ = mount.CleanupMountPoint(targetPath, mountutil, true)
 
 		return &csi.NodeUnpublishVolumeResponse{}, nil
 	}
@@ -221,8 +220,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		glog.Warningf("volume %s hasn't been staged", volumeID)
 
 		// make sure there is no any garbage
-		mounter := mount.New("")
-		_ = mount.CleanupMountPoint(stagingTargetPath, mounter, true)
+		_ = mount.CleanupMountPoint(stagingTargetPath, mountutil, true)
 	} else {
 		if err := volume.(*Volume).Unstage(stagingTargetPath); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
