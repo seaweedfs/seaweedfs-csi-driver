@@ -45,7 +45,7 @@ spec:
             {{- if .Values.node.injectTopologyInfoFromNodeLabel.enabled }}
             - --dataCenter=$(DATACENTER)
             {{- end }}
-            - --node
+            - --components=node
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
