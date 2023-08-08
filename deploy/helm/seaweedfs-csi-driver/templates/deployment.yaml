@@ -44,10 +44,8 @@ spec:
             - --endpoint=$(CSI_ENDPOINT)
             - --filer=$(SEAWEEDFS_FILER)
             - --nodeid=$(NODE_ID)"
-            - --controller
-            {{- if .Values.csiAttacher.enabled }}
-            - --attacher
-            {{- end }}
+            - --components=controller
+            - --attacher={{ .Values.csiAttacher.enabled }}
           env:
             - name: CSI_ENDPOINT
               value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
