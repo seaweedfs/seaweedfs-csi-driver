@@ -59,7 +59,7 @@ func fuseMount(path string, command string, args []string) (Unmounter, error) {
 	err := cmd.Start()
 	if err != nil {
 		glog.Errorf("running weed mount: %v", err)
-		return nil, fmt.Errorf("Error fuseMount command: %s\nargs: %s\nerror: %v", command, args, err)
+		return nil, fmt.Errorf("error fuseMount command: %s\nargs: %s\nerror: %v", command, args, err)
 	}
 
 	fu := &fuseUnmounter{
