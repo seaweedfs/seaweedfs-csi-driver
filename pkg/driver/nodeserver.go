@@ -16,8 +16,7 @@ import (
 type NodeServer struct {
 	csi.UnimplementedNodeServer
 
-	Driver  *SeaweedFsDriver
-	mounter mount.Interface
+	Driver *SeaweedFsDriver
 
 	// information about the managed volumes
 	volumes       sync.Map
