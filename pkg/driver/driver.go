@@ -16,8 +16,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/client-go/rest"
-	"k8s.io/klog"
 )
 
 const (
@@ -90,15 +88,6 @@ func NewSeaweedFsDriver(filer, nodeID, endpoint string, enableAttacher bool) *Se
 	}
 
 	return n
-}
-
-func (n *SeaweedFsDriver) initClient() error {
-	_, err := rest.InClusterConfig()
-	if err != nil {
-		klog.Errorf("Failed to get cluster config with error: %v\n", err)
-		os.Exit(1)
-	}
-	return nil
 }
 
 func (n *SeaweedFsDriver) Run() {
