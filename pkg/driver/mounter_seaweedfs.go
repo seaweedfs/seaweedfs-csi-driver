@@ -50,7 +50,7 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		filers = append(filers, string(address))
 	}
 
-	// CacheDir should be always defined - we use temp dir in case it is not defined
+	// CacheDirForRead should be always defined - we use temp dir in case it is not defined
 	// we need to use predictable cache path, because we need to clean it up on unstage
 	cacheDir := filepath.Join(seaweedFs.driver.CacheDir, seaweedFs.volumeID)
 
