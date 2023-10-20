@@ -18,10 +18,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const (
-	driverName = "seaweedfs-csi-driver"
-)
-
 var (
 	version = "1.0.0"
 )
@@ -52,16 +48,16 @@ type SeaweedFsDriver struct {
 	RunController bool
 }
 
-func NewSeaweedFsDriver(filer, nodeID, endpoint string, enableAttacher bool) *SeaweedFsDriver {
+func NewSeaweedFsDriver(name, filer, nodeID, endpoint string, enableAttacher bool) *SeaweedFsDriver {
 
-	glog.Infof("Driver: %v version: %v", driverName, version)
+	glog.Infof("Driver: %v version: %v", name, version)
 
 	util.LoadConfiguration("security", false)
 
 	n := &SeaweedFsDriver{
 		endpoint:       endpoint,
 		nodeID:         nodeID,
-		name:           driverName,
+		name:           name,
 		version:        version,
 		filers:         pb.ServerAddresses(filer).ToAddresses(),
 		grpcDialOption: security.LoadClientTLS(util.GetViper(), "grpc.client"),
