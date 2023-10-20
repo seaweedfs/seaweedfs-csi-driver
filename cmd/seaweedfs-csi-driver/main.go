@@ -15,6 +15,7 @@ import (
 var (
 	components     = flag.String("components", "controller,node", "components to run, by default both controller and node")
 	enableAttacher = flag.Bool("attacher", true, "enable attacher, by default enabled for backward compatibility")
+	driverName     = flag.String("driverName", "seaweedfs-csi-driver", "CSI driver name, used by CSIDriver and StorageClass")
 
 	filer             = flag.String("filer", "localhost:8888", "filer server")
 	endpoint          = flag.String("endpoint", "unix://tmp/seaweedfs-csi.sock", "CSI endpoint to accept gRPC calls")
@@ -77,7 +78,7 @@ func main() {
 
 	glog.Infof("connect to filer %s", *filer)
 
-	drv := driver.NewSeaweedFsDriver(*filer, *nodeID, *endpoint, *enableAttacher)
+	drv := driver.NewSeaweedFsDriver(*driverName, *filer, *nodeID, *endpoint, *enableAttacher)
 
 	drv.RunNode = runNode
 	drv.RunController = runController

@@ -67,7 +67,6 @@ seaweedfsCsiPlugin:
       add: ["SYS_ADMIN"]
     allowPrivilegeEscalation: true
 
-# DO NOT Change. Reserved for future releases. Must be equal Name in GetPluginInfoResponse
 driverName: seaweedfs-csi-driver
 
 controller:

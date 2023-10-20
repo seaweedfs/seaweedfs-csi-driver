@@ -43,7 +43,8 @@ spec:
           args :
             - --endpoint=$(CSI_ENDPOINT)
             - --filer=$(SEAWEEDFS_FILER)
-            - --nodeid=$(NODE_ID)"
+            - --nodeid=$(NODE_ID)
+            - --driverName=$(DRIVER_NAME)
             - --components=controller
             - --attacher={{ .Values.csiAttacher.enabled }}
           env:
@@ -55,6 +56,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: DRIVER_NAME
+              value: {{ .Values.driverName | quote }}
             {{- if .Values.tlsSecret }}
             - name: WEED_GRPC_CLIENT_KEY
               value: /var/run/secrets/app/tls/tls.key
