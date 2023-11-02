@@ -43,7 +43,7 @@ require (
 	github.com/viant/ptrie v0.3.0 // indirect
 	github.com/viant/toolbox v0.33.2 // indirect
 	golang.org/x/crypto v0.14.0 // indirect
-	golang.org/x/image v0.9.0 // indirect
+	golang.org/x/image v0.10.0 // indirect
 	golang.org/x/sys v0.13.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230720185612-659f7aaaa771 // indirect
