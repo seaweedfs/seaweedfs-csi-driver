@@ -23,7 +23,7 @@ func waitForMount(path string, timeout time.Duration) error {
 		time.Sleep(interval)
 		elapsed = elapsed + interval
 		if elapsed >= timeout {
-			return errors.New("Timeout waiting for mount")
+			return errors.New("timeout waiting for mount")
 		}
 	}
 }

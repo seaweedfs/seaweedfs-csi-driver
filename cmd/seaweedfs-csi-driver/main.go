@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/datalocality"
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/driver"
@@ -12,9 +13,9 @@ import (
 )
 
 var (
-	runNode        = flag.Bool("node", false, "run node server")
-	runController  = flag.Bool("controller", false, "run controller server")
-	enableAttacher = flag.Bool("attacher", false, "enable attacher")
+	components     = flag.String("components", "controller,node", "components to run, by default both controller and node")
+	enableAttacher = flag.Bool("attacher", true, "enable attacher, by default enabled for backward compatibility")
+	driverName     = flag.String("driverName", "seaweedfs-csi-driver", "CSI driver name, used by CSIDriver and StorageClass")
 
 	filer             = flag.String("filer", "localhost:8888", "filer server")
 	endpoint          = flag.String("endpoint", "unix://tmp/seaweedfs-csi.sock", "CSI endpoint to accept gRPC calls")
@@ -55,12 +56,32 @@ func main() {
 		os.Exit(1)
 	}
 
+	runNode := false
+	runController := false
+	for _, c := range strings.Split(*components, ",") {
+		switch c {
+		case "controller":
+			runController = true
+		case "node":
+			runNode = true
+		default:
+			glog.Errorf("invalid component: %s", c)
+			os.Exit(1)
+		}
+	}
+
+	glog.Infof("will run node: %v, controller: %v, attacher: %v", runNode, runController, *enableAttacher)
+	if !runNode && !runController {
+		glog.Errorf("at least one component should be enabled: either controller or node (use --components=...)")
+		os.Exit(1)
+	}
+
 	glog.Infof("connect to filer %s", *filer)
 
-	drv := driver.NewSeaweedFsDriver(*filer, *nodeID, *endpoint, *enableAttacher)
+	drv := driver.NewSeaweedFsDriver(*driverName, *filer, *nodeID, *endpoint, *enableAttacher)
 
-	drv.RunNode = *runNode
-	drv.RunController = *runController
+	drv.RunNode = runNode
+	drv.RunController = runController
 
 	drv.ConcurrentWriters = *concurrentWriters
 	drv.CacheCapacityMB = *cacheCapacityMB

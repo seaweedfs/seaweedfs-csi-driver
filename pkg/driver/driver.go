@@ -16,12 +16,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/client-go/rest"
-	"k8s.io/klog"
-)
-
-const (
-	driverName = "seaweedfs-csi-driver"
 )
 
 var (
@@ -54,16 +48,16 @@ type SeaweedFsDriver struct {
 	RunController bool
 }
 
-func NewSeaweedFsDriver(filer, nodeID, endpoint string, enableAttacher bool) *SeaweedFsDriver {
+func NewSeaweedFsDriver(name, filer, nodeID, endpoint string, enableAttacher bool) *SeaweedFsDriver {
 
-	glog.Infof("Driver: %v version: %v", driverName, version)
+	glog.Infof("Driver: %v version: %v", name, version)
 
 	util.LoadConfiguration("security", false)
 
 	n := &SeaweedFsDriver{
 		endpoint:       endpoint,
 		nodeID:         nodeID,
-		name:           driverName,
+		name:           name,
 		version:        version,
 		filers:         pb.ServerAddresses(filer).ToAddresses(),
 		grpcDialOption: security.LoadClientTLS(util.GetViper(), "grpc.client"),
@@ -92,15 +86,6 @@ func NewSeaweedFsDriver(filer, nodeID, endpoint string, enableAttacher bool) *Se
 	return n
 }
 
-func (n *SeaweedFsDriver) initClient() error {
-	_, err := rest.InClusterConfig()
-	if err != nil {
-		klog.Errorf("Failed to get cluster config with error: %v\n", err)
-		os.Exit(1)
-	}
-	return nil
-}
-
 func (n *SeaweedFsDriver) Run() {
 	glog.Info("starting")
 
@@ -120,7 +105,7 @@ func (n *SeaweedFsDriver) Run() {
 		controller,
 		node)
 
-	stopChan := make(chan os.Signal)
+	stopChan := make(chan os.Signal, 1)
 	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	<-stopChan
 

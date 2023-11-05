@@ -40,12 +40,13 @@ spec:
             - --endpoint=$(CSI_ENDPOINT)
             - --filer=$(SEAWEEDFS_FILER)
             - --nodeid=$(NODE_ID)
+            - --driverName=$(DRIVER_NAME)
             - --cacheDir=/var/cache/seaweedfs
             - --dataLocality={{ .Values.dataLocality }}
             {{- if .Values.node.injectTopologyInfoFromNodeLabel.enabled }}
             - --dataCenter=$(DATACENTER)
             {{- end }}
-            - --node
+            - --components=node
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
@@ -55,6 +56,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: DRIVER_NAME
+              value: {{ .Values.driverName | quote }}
             {{- if .Values.node.injectTopologyInfoFromNodeLabel.enabled }}
             - name: DATACENTER
               valueFrom:

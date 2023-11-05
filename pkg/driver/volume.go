@@ -119,7 +119,7 @@ func (vol *Volume) Unstage(stagingTargetPath string) error {
 	}
 
 	if err := vol.unmounter.Unmount(); err != nil {
-		glog.Errorf("error unmounting volume during unstage: %s, err: %v", err)
+		glog.Errorf("error unmounting volume during unstage: %s, err: %v", stagingTargetPath, err)
 		return err
 	}
 
