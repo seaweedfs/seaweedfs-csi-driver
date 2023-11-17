@@ -49,6 +49,9 @@ spec:
             - --dataCenter=$(DATACENTER)
             {{- end }}
             - --components=node
+            {{- with .Values.concurrentWriters }}
+            - --concurrentWriters={{ . }}
+            {{- end }}
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
