@@ -5,6 +5,8 @@ isDefaultStorageClass: false
 tlsSecret: ""
 #logVerbosity: 4
 
+#concurrentWriters: 32
+
 imagePullPolicy: "IfNotPresent"
 
 #imagePullSecrets:
