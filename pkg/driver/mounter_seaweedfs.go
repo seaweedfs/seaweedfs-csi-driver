@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/datalocality"
@@ -69,12 +68,6 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 		args = append(args, "-readOnly")
 	}
 
-	// Handle volumeCapacity from controllerserver.go:51
-	if value, ok := seaweedFs.volContext["volumeCapacity"]; ok {
-		capacityMB := parseVolumeCapacity(value)
-		args = append(args, fmt.Sprintf("-collectionQuotaMB=%d", capacityMB))
-	}
-
 	// Values for override-able args
 	//  Whitelist for merging with volContext
 	argsMap := map[string]string{
@@ -126,7 +119,6 @@ func (seaweedFs *seaweedFsMounter) Mount(target string) (Unmounter, error) {
 
 	// Explicitly ignored volContext args e.g. handled somewhere else
 	ignoreArgs := []string{
-		"volumeCapacity",
 		"dataLocality",
 	}
 
@@ -184,19 +176,6 @@ func GetLocalSocket(volumeID string) string {
 
 	socket := fmt.Sprintf("/tmp/seaweedfs-mount-%d.sock", montDirHash)
 	return socket
-}
-
-func parseVolumeCapacity(volumeCapacity string) int64 {
-	var capacity int64
-
-	if vCap, err := strconv.ParseInt(volumeCapacity, 10, 64); err != nil {
-		glog.Errorf("volumeCapacity %s can not be parsed to Int64, err is: %v", volumeCapacity, err)
-	} else {
-		capacity = vCap
-	}
-
-	capacityMB := capacity / 1024 / 1024
-	return capacityMB
 }
 
 func in_arr(arr []string, val string) bool {
