@@ -80,7 +80,7 @@ func (vol *Volume) Publish(stagingTargetPath string, targetPath string, readOnly
 	return nil
 }
 
-func (vol *Volume) Expand(sizeByte int64) error {
+func (vol *Volume) Quota(sizeByte int64) error {
 	target := fmt.Sprintf("passthrough:///unix://%s", vol.localSocket)
 	dialOption := grpc.WithTransportCredentials(insecure.NewCredentials())
 

@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/k8s"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -78,6 +79,14 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
+	}
+	//k8s api get Capacity
+	if capacity, err := k8s.GetVolumeCapacity(volumeID); err == nil {
+		if err := volume.Quota(capacity); err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, err
 	}
 
 	ns.volumes.Store(volumeID, volume)
@@ -259,7 +268,7 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	defer volumeMutex.Unlock()
 
 	if volume, ok := ns.volumes.Load(volumeID); ok {
-		if err := volume.(*Volume).Expand(requiredBytes); err != nil {
+		if err := volume.(*Volume).Quota(requiredBytes); err != nil {
 			return nil, err
 		}
 	}

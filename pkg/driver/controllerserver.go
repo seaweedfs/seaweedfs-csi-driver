@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -48,10 +47,6 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 	glog.V(4).Infof("params:%v", params)
 	capacity := req.GetCapacityRange().GetRequiredBytes()
-	if capacity > 0 {
-		glog.V(4).Infof("volume capacity: %d", capacity)
-		params["volumeCapacity"] = strconv.FormatInt(capacity, 10)
-	}
 
 	if err := filer_pb.Mkdir(cs.Driver, "/buckets", volumeId, nil); err != nil {
 		return nil, fmt.Errorf("error setting bucket metadata: %v", err)
