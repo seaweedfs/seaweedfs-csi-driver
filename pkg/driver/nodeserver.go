@@ -26,6 +26,17 @@ type NodeServer struct {
 
 var _ = csi.NodeServer(&NodeServer{})
 
+func (ns *NodeServer) getVolume(volumeID string) *Volume {
+	if volume, ok := ns.volumes.Load(volumeID); ok {
+		return volume.(*Volume)
+	}
+	return nil
+}
+
+func (ns *NodeServer) setVolume(volumeID string, volume *Volume) {
+	ns.volumes.Store(volumeID, volume)
+}
+
 func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	// mount the fs here
@@ -51,24 +62,28 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	volumeMutex.Lock()
 	defer volumeMutex.Unlock()
 
+	volume := ns.getVolume(volumeID)
+	if volume == nil {
+		volume = NewVolume(volumeID)
+	}
 	// The volume has been publish.
-	if _, ok := ns.volumes.Load(volumeID); ok {
-		glog.Infof("volume %s has been already published", volumeID)
-		return &csi.NodePublishVolumeResponse{}, nil
+	for _, volumePath := range volume.volumePaths {
+		if volumePath.path == targetPath {
+			glog.Infof("volume %s has been already published", volumeID)
+			return &csi.NodePublishVolumeResponse{}, nil
+		}
 	}
 
-	volContext := req.GetVolumeContext()
-	readOnly := isVolumeReadOnly(req)
-
-	mounter, err := newMounter(volumeID, readOnly, ns.Driver, volContext)
-	if err != nil {
-		// node publish is unsuccessfull
+	volumePath := &VolumePath{path: targetPath, volumeId: volumeID}
+	if mounter, err := newMounter(volumeID, isVolumeReadOnly(req), ns.Driver, req.GetVolumeContext()); err != nil {
 		ns.removeVolumeMutex(volumeID)
 		return nil, err
+	} else {
+		volumePath.mounter = mounter
+		volume.volumePaths = append(volume.volumePaths, volumePath)
 	}
 
-	volume := NewVolume(volumeID, mounter)
-	if err := volume.Publish(targetPath); err != nil {
+	if err := volume.Publish(volumePath); err != nil {
 		// node publish is unsuccessfull
 		ns.removeVolumeMutex(volumeID)
 
@@ -89,7 +104,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, err
 	}
 
-	ns.volumes.Store(volumeID, volume)
+	ns.setVolume(volumeID, volume)
 	glog.Infof("volume %s successfully publish to %s", volumeID, targetPath)
 
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -113,18 +128,19 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	volumeMutex.Lock()
 	defer volumeMutex.Unlock()
 
-	volume, ok := ns.volumes.Load(volumeID)
-	if !ok {
+	if volume := ns.getVolume(volumeID); volume != nil {
+		if err := volume.Unpublish(targetPath); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		} else {
+			if len(volume.volumePaths) == 0 {
+				ns.volumes.Delete(volumeID)
+			}
+		}
+	} else {
 		glog.Warningf("volume %s hasn't been published", volumeID)
 
 		// make sure there is no any garbage
 		_ = mount.CleanupMountPoint(targetPath, mountutil, true)
-	} else {
-		if err := volume.(*Volume).Unpublish(targetPath); err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		} else {
-			ns.volumes.Delete(volumeID)
-		}
 	}
 
 	// remove mutex on successfull unpublish
@@ -180,8 +196,8 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 	volumeMutex.Lock()
 	defer volumeMutex.Unlock()
 
-	if volume, ok := ns.volumes.Load(volumeID); ok {
-		if err := volume.(*Volume).Quota(requiredBytes); err != nil {
+	if volume := ns.getVolume(volumeID); volume != nil {
+		if err := volume.Quota(requiredBytes); err != nil {
 			return nil, err
 		}
 	}
@@ -192,11 +208,11 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 func (ns *NodeServer) NodeCleanup() {
 	ns.volumes.Range(func(_, vol any) bool {
 		v := vol.(*Volume)
-		if len(v.TargetPath) > 0 {
-			glog.Infof("cleaning up volume %s at %s", v.VolumeId, v.TargetPath)
-			err := v.Unpublish(v.TargetPath)
+		for _, volumePath := range v.volumePaths {
+			glog.Infof("cleaning up volume %s at %s", v.VolumeId, volumePath.path)
+			err := v.Unpublish(volumePath.path)
 			if err != nil {
-				glog.Warningf("error cleaning up volume %s at %s, err: %v", v.VolumeId, v.TargetPath, err)
+				glog.Warningf("error cleaning up volume %s at %s, err: %v", v.VolumeId, volumePath.path, err)
 			}
 		}
 		return true
