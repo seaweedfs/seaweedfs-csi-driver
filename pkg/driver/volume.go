@@ -3,52 +3,48 @@ package driver
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/mount_pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"k8s.io/mount-utils"
 )
 
-type Volume struct {
-	VolumeId   string
-	TargetPath string
-
+type VolumePath struct {
+	path      string
 	mounter   Mounter
 	unmounter Unmounter
+	volumeId  string
+}
+
+type Volume struct {
+	VolumeId string
 
 	// unix socket used to manage volume
 	localSocket string
+	volumePaths []*VolumePath
 }
 
-func NewVolume(volumeID string, mounter Mounter) *Volume {
+func NewVolume(volumeID string) *Volume {
 	return &Volume{
 		VolumeId:    volumeID,
-		mounter:     mounter,
 		localSocket: GetLocalSocket(volumeID),
 	}
 }
 
-func (vol *Volume) Publish(targetPath string) error {
+func (vol *Volume) Publish(volumePath *VolumePath) error {
 	// check whether it can be mounted
-	if isMnt, err := checkMount(targetPath); err != nil {
+	if isMnt, err := checkMount(volumePath.path); err != nil {
 		return err
 	} else if isMnt {
 		// try to unmount before mounting again
-		_ = mountutil.Unmount(targetPath)
+		_ = mountutil.Unmount(volumePath.path)
 	}
 
-	if u, err := vol.mounter.Mount(targetPath); err == nil {
-		if vol.TargetPath != "" {
-			if vol.TargetPath == targetPath {
-				glog.Warningf("target path is already set to %s for volume %s", vol.TargetPath, vol.VolumeId)
-			} else {
-				glog.Warningf("target path is already set to %s and differs from %s for volume %s", vol.TargetPath, targetPath, vol.VolumeId)
-			}
-		}
-		vol.TargetPath = targetPath
-		vol.unmounter = u
+	if unmounter, err := volumePath.mounter.Mount(volumePath.path); err == nil {
+		volumePath.unmounter = unmounter
+		vol.volumePaths = append(vol.volumePaths, volumePath)
 		return nil
 	} else {
 		return err
@@ -74,25 +70,22 @@ func (vol *Volume) Quota(sizeByte int64) error {
 
 func (vol *Volume) Unpublish(targetPath string) error {
 	glog.V(0).Infof("unmounting volume %s from %s", vol.VolumeId, targetPath)
-
-	if vol.unmounter == nil {
-		glog.Errorf("volume is not mounted: %s, path: %s", vol.VolumeId, targetPath)
-		return nil
+	for index, volumePath := range vol.volumePaths {
+		if volumePath.path == targetPath {
+			vol.volumePaths = append(vol.volumePaths[:index], vol.volumePaths[index+1:]...)
+			if volumePath.unmounter != nil {
+				err := volumePath.unmounter.Unmount()
+				if err != nil {
+					glog.Errorf("error unmounting volume during unstage: %s, err: %v", targetPath, err)
+				} else { // unmount success
+					return nil
+				}
+			} else {
+				glog.Errorf("volume %s is no mounter, path: %s", vol.VolumeId, targetPath)
+			}
+			break
+		}
 	}
-
-	if targetPath != vol.TargetPath {
-		glog.Warningf("staging path %s differs for volume %s at %s", targetPath, vol.VolumeId, vol.TargetPath)
-	}
-
-	if err := vol.unmounter.Unmount(); err != nil {
-		glog.Errorf("error unmounting volume during unstage: %s, err: %v", targetPath, err)
-		return err
-	}
-
-	if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
-		glog.Errorf("error removing staging path for volume %s at %s, err: %v", vol.VolumeId, targetPath, err)
-		return err
-	}
-
-	return nil
+	glog.Warningf("volume %s cannot use unmounter, use default cleanup mount point %s", targetPath, vol.VolumeId)
+	return mount.CleanupMountPoint(targetPath, mountutil, true)
 }
