@@ -90,6 +90,11 @@ func (vol *Volume) Quota(sizeByte int64) error {
 	}
 	defer clientConn.Close()
 
+	// We can't create PV of zero size, so we're using quota of 1 byte to define no quota.
+	if sizeByte == 1 {
+		sizeByte = 0
+	}
+
 	client := mount_pb.NewSeaweedMountClient(clientConn)
 	_, err = client.Configure(context.Background(), &mount_pb.ConfigureRequest{
 		CollectionCapacity: sizeByte,

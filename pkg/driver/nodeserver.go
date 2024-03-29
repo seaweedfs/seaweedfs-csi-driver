@@ -80,7 +80,10 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	//k8s api get Capacity
+
+	// In seaweedfs quota is not configured on seaweedfs servers.
+	// Quota is applied only per mount.
+	// Previously we used to cmdline parameter to apply it, but such way does not allow dynamic resizing.
 	if capacity, err := k8s.GetVolumeCapacity(volumeID); err == nil {
 		if err := volume.Quota(capacity); err != nil {
 			return nil, err
