@@ -89,7 +89,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			return nil, err
 		}
 	} else {
-		return nil, err
+		glog.Infof("orchestration system is not compatible with the k8s api, error is: %s", err)
 	}
 
 	ns.volumes.Store(volumeID, volume)
