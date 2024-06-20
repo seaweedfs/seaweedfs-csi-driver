@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -9,11 +10,11 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-func NewInCluster() (*kubernetes.Clientset, error) {
+func newInCluster() (*kubernetes.Clientset, error) {
 	//creates the in-cluster config
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		panic(err.Error())
+		return nil, fmt.Errorf("failed to get in-cluster config: %v", err)
 	}
 
 	// creates the clientset
@@ -25,7 +26,7 @@ func NewInCluster() (*kubernetes.Clientset, error) {
 }
 
 func GetVolumeCapacity(volumeId string) (int64, error) {
-	client, err := NewInCluster()
+	client, err := newInCluster()
 	if err != nil {
 		return 0, err
 	}
