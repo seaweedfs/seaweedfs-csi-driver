@@ -8,13 +8,13 @@ require (
 	github.com/container-storage-interface/spec v1.9.0
 	golang.org/x/net v0.26.0
 	google.golang.org/grpc v1.64.0
-	k8s.io/client-go v0.30.1
+	k8s.io/client-go v0.30.2
 )
 
 require (
-	github.com/seaweedfs/seaweedfs v0.0.0-20240610181629-d2516d99cc49
-	k8s.io/apimachinery v0.30.1
-	k8s.io/mount-utils v0.30.1
+	github.com/seaweedfs/seaweedfs v0.0.0-20240620222936-73baf82f056a
+	k8s.io/apimachinery v0.30.2
+	k8s.io/mount-utils v0.30.2
 )
 
 require (
@@ -62,24 +62,24 @@ require (
 	github.com/viant/ptrie v1.0.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.24.0 // indirect
-	golang.org/x/exp v0.0.0-20240604190554-fc45aab8b7f8 // indirect
+	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8 // indirect
 	golang.org/x/image v0.17.0 // indirect
 	golang.org/x/oauth2 v0.21.0 // indirect
 	golang.org/x/sys v0.21.0 // indirect
 	golang.org/x/term v0.21.0 // indirect
 	golang.org/x/text v0.16.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240610135401-a8a62080eff3 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240617180043-68d350f18fd4 // indirect
 	google.golang.org/grpc/examples v0.0.0-20231221225426-4f03f3ff32c9 // indirect
-	google.golang.org/grpc/security/advancedtls v0.0.0-20240610182532-3267089429f8 // indirect
+	google.golang.org/grpc/security/advancedtls v0.0.0-20240621202332-c8568c99b8c5 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/api v0.30.1 // indirect
-	k8s.io/klog/v2 v2.120.1 // indirect
-	k8s.io/kube-openapi v0.0.0-20240521193020-835d969ad83a // indirect
+	k8s.io/api v0.30.2 // indirect
+	k8s.io/klog/v2 v2.130.1 // indirect
+	k8s.io/kube-openapi v0.0.0-20240620174524-b456828f718b // indirect
 	k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
