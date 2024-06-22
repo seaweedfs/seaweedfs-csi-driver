@@ -51,8 +51,6 @@ git clone https://github.com/seaweedfs/seaweedfs-csi-driver.git
 
 3. Apply the container storage interface for SeaweedFS for your cluster.  Use the '-pre-1.17' version for any cluster pre kubernetes version 1.17.
 
-<br>
-
 ### To generate an up to date manifest from the helm chart, do:
 
 ```
@@ -75,8 +73,6 @@ $ kubectl apply -f deploy/kubernetes/seaweedfs-csi.yaml
 $ kubectl get po -n kube-system
 ```
 
-<br>
-
 ### Uninstall
 
 ```
@@ -84,8 +80,6 @@ $ kubectl delete -f deploy/kubernetes/sample-busybox-pod.yaml
 $ kubectl delete -f deploy/kubernetes/sample-seaweedfs-pvc.yaml
 $ kubectl delete -f deploy/kubernetes/seaweedfs-csi.yaml
 ```
-
-<br>
 
 ## Kubernetes (helm)
 
@@ -100,15 +94,11 @@ git clone https://github.com/seaweedfs/seaweedfs-csi-driver.git
 helm install --set seaweedfsFiler=<filerHost:port> seaweedfs-csi-driver ./seaweedfs-csi-driver/deploy/helm/seaweedfs-csi-driver
 ```
 
-<br>
-
 ### Uninstall
 
 ```bash
 helm uninstall seaweedfs-csi-driver
 ```
-
-<br>
 
 # Update (Safe rollout)
 Updating seaweed-csi-driver DaemonSet (DS) will break processeses who implement fuse mount:
@@ -122,8 +112,6 @@ For safe update set `node.updateStrategy.type: OnDelete` for manual update. Step
   4. delete DS pod on node
   5. uncordon or remove taint on node
   6. repeat all steps on [all nodes]
-  
-<br>
 
 # Testing
 
@@ -143,8 +131,6 @@ $ kubectl apply -f deploy/kubernetes/sample-busybox-pod.yaml
 ```
 $ kubectl exec my-csi-app -- df -h
 ```
-
-<br>
 
 # Static and dynamic provisioning
 
@@ -207,16 +193,12 @@ spec:
       storage: 1Gi
 ```
 
-<br>
-
 # DataLocality
 
 DataLocality (inspired by [Longhorn](https://longhorn.io/docs/latest/high-availability/data-locality/)) allows instructing the storage-driver which volume-locations will be used or preferred in Pods to read & write.
 
 It auto-sets mount-options based on the location a pod is scheduled in and the locality-option wanted.
 The option can be set and overridden in *Driver*, *StorageClass* and *PersistentVolume*.
-
-<br>
 
 ## Setup
 
@@ -230,26 +212,18 @@ PersistentVolume    | `spec.csi.volumeAttributes.dataLocality`
 
 Driver < StorageClass < PersistentVolume
 
-<br>
-
 ## Available options
 
 Option                  | Effect
 ----------------------- | ------
-`none`*                 | Changes nothing
+`none` (default)                 | Changes nothing
 `write_preferLocalDc`   | Sets the `DataCenter`-mount-option to the current Node-DataCenter, making writes local and allowing reads to occur wherever read data is stored. [More Details](#`write_preferLocalDc`)
-
-\* Default
-
-<br>
 
 ## Requirements
 
 Volume-Servers and the CSI-Driver-Node need to have the locality-option `DataCenter` correctly set (currently only this option is required).
 
 This can be done manually (although quite tedious) or injected by the Container-Orchestration.
-
-<br>
 
 ### Automatic injection
 
@@ -265,12 +239,8 @@ You can activate it in the Helm-Chart `values.yaml` -> `node.injectTopologyInfoF
 
 It is recommended to use [well-known labels](https://kubernetes.io/docs/reference/labels-annotations-taints/#topologykubernetesioregion) to avoid confusion.
 
-<br>
-
 # License
 [Apache v2 license](https://www.apache.org/licenses/LICENSE-2.0)
-
-<br>
 
 # Code of conduct
 Participation in this project is governed by [Kubernetes/CNCF code of conduct](https://github.com/kubernetes/community/blob/master/code-of-conduct.md)
