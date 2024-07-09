@@ -7,7 +7,7 @@ toolchain go1.22.2
 require (
 	github.com/container-storage-interface/spec v1.9.0
 	golang.org/x/net v0.26.0
-	google.golang.org/grpc v1.64.0
+	google.golang.org/grpc v1.64.1
 	k8s.io/client-go v0.30.1
 )
 
