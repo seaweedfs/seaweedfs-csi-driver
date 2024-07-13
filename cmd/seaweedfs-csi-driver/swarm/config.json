@@ -1,0 +1,95 @@
+
+{
+  "description": "SeaweedFS csi-driver plugin for Docker",
+  "documentation": "https://github.com/seaweedfs/seaweedfs-csi-driver",
+  "entrypoint": ["/entrypoint.sh"],
+  "env": [
+    {
+      "name": "FILER",
+      "description": "Filer endpoint/s, Fromat <IP1>:<PORT>,<IP2>:<PORT2>",
+      "settable": [
+        "value"
+      ],
+      "value": ""
+    },
+    {
+      "name": "CACHE_SIZE",
+      "description": "The size of the cache to use in MB. Default: 256MB",
+      "settable": [
+        "value"
+      ],
+      "value": "256"
+    },
+    {
+      "name": "CACHE_DIR",
+      "description": "The cache directory.",
+      "settable": [
+        "value"
+      ],
+      "value": ""
+    },
+    {
+      "name": "C_WRITER",
+      "description": "Limit concurrent goroutine writers if not 0. Default 32",
+      "settable": [
+        "value"
+      ],
+      "value": ""
+    },
+    {
+      "name": "DATACENTER",
+      "description": "dataCenter this node is running in (locality-definition)",
+      "settable": [
+        "value"
+      ],
+      "value": "DefaultDataCenter"
+    },
+    {
+      "name": "UID_MAP",
+      "description": "map local uid to uid on filer, comma-separated <local_uid>:<filer_uid>",
+      "settable": [
+        "value"
+      ],
+      "value": ""
+    },
+    {
+      "name": "GID_MAP",
+      "description": "map local gid to gid on filer, comma-separated <local_gid>:<filer_gid>",
+      "settable": [
+        "value"
+      ],
+      "value": ""
+    },
+    {
+      "name": "FORCE_STAGING_SUPPORT",
+      "description": "workaround: force staging support to make Docker 23.0.0 work without https://github.com/moby/swarmkit/pull/3116",
+      "settable": ["value"],
+      "value": "true"
+    }
+  ],
+  "interface": {
+    "socket": "seaweed.sock",
+    "types": ["docker.csicontroller/1.0", "docker.csinode/1.0"]
+  },
+  "linux": {
+    "allowAllDevices": true,
+    "capabilities": ["CAP_SYS_ADMIN"],
+    "devices": [
+       {
+         "path": "/dev/fuse"
+       }
+    ]
+  },
+  "mounts": [
+    {
+      "destination": "/node_hostname",
+      "source": "/etc/hostname",
+      "type": "bind",
+      "options":["bind"]
+   }
+  ],
+  "network": {
+    "type": "host"
+  },
+  "propagatedmount": "/data/published"
+}
