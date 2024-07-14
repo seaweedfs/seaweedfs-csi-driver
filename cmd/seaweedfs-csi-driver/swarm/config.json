@@ -82,8 +82,16 @@
   },
   "mounts": [
     {
+      "description": "used to get the nodename",
       "destination": "/node_hostname",
       "source": "/etc/hostname",
+      "type": "bind",
+      "options":["bind"]
+   },
+   {
+      "description": "used for caching",
+      "destination": "/tmp",
+      "source": "/tmp",
       "type": "bind",
       "options":["bind"]
    }
