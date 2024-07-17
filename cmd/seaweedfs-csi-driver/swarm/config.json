@@ -61,14 +61,6 @@
       "value": ""
     },
     {
-      "name": "ENABLE_ATTACHER",
-      "description": "enable attacher, by default enabled for backward compatibility",
-      "settable": [
-        "value"
-      ],
-      "value": "true"
-    },
-    {
       "name": "FORCE_STAGING_SUPPORT",
       "description": "workaround: force staging support to make Docker 23.0.0 work without https://github.com/moby/swarmkit/pull/3116",
       "settable": ["value"],
