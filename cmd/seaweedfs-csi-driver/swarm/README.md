@@ -74,3 +74,5 @@ docker plugin create ${PREFIX}/${PLUGIN_NAME}:${PLUGIN_TAG} ./plugin
 docker plugin push ${PREFIX}/${PLUGIN_NAME}:${PLUGIN_TAG}
 rm -rf ./plugin/
 ```
+
+Volumes are store in the "/buckets" folder on the Seaweed server.
