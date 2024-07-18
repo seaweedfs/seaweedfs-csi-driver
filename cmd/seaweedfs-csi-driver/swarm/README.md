@@ -21,7 +21,7 @@ This Docker plugin integrates the SeaweedFS CSI-Driver with Docker. It allows yo
 | `/node_hostname`    | `/etc/hostname` | Used to get the nodename     |
 | `/tmp`              | `/tmp`          | Used for caching             |
 
-## Usag
+## Usage
 
 ```bash
 docker plugin install --disable --alias seaweedfs-csi:swarm --grant-all-permissions gradlon/swarm-csi-swaweedfs:v1.2.0
