@@ -12,7 +12,7 @@ require (
 )
 
 require (
-	github.com/seaweedfs/seaweedfs v0.0.0-20240722031351-9dd008f8f1d4
+	github.com/seaweedfs/seaweedfs v0.0.0-20240722190356-8b402fb4b956
 	k8s.io/apimachinery v0.30.3
 	k8s.io/mount-utils v0.30.3
 )
@@ -69,7 +69,7 @@ require (
 	golang.org/x/term v0.22.0 // indirect
 	golang.org/x/text v0.16.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240711142825-46eb208f015d // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240723171418-e6d459c13d2a // indirect
 	google.golang.org/grpc/examples v0.0.0-20231221225426-4f03f3ff32c9 // indirect
 	google.golang.org/grpc/security/advancedtls v1.0.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
