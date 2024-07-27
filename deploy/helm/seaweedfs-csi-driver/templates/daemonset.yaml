@@ -52,6 +52,9 @@ spec:
             {{- with .Values.concurrentWriters }}
             - --concurrentWriters={{ . }}
             {{- end }}
+            {{- with .Values.cacheCapacityMB }}
+            - --cacheCapacityMB={{ . }}
+            {{- end }}
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock

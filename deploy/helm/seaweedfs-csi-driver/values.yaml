@@ -4,6 +4,7 @@ storageClassName: seaweedfs-storage
 isDefaultStorageClass: false
 tlsSecret: ""
 #logVerbosity: 4
+#cacheCapacityMB: 0
 
 #concurrentWriters: 32
 
@@ -118,4 +119,3 @@ node:
     registration_dir: /var/lib/kubelet/plugins_registry
     plugins_dir: /var/lib/kubelet/plugins
     pods_mount_dir: /var/lib/kubelet/pods
-
