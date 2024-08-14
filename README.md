@@ -35,7 +35,6 @@
 
 ```sh
 helm repo add seaweedfs-csi-driver https://seaweedfs.github.io/seaweedfs-csi-driver/helm
-"seaweedfs-csi-driver" has been added to your repositories
 ```
 
 2. Check versions by `helm repo update seaweedfs-csi-driver` and `helm search repo seaweedfs-csi-driver`
