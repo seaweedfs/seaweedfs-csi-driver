@@ -7,12 +7,12 @@ toolchain go1.22.2
 require (
 	github.com/container-storage-interface/spec v1.10.0
 	golang.org/x/net v0.29.0
-	google.golang.org/grpc v1.67.0
+	google.golang.org/grpc v1.67.1
 	k8s.io/client-go v0.31.1
 )
 
 require (
-	github.com/seaweedfs/seaweedfs v0.0.0-20240930181838-35028818afe3
+	github.com/seaweedfs/seaweedfs v0.0.0-20241003151043-a3556acd98e9
 	k8s.io/apimachinery v0.31.1
 	k8s.io/mount-utils v0.31.1
 )
@@ -54,7 +54,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/prometheus/client_golang v1.20.4 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
-	github.com/prometheus/common v0.59.1 // indirect
+	github.com/prometheus/common v0.60.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd // indirect
 	github.com/sagikazarmark/locafero v0.6.0 // indirect
