@@ -6,13 +6,13 @@ toolchain go1.22.2
 
 require (
 	github.com/container-storage-interface/spec v1.10.0
-	golang.org/x/net v0.29.0
+	golang.org/x/net v0.30.0
 	google.golang.org/grpc v1.67.1
 	k8s.io/client-go v0.31.1
 )
 
 require (
-	github.com/seaweedfs/seaweedfs v0.0.0-20241003151043-a3556acd98e9
+	github.com/seaweedfs/seaweedfs v0.0.0-20241006195519-c0e36231ad1f
 	k8s.io/apimachinery v0.31.1
 	k8s.io/mount-utils v0.31.1
 )
@@ -70,14 +70,14 @@ require (
 	github.com/viant/ptrie v1.0.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.27.0 // indirect
-	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0 // indirect
-	golang.org/x/image v0.20.0 // indirect
+	golang.org/x/crypto v0.28.0 // indirect
+	golang.org/x/exp v0.0.0-20241004190924-225e2abe05e6 // indirect
+	golang.org/x/image v0.21.0 // indirect
 	golang.org/x/oauth2 v0.23.0 // indirect
-	golang.org/x/sys v0.25.0 // indirect
-	golang.org/x/term v0.24.0 // indirect
-	golang.org/x/text v0.18.0 // indirect
-	golang.org/x/time v0.6.0 // indirect
+	golang.org/x/sys v0.26.0 // indirect
+	golang.org/x/term v0.25.0 // indirect
+	golang.org/x/text v0.19.0 // indirect
+	golang.org/x/time v0.7.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240930140551-af27646dc61f // indirect
 	google.golang.org/grpc/examples v0.0.0-20231221225426-4f03f3ff32c9 // indirect
 	google.golang.org/grpc/security/advancedtls v1.0.0 // indirect
