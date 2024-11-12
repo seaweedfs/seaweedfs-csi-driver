@@ -1,4 +1,3 @@
-
 {
   "description": "SeaweedFS csi-driver plugin for Docker",
   "documentation": "https://github.com/seaweedfs/seaweedfs-csi-driver",
@@ -6,78 +5,76 @@
   "env": [
     {
       "name": "FILER",
-      "description": "Filer endpoint/s, Fromat <IP1>:<PORT>,<IP2>:<PORT2>",
-      "settable": [
-        "value"
-      ],
+      "description": "Filer endpoint/s, Format <IP1>:<PORT>,<IP2>:<PORT2>",
+      "settable": ["value"],
       "value": ""
     },
     {
       "name": "CACHE_SIZE",
       "description": "The size of the cache to use in MB. Default: 256MB",
-      "settable": [
-        "value"
-      ],
+      "settable": ["value"],
       "value": "256"
     },
     {
       "name": "CACHE_DIR",
-      "description": "The cache directory.",
-      "settable": [
-        "value"
-      ],
-      "value": ""
+      "description": "The cache directory with absolute path",
+      "settable": ["value"],
+      "value": "/tmp/seaweedFS/docker-csi"
     },
     {
       "name": "C_WRITER",
       "description": "Limit concurrent goroutine writers if not 0. Default 32",
-      "settable": [
-        "value"
-      ],
-      "value": ""
+      "settable": ["value"],
+      "value": "32"
     },
     {
       "name": "DATACENTER",
       "description": "dataCenter this node is running in (locality-definition)",
-      "settable": [
-        "value"
-      ],
+      "settable": ["value"],
       "value": "DefaultDataCenter"
     },
     {
       "name": "UID_MAP",
       "description": "map local uid to uid on filer, comma-separated <local_uid>:<filer_uid>",
-      "settable": [
-        "value"
-      ],
+      "settable": ["value"],
       "value": ""
     },
     {
       "name": "GID_MAP",
       "description": "map local gid to gid on filer, comma-separated <local_gid>:<filer_gid>",
-      "settable": [
-        "value"
-      ],
+      "settable": ["value"],
       "value": ""
     },
     {
-      "name": "FORCE_STAGING_SUPPORT",
-      "description": "workaround: force staging support to make Docker 23.0.0 work without https://github.com/moby/swarmkit/pull/3116",
+      "name": "MAX_RETRIES",
+      "description": "Maximum number of retry attempts for filer connection",
       "settable": ["value"],
-      "value": "true"
+      "value": "5"
+    },
+    {
+      "name": "RETRY_INTERVAL",
+      "description": "Interval between retry attempts in seconds",
+      "settable": ["value"],
+      "value": "5"
     }
   ],
   "interface": {
     "socket": "seaweed.sock",
-    "types": ["docker.csicontroller/1.0", "docker.csinode/1.0"]
+    "types": ["docker.csicontroller/2.0", "docker.csinode/2.0"]
   },
   "linux": {
     "allowAllDevices": true,
-    "capabilities": ["CAP_SYS_ADMIN"],
+    "capabilities": [
+      "CAP_SYS_ADMIN",
+      "CAP_DAC_READ_SEARCH"
+    ],
     "devices": [
-       {
-         "path": "/dev/fuse"
-       }
+      {
+        "path": "/dev/fuse",
+        "type": "c",
+        "major": 10,
+        "minor": 229
+      }
     ]
   },
   "mounts": [
@@ -86,18 +83,28 @@
       "destination": "/node_hostname",
       "source": "/etc/hostname",
       "type": "bind",
-      "options":["bind"]
-   },
-   {
+      "options": ["rbind"]
+    },
+    {
       "description": "used for caching",
       "destination": "/tmp",
       "source": "/tmp",
       "type": "bind",
-      "options":["bind"]
-   }
+      "options": ["rbind"]
+    }
   ],
   "network": {
     "type": "host"
   },
-  "propagatedmount": "/data/published"
+  "propagatedmount": "/data/published",
+  "workdir": "/",
+  "csi": {
+    "version": "1.5.0",
+    "capabilities": [
+      "STAGE_UNSTAGE_VOLUME",
+      "GET_VOLUME_STATS",
+      "EXPAND_VOLUME",
+      "ONLINE_EXPAND_VOLUME"
+    ]
+  }
 }
