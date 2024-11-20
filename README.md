@@ -92,6 +92,12 @@ git clone https://github.com/seaweedfs/seaweedfs-csi-driver.git
 ```bash
 helm install --set seaweedfsFiler=<filerHost:port> seaweedfs-csi-driver ./seaweedfs-csi-driver/deploy/helm/seaweedfs-csi-driver
 ```
+Example with multiple filers :
+```bash
+helm install seaweedfs-csi-driver ./seaweedfs-csi-driver/deploy/helm/seaweedfs-csi-driver/ \
+  --namespace seaweedfs-csi-driver \
+  --set seaweedfsFiler="<filerHost:port>\,<filerHost:port>\,<filerHost:port>\,<filerHost:port>\,<filerHost:port>"
+```
 
 ### Uninstall
 
