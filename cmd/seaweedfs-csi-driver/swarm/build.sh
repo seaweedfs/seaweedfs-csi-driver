@@ -20,7 +20,7 @@ docker container export seawadd-csi_tmp | tar -x -C ./plugin/rootfs
 docker container rm -vf seawadd-csi_tmp 
 docker image rm seawadd-csi_tmp_img 
 
-docker plugin disable gradlon/swarm-csi-swaweedfs:v1.2.0
+docker plugin disable ${PREFIX}/${PLUGIN_NAME}:${PLUGIN_TAG} 2> /dev/null || true
 docker plugin rm ${PREFIX}/${PLUGIN_NAME}:${PLUGIN_TAG} 2> /dev/null || true
 docker plugin create ${PREFIX}/${PLUGIN_NAME}:${PLUGIN_TAG} ./plugin
 docker plugin push ${PREFIX}/${PLUGIN_NAME}:${PLUGIN_TAG}
