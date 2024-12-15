@@ -224,7 +224,7 @@ spec:
             - --nodeid=$(NODE_ID)
             - --cacheDir=/var/cache/seaweedfs
             - --dataLocality=none
-            - --node
+            - --components=node
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
@@ -375,7 +375,7 @@ spec:
             - --endpoint=$(CSI_ENDPOINT)
             - --filer=$(SEAWEEDFS_FILER)
             - --nodeid=$(NODE_ID)"
-            - --controller
+            - --components=controller
             - --attacher
           env:
             - name: CSI_ENDPOINT
