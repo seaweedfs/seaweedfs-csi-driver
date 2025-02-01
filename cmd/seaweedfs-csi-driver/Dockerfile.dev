@@ -6,11 +6,15 @@ RUN mkdir -p /go/src/github.com/seaweedfs/
 RUN git clone https://github.com/seaweedfs/seaweedfs /go/src/github.com/seaweedfs/seaweedfs
 RUN cd /go/src/github.com/seaweedfs/seaweedfs/weed && go install
 
+WORKDIR /go/src/github.com/seaweedfs/seaweedfs-csi-driver
+COPY . .
+RUN cd /go/src/github.com/seaweedfs/seaweedfs-csi-driver && go build -ldflags="-s -w" -o /seaweedfs-csi-driver ./cmd/seaweedfs-csi-driver/main.go
+
 FROM alpine AS final
 RUN apk add fuse
 LABEL author="Chris Lu"
 COPY --from=builder /go/bin/weed /usr/bin/
-COPY ./_output/seaweedfs-csi-driver /seaweedfs-csi-driver
+COPY --from=builder /seaweedfs-csi-driver /
 
 RUN chmod +x /seaweedfs-csi-driver
 ENTRYPOINT ["/seaweedfs-csi-driver"]
