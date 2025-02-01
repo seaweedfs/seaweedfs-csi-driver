@@ -6,14 +6,18 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
+	"github.com/seaweedfs/seaweedfs/weed/s3api/s3bucket"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+var unsafeVolumeIdChars = regexp.MustCompile(`[^-.a-zA-Z0-9]`)
 
 type ControllerServer struct {
 	csi.UnimplementedControllerServer
@@ -26,17 +30,18 @@ var _ = csi.ControllerServer(&ControllerServer{})
 func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	glog.Infof("create volume req: %v", req.GetName())
 
-	volumeId := sanitizeVolumeId(req.GetName())
+	// Check arguments
+	suggestedVolumeId := req.GetName()
+	if suggestedVolumeId == "" {
+		return nil, status.Error(codes.InvalidArgument, "Name missing in request")
+	}
+	volumeId := sanitizeVolumeId(suggestedVolumeId)
 
 	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		glog.V(3).Infof("invalid create volume req: %v", req)
 		return nil, err
 	}
 
-	// Check arguments
-	if volumeId == "" {
-		return nil, status.Error(codes.InvalidArgument, "Name missing in request")
-	}
 	if req.GetVolumeCapabilities() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Volume Capabilities missing in request")
 	}
@@ -189,10 +194,30 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 
 func sanitizeVolumeId(volumeId string) string {
 	volumeId = strings.ToLower(volumeId)
+	// NOTE: leave original length-only logic to ensure backward compatibility with volumes
+	// that happened to work because their suggested volumeId was too long
 	if len(volumeId) > 63 {
 		h := sha1.New()
 		io.WriteString(h, volumeId)
 		volumeId = hex.EncodeToString(h.Sum(nil))
+	}
+
+	// check for a valid s3 bucket name according to the rules the filer uses
+	if s3bucket.VerifyS3BucketName(volumeId) != nil {
+		// The suggested volumeId can't be used directly. Use it to generate a new one
+		// that is compatible with our filer's name restrictions.
+		// generate a 40 hexidecimal character SHA1 hash to avoid name collisions
+		h := sha1.New()
+		io.WriteString(h, volumeId)
+		// hexidecimal encoding of sha1 is 40 characters long
+		hexhash := hex.EncodeToString(h.Sum(nil))
+		sanitized := unsafeVolumeIdChars.ReplaceAllString(volumeId, "-")
+		// 21 here is 62 - 40 characters for the hash - 1 more for the "-" we use join
+		// the sanitized ID to the hash
+		if len(sanitized) > 21 {
+			sanitized = sanitized[0:21]
+		}
+		volumeId = fmt.Sprintf("%s.%s", sanitized, hexhash)
 	}
 	return volumeId
 }
