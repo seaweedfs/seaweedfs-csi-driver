@@ -211,6 +211,8 @@ func sanitizeVolumeId(volumeId string) string {
 		io.WriteString(h, volumeId)
 		// hexidecimal encoding of sha1 is 40 characters long
 		hexhash := hex.EncodeToString(h.Sum(nil))
+		// Use only lowercase letters
+		volumeId = strings.ToLower(volumeId)
 		sanitized := unsafeVolumeIdChars.ReplaceAllString(volumeId, "-")
 		// 21 here is 62 - 40 characters for the hash - 1 more for the "-" we use join
 		// the sanitized ID to the hash
