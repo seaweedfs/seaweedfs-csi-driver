@@ -26,7 +26,15 @@ mount_options {
 
 parameters {
   # Available options: https://github.com/seaweedfs/seaweedfs-csi-driver/blob/master/pkg/driver/mounter_seaweedfs.go
+  # By default, collection is the `volume ID` returned from the Create Volume gRPC call. Nomad calls this the
+  # External ID of the volume. "example" here overrides that.
   collection = "example"
   replication = "000"
+  # By default, path is "/buckets/<volume ID>", where `volume ID` is the value returned from the Create Volume gRPC
+  # call that Nomad calls the External ID. Do not use relative paths (paths that start with something other than /)
+  # They will will not work properly.
+  # When `path` is outside of the default path - `/buckets/<volume ID>` - the default path bucket will still be
+  # created, but remain empty. Since capabilities checks are tied to the default path of the volume, they may not
+  # provide the expected results.
   path = "/buckets/example"
 }
