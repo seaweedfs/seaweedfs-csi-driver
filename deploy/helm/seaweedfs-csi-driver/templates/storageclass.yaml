@@ -9,4 +9,5 @@ metadata:
     {{- end }}
 provisioner: {{ .Values.driverName }}
 allowVolumeExpansion: true
+volumeBindingMode: {{ .Values.storageClassVolumeBindingMode | default "Immediate" }}
 {{- end }}
