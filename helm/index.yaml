@@ -3,9 +3,9 @@ entries:
   seaweedfs-csi-driver:
   - apiVersion: v2
     appVersion: latest
-    created: "2025-06-23T04:31:34.840266961Z"
+    created: "2025-07-20T07:06:57.659595117Z"
     description: A Helm chart for Kubernetes CSI backed by a SeaweedFS cluster
-    digest: ca85cb59361a58808c711f9cfaba24a18a83c705b9e61e99cdec8769e8768c30
+    digest: 3bf7f88c0bc0cdc4e58ef122eab6173f95989ede59b9557360abae9bc2e5791c
     name: seaweedfs-csi-driver
     type: application
     urls:
@@ -41,4 +41,4 @@ entries:
     urls:
     - https://seaweedfs.github.io/seaweedfs-csi-driver/helm/seaweedfs-csi-driver-0.1.3.tgz
     version: 0.1.3
-generated: "2025-06-23T04:31:34.839537608Z"
+generated: "2025-07-20T07:06:57.658670396Z"
