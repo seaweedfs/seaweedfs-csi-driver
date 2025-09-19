@@ -2,7 +2,9 @@ package driver
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -11,7 +13,7 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/mount-utils"
+	mount "k8s.io/mount-utils"
 )
 
 type NodeServer struct {
@@ -52,7 +54,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	defer volumeMutex.Unlock()
 
 	// The volume has been staged.
-	if _, ok := ns.volumes.Load(volumeID); ok {
+	if _, ok := ns.volumes.Load(volumeID); ok && ns.isStagingPathHealthy(stagingTargetPath) {
 		glog.Infof("volume %s has been already staged", volumeID)
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
@@ -127,8 +129,33 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	defer volumeMutex.Unlock()
 
 	volume, ok := ns.volumes.Load(volumeID)
-	if !ok {
-		return nil, status.Error(codes.FailedPrecondition, "volume hasn't been staged yet")
+	// Self-healing: check if staging path is healthy
+	if ns.isStagingPathHealthy(stagingTargetPath) && !ok {
+		// Rebuild volume cache from healthy staging path
+		glog.Infof("Staging path %s is healthy, rebuilding volume cache for %s", stagingTargetPath, volumeID)
+		rebuiltVolume, err := ns.rebuildVolumeFromStaging(volumeID, stagingTargetPath, req.GetVolumeContext())
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to rebuild volume cache for %s: %v", volumeID, err))
+		}
+		ns.volumes.Store(volumeID, rebuiltVolume)
+		volume = rebuiltVolume
+		glog.Infof("Self-healing completed for volume %s", volumeID)
+	} else if !ns.isStagingPathHealthy(stagingTargetPath) {
+		// Need to re-stage the volume - release mutex to avoid deadlock
+		glog.Infof("Staging path %s is unhealthy, re-staging volume %s", stagingTargetPath, volumeID)
+		volumeMutex.Unlock() // Release the mutex before re-staging
+		err := ns.restageVolume(ctx, req)
+		volumeMutex.Lock() // Re-acquire the mutex
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to re-stage volume %s: %v", volumeID, err))
+		}
+
+		// Load the newly staged volume
+		volume, ok = ns.volumes.Load(volumeID)
+		if !ok {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Volume %s not found in cache after re-staging", volumeID))
+		}
+		glog.Infof("Self-healing completed for volume %s", volumeID)
 	}
 
 	// When pod uses a volume in read-only mode, k8s will automatically
@@ -316,4 +343,115 @@ func isVolumeReadOnly(req *csi.NodeStageVolumeRequest) bool {
 	}
 
 	return false
+}
+
+// isStagingPathHealthy checks if the staging path is a healthy mount point
+func (ns *NodeServer) isStagingPathHealthy(stagingPath string) bool {
+	// Check if path exists
+	if _, err := os.Stat(stagingPath); err != nil {
+		glog.V(4).Infof("Staging path %s does not exist: %v", stagingPath, err)
+		return false
+	}
+
+	// Check if it's a mount point
+	isMnt, err := checkMount(stagingPath)
+	if err != nil {
+		glog.V(4).Infof("Failed to check if %s is mount point: %v", stagingPath, err)
+		return false
+	}
+
+	if isMnt {
+		// If it's a mount point, check if it's accessible (detect stale mounts)
+		if _, err := os.Stat(filepath.Join(stagingPath, ".")); err != nil {
+			glog.V(4).Infof("Staging path %s is stale mount point: %v", stagingPath, err)
+			return false
+		}
+		glog.V(4).Infof("Staging path %s is healthy mount point", stagingPath)
+		return true
+	} else {
+		// For SeaweedFS, staging path should always be a mount point
+		glog.V(4).Infof("Staging path %s is not a mount point", stagingPath)
+		return false
+	}
+}
+
+// rebuildVolumeFromStaging rebuilds Volume object from healthy staging path
+func (ns *NodeServer) rebuildVolumeFromStaging(volumeID string, stagingPath string, volContext map[string]string) (*Volume, error) {
+	glog.Infof("Rebuilding volume %s from staging path %s", volumeID, stagingPath)
+
+	// Create a new mounter with the same configuration
+	readOnly := false // We'll assume read-write by default since we can't easily determine this
+	mounter, err := newMounter(volumeID, readOnly, ns.Driver, volContext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create mounter for volume %s: %v", volumeID, err)
+	}
+
+	// Create Volume object
+	volume := NewVolume(volumeID, mounter)
+	volume.StagedPath = stagingPath
+
+	// We don't have the original unmounter, but that's OK for our use case
+	// The unmounter will be set when needed during unstage operations
+
+	glog.Infof("Successfully rebuilt volume %s from staging path %s", volumeID, stagingPath)
+	return volume, nil
+}
+
+// restageVolume re-stages a volume by cleaning up and re-mounting
+// This function should be called without holding the volume mutex to avoid deadlock
+func (ns *NodeServer) restageVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) error {
+	glog.Infof("Re-staging volume %s to %s", req.GetVolumeId(), req.GetStagingTargetPath())
+	volumeID := req.GetVolumeId()
+	stagingPath := req.GetStagingTargetPath()
+	// Clean up any stale mounts
+	if err := ns.cleanupStaleMount(stagingPath); err != nil {
+		return fmt.Errorf("failed to cleanup stale mount for %s: %v", stagingPath, err)
+	}
+	// Create stage request from publish request
+	stageReq := &csi.NodeStageVolumeRequest{
+		VolumeId:          req.GetVolumeId(),
+		StagingTargetPath: req.GetStagingTargetPath(),
+		VolumeCapability:  req.GetVolumeCapability(),
+		VolumeContext:     req.GetVolumeContext(),
+		Secrets:           req.GetSecrets(),
+	}
+	// Call NodeStageVolume to re-stage
+	_, err := ns.NodeStageVolume(ctx, stageReq)
+	if err != nil {
+		return fmt.Errorf("failed to re-stage volume %s: %v", volumeID, err)
+	}
+	glog.Infof("Successfully re-staged volume %s to %s", volumeID, stagingPath)
+	return nil
+}
+
+// cleanupStaleMount cleans up stale mount points
+func (ns *NodeServer) cleanupStaleMount(stagingPath string) error {
+	glog.V(4).Infof("Cleaning up stale mount at %s", stagingPath)
+
+	// Force unmount if it's a stale mount point
+	if isMnt, _ := checkMount(stagingPath); isMnt {
+		glog.Infof("Force unmounting stale mount point %s", stagingPath)
+		if err := mountutil.Unmount(stagingPath); err != nil {
+			// Try lazy unmount
+			glog.Warningf("Normal unmount failed for %s, trying lazy unmount: %v", stagingPath, err)
+			if err := mount.CleanupMountPoint(stagingPath, mountutil, true); err != nil {
+				glog.Warningf("Lazy unmount also failed for %s: %v", stagingPath, err)
+			}
+		}
+	}
+
+	// Remove directory if it exists
+	if _, err := os.Stat(stagingPath); err == nil {
+		if err := os.RemoveAll(stagingPath); err != nil {
+			return fmt.Errorf("failed to remove directory %s: %v", stagingPath, err)
+		}
+	}
+
+	// Recreate directory
+	if err := os.MkdirAll(stagingPath, 0750); err != nil {
+		return fmt.Errorf("failed to create directory %s: %v", stagingPath, err)
+	}
+
+	glog.V(4).Infof("Successfully cleaned up stale mount at %s", stagingPath)
+	return nil
 }
