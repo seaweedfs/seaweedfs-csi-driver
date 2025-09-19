@@ -126,7 +126,6 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	volumeMutex := ns.getVolumeMutex(volumeID)
 	volumeMutex.Lock()
-	defer volumeMutex.Unlock()
 
 	volume, ok := ns.volumes.Load(volumeID)
 	// Self-healing: check if staging path is healthy
@@ -143,7 +142,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	} else if !ns.isStagingPathHealthy(stagingTargetPath) {
 		// Need to re-stage the volume - release mutex to avoid deadlock
 		glog.Infof("Staging path %s is unhealthy, re-staging volume %s", stagingTargetPath, volumeID)
-		volumeMutex.Unlock() // Release the mutex before re-staging
+		volumeMutex.Unlock() // Release the mutex before re-staging because stage need lock mutex
 		err := ns.restageVolume(ctx, req)
 		volumeMutex.Lock() // Re-acquire the mutex
 		if err != nil {
@@ -165,6 +164,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	glog.Infof("volume %s successfully published to %s", volumeID, targetPath)
+	volumeMutex.Unlock()
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
