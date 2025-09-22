@@ -124,11 +124,22 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.InvalidArgument, "Staging target path missing in request")
 	}
 
+	// Handle restaging outside of the main lock to avoid deadlock
+	if !ns.isStagingPathHealthy(stagingTargetPath) {
+		glog.Infof("Staging path %s is unhealthy, re-staging volume %s", stagingTargetPath, volumeID)
+		if err := ns.restageVolume(ctx, req); err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to re-stage volume %s: %v", volumeID, err))
+		}
+		glog.Infof("Self-healing completed for volume %s", volumeID)
+	}
+
+	// Now acquire the lock for the main publishing operation
 	volumeMutex := ns.getVolumeMutex(volumeID)
 	volumeMutex.Lock()
+	defer volumeMutex.Unlock()
 
 	volume, ok := ns.volumes.Load(volumeID)
-	// Self-healing: check if staging path is healthy
+	// Self-healing: check if staging path is healthy and volume is not in cache
 	if ns.isStagingPathHealthy(stagingTargetPath) && !ok {
 		// Rebuild volume cache from healthy staging path
 		glog.Infof("Staging path %s is healthy, rebuilding volume cache for %s", stagingTargetPath, volumeID)
@@ -139,22 +150,11 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		ns.volumes.Store(volumeID, rebuiltVolume)
 		volume = rebuiltVolume
 		glog.Infof("Self-healing completed for volume %s", volumeID)
-	} else if !ns.isStagingPathHealthy(stagingTargetPath) {
-		// Need to re-stage the volume - release mutex to avoid deadlock
-		glog.Infof("Staging path %s is unhealthy, re-staging volume %s", stagingTargetPath, volumeID)
-		volumeMutex.Unlock() // Release the mutex before re-staging because stage need lock mutex
-		err := ns.restageVolume(ctx, req)
-		volumeMutex.Lock() // Re-acquire the mutex
-		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to re-stage volume %s: %v", volumeID, err))
-		}
+	}
 
-		// Load the newly staged volume
-		volume, ok = ns.volumes.Load(volumeID)
-		if !ok {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Volume %s not found in cache after re-staging", volumeID))
-		}
-		glog.Infof("Self-healing completed for volume %s", volumeID)
+	// Ensure we have a valid volume at this point
+	if volume == nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Volume %s not found in cache", volumeID))
 	}
 
 	// When pod uses a volume in read-only mode, k8s will automatically
@@ -164,7 +164,6 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	glog.Infof("volume %s successfully published to %s", volumeID, targetPath)
-	volumeMutex.Unlock()
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
