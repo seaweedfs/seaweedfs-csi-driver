@@ -143,7 +143,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if ns.isStagingPathHealthy(stagingTargetPath) && !ok {
 		// Rebuild volume cache from healthy staging path
 		glog.Infof("Staging path %s is healthy, rebuilding volume cache for %s", stagingTargetPath, volumeID)
-		rebuiltVolume, err := ns.rebuildVolumeFromStaging(volumeID, stagingTargetPath, req.GetVolumeContext())
+		rebuiltVolume, err := ns.rebuildVolumeFromStaging(volumeID, stagingTargetPath, req.GetVolumeContext(), req.GetVolumeCapability())
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to rebuild volume cache for %s: %v", volumeID, err))
 		}
@@ -375,12 +375,13 @@ func (ns *NodeServer) isStagingPathHealthy(stagingPath string) bool {
 }
 
 // rebuildVolumeFromStaging rebuilds Volume object from healthy staging path
-func (ns *NodeServer) rebuildVolumeFromStaging(volumeID string, stagingPath string, volContext map[string]string) (*Volume, error) {
+func (ns *NodeServer) rebuildVolumeFromStaging(volumeID string, stagingPath string, volContext map[string]string, volumeCapability *csi.VolumeCapability) (*Volume, error) {
 	glog.Infof("Rebuilding volume %s from staging path %s", volumeID, stagingPath)
-
+	stageReq := &csi.NodeStageVolumeRequest{
+		VolumeCapability: volumeCapability,
+	}
 	// Create a new mounter with the same configuration
-	readOnly := false // We'll assume read-write by default since we can't easily determine this
-	mounter, err := newMounter(volumeID, readOnly, ns.Driver, volContext)
+	mounter, err := newMounter(volumeID, isVolumeReadOnly(stageReq), ns.Driver, volContext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create mounter for volume %s: %v", volumeID, err)
 	}
@@ -388,9 +389,7 @@ func (ns *NodeServer) rebuildVolumeFromStaging(volumeID string, stagingPath stri
 	// Create Volume object
 	volume := NewVolume(volumeID, mounter)
 	volume.StagedPath = stagingPath
-
-	// We don't have the original unmounter, but that's OK for our use case
-	// The unmounter will be set when needed during unstage operations
+	volume.unmounter = &forceUnmounter{path: stagingPath}
 
 	glog.Infof("Successfully rebuilt volume %s from staging path %s", volumeID, stagingPath)
 	return volume, nil

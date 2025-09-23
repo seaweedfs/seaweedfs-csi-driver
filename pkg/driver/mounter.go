@@ -4,10 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"syscall"
 	"time"
-
-	"os/exec"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"k8s.io/mount-utils"
@@ -130,4 +129,13 @@ func (fu *fuseUnmounter) Unmount() error {
 	}
 
 	return fu.finish(time.Second * 5)
+}
+
+type forceUnmounter struct {
+	path string
+}
+
+func (u *forceUnmounter) Unmount() error {
+	// mountutil is a package-level variable
+	return mount.CleanupMountPoint(u.path, mountutil, true)
 }
