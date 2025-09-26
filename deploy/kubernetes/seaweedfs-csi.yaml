@@ -369,7 +369,7 @@ spec:
       serviceAccountName: seaweedfs-node-sa
       containers:
         - name: seaweedfs-mount
-          image: chrislusf/seaweedfs-mount:latest
+          image: zemiaozhou/seaweedfs-mount:latest
           imagePullPolicy: IfNotPresent
           args:
             - --endpoint=$(MOUNT_ENDPOINT)
