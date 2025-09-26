@@ -19,6 +19,7 @@ var (
 
 	filer             = flag.String("filer", "localhost:8888", "filer server")
 	endpoint          = flag.String("endpoint", "unix://tmp/seaweedfs-csi.sock", "CSI endpoint to accept gRPC calls")
+	mountEndpoint     = flag.String("mountEndpoint", "unix:///tmp/seaweedfs-mount.sock", "mount service endpoint")
 	nodeID            = flag.String("nodeid", "", "node id")
 	version           = flag.Bool("version", false, "Print the version and exit.")
 	concurrentWriters = flag.Int("concurrentWriters", 32, "limit concurrent goroutine writers if not 0")
@@ -78,7 +79,7 @@ func main() {
 
 	glog.Infof("connect to filer %s", *filer)
 
-	drv := driver.NewSeaweedFsDriver(*driverName, *filer, *nodeID, *endpoint, *enableAttacher)
+	drv := driver.NewSeaweedFsDriver(*driverName, *filer, *nodeID, *endpoint, *mountEndpoint, *enableAttacher)
 
 	drv.RunNode = runNode
 	drv.RunController = runController

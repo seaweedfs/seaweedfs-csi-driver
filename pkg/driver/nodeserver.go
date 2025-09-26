@@ -185,11 +185,12 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 // Note: The returned Volume won't have an unmounter, so Unstage will need special handling.
 func (ns *NodeServer) rebuildVolumeFromStaging(volumeID string, stagingPath string) *Volume {
 	return &Volume{
-		VolumeId:    volumeID,
-		StagedPath:  stagingPath,
-		localSocket: GetLocalSocket(volumeID),
+		VolumeId:   volumeID,
+		StagedPath: stagingPath,
+		driver:     ns.Driver,
 		// mounter and unmounter are nil - this is intentional
 		// The FUSE process is already running, we just need to track the volume
+		// The mount service will have the mount tracked if it's still alive
 	}
 }
 
@@ -344,17 +345,7 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 }
 
 func (ns *NodeServer) NodeCleanup() {
-	ns.volumes.Range(func(_, vol any) bool {
-		v := vol.(*Volume)
-		if len(v.StagedPath) > 0 {
-			glog.Infof("cleaning up volume %s at %s", v.VolumeId, v.StagedPath)
-			err := v.Unstage(v.StagedPath)
-			if err != nil {
-				glog.Warningf("error cleaning up volume %s at %s, err: %v", v.VolumeId, v.StagedPath, err)
-			}
-		}
-		return true
-	})
+	glog.Infof("node cleanup skipped; mount service retains mounts across restarts")
 }
 
 func (ns *NodeServer) getVolumeMutex(volumeID string) *sync.Mutex {
@@ -373,7 +364,7 @@ func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volCont
 		return nil, err
 	}
 
-	volume := NewVolume(volumeID, mounter)
+	volume := NewVolume(volumeID, mounter, ns.Driver)
 	if err := volume.Stage(stagingTargetPath); err != nil {
 		return nil, err
 	}
