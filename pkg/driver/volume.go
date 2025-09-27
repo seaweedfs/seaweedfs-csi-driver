@@ -1,10 +1,15 @@
 package driver
 
 import (
+	"context"
+	"fmt"
 	"os"
 
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
+	"github.com/seaweedfs/seaweedfs/weed/pb/mount_pb"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"k8s.io/mount-utils"
 )
 
@@ -14,14 +19,18 @@ type Volume struct {
 
 	mounter   Mounter
 	unmounter Unmounter
-	driver    *SeaweedFsDriver
+
+	// unix socket used to manage volume
+	localSocket string
+	driver      *SeaweedFsDriver
 }
 
 func NewVolume(volumeID string, mounter Mounter, driver *SeaweedFsDriver) *Volume {
 	return &Volume{
-		VolumeId: volumeID,
-		mounter:  mounter,
-		driver:   driver,
+		VolumeId:    volumeID,
+		mounter:     mounter,
+		localSocket: mountmanager.LocalSocketPath(volumeID),
+		driver:      driver,
 	}
 }
 
@@ -75,18 +84,22 @@ func (vol *Volume) Publish(stagingTargetPath string, targetPath string, readOnly
 }
 
 func (vol *Volume) Quota(sizeByte int64) error {
-	client, err := mountmanager.NewClient(vol.driver.mountEndpoint)
+	target := fmt.Sprintf("passthrough:///unix://%s", vol.localSocket)
+	dialOption := grpc.WithTransportCredentials(insecure.NewCredentials())
+
+	clientConn, err := grpc.Dial(target, dialOption)
 	if err != nil {
 		return err
 	}
+	defer clientConn.Close()
 
 	// We can't create PV of zero size, so we're using quota of 1 byte to define no quota.
 	if sizeByte == 1 {
 		sizeByte = 0
 	}
 
-	_, err = client.Configure(&mountmanager.ConfigureRequest{
-		VolumeID:           vol.VolumeId,
+	client := mount_pb.NewSeaweedMountClient(clientConn)
+	_, err = client.Configure(context.Background(), &mount_pb.ConfigureRequest{
 		CollectionCapacity: sizeByte,
 	})
 	return err

@@ -90,27 +90,6 @@ func main() {
 		writeJSON(w, http.StatusOK, resp)
 	})
 
-	mux.HandleFunc("/configure", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-
-		var req mountmanager.ConfigureRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid request: "+err.Error())
-			return
-		}
-
-		resp, err := manager.Configure(&req)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-
-		writeJSON(w, http.StatusOK, resp)
-	})
-
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
