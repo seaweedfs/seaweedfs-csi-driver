@@ -73,7 +73,7 @@ seaweedfsCsiPlugin:
 
 mountService:
   enabled: true
-  image:  zemiaozhou/seaweedfs-mount:latest
+  image:  chrislusf/seaweedfs-mount:latest
   endpoint: unix:///var/lib/seaweedfs-mount/seaweedfs-mount.sock
   hostPath: /var/lib/seaweedfs-mount
   socketDir: /var/lib/seaweedfs-mount

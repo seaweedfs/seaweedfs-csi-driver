@@ -17,8 +17,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Docker meta
-        id: docker_meta
+      - name: Docker meta (csi-driver)
+        id: docker_meta_csi
         uses: docker/metadata-action@v3
         with:
           images: |
@@ -30,6 +30,21 @@ jobs:
           labels: |
             org.opencontainers.image.title=seaweedfs-csi-driver
             org.opencontainers.image.description=SeaweedFS is a distributed storage system for blobs, objects, files, and data lake, to store and serve billions of files fast!
+            org.opencontainers.image.vendor=Chris Lu
+
+      - name: Docker meta (mount-service)
+        id: docker_meta_mount
+        uses: docker/metadata-action@v3
+        with:
+          images: |
+            chrislusf/seaweedfs-mount
+          tags: |
+            type=raw,value=dev
+          flavor: |
+            latest=true
+          labels: |
+            org.opencontainers.image.title=seaweedfs-mount
+            org.opencontainers.image.description=SeaweedFS CSI mount helper service
             org.opencontainers.image.vendor=Chris Lu
 
       - name: Fetch history
@@ -59,7 +74,7 @@ jobs:
           username: chrislusf
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build
+      - name: Build csi-driver image
         # if: ${{ startsWith(github.ref, 'refs/tags/') }}
         uses: docker/build-push-action@v2
         with:
@@ -67,8 +82,18 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           file: ./cmd/seaweedfs-csi-driver/Dockerfile
           platforms: linux/amd64, linux/arm, linux/arm64, linux/386
-          tags: ${{ steps.docker_meta.outputs.tags }}
-          labels: ${{ steps.docker_meta.outputs.labels }}
+          tags: ${{ steps.docker_meta_csi.outputs.tags }}
+          labels: ${{ steps.docker_meta_csi.outputs.labels }}
+
+      - name: Build mount-service image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          file: ./cmd/seaweedfs-mount/Dockerfile
+          platforms: linux/amd64, linux/arm, linux/arm64, linux/386
+          tags: ${{ steps.docker_meta_mount.outputs.tags }}
+          labels: ${{ steps.docker_meta_mount.outputs.labels }}
   helm:
     runs-on: ubuntu-latest
     steps:
