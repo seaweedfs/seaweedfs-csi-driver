@@ -71,6 +71,27 @@ seaweedfsCsiPlugin:
       add: ["SYS_ADMIN"]
     allowPrivilegeEscalation: true
 
+mountService:
+  enabled: true
+  image:  zemiaozhou/seaweedfs-mount:latest
+  endpoint: unix:///var/lib/seaweedfs-mount/seaweedfs-mount.sock
+  hostPath: /var/lib/seaweedfs-mount
+  socketDir: /var/lib/seaweedfs-mount
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+  affinity: {}
+  tolerations:
+  resources: {}
+  livenessProbe:
+    failureThreshold:
+    initialDelaySeconds: 10
+    timeoutSeconds: 3
+    periodSeconds: 60
+  priorityClassName: system-node-critical
+  serviceAccountName: ""
+
 driverName: seaweedfs-csi-driver
 
 controller:
@@ -93,6 +114,9 @@ dataLocality: "none"
 node:
   # Deploy node daemonset
   enabled: true
+  mountEndpoint: ""
+  mountSocketDir: ""
+  mountHostPath: ""
   # When seaweedfs-csi-driver-node pod on node is recreated, all pods on same node using seaweed-csi PV will stop working.
   # For safe update set updateStrategy.type: OnDelete and manually move pods who use seaweed-csi PV, then delete  seaweedfs-csi-driver-node damonset pod
   updateStrategy:
