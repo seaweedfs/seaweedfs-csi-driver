@@ -12,5 +12,5 @@ func LocalSocketPath(volumeID string) string {
 	if hash < 0 {
 		hash = -hash
 	}
-	return fmt.Sprintf("/tmp/seaweedfs-mount-%d.sock", hash)
+	return fmt.Sprintf("/var/lib/seaweedfs-mount/seaweedfs-mount-%d.sock", hash)
 }

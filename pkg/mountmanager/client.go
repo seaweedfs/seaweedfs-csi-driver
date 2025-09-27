@@ -62,15 +62,6 @@ func (c *Client) Unmount(req *UnmountRequest) (*UnmountResponse, error) {
 	return &resp, nil
 }
 
-// Configure updates runtime options such as quota for an existing mount.
-func (c *Client) Configure(req *ConfigureRequest) (*ConfigureResponse, error) {
-	var resp ConfigureResponse
-	if err := c.doPost("/configure", req, &resp); err != nil {
-		return nil, err
-	}
-	return &resp, nil
-}
-
 func (c *Client) doPost(path string, payload any, out any) error {
 	body := &bytes.Buffer{}
 	if err := json.NewEncoder(body).Encode(payload); err != nil {
