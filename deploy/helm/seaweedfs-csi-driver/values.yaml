@@ -77,6 +77,11 @@ mountService:
   endpoint: unix:///var/lib/seaweedfs-mount/seaweedfs-mount.sock
   hostPath: /var/lib/seaweedfs-mount
   socketDir: /var/lib/seaweedfs-mount
+  securityContext:
+    privileged: true
+    capabilities:
+      add: ["SYS_ADMIN"]
+    allowPrivilegeEscalation: true
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
@@ -84,11 +89,6 @@ mountService:
   affinity: {}
   tolerations:
   resources: {}
-  livenessProbe:
-    failureThreshold:
-    initialDelaySeconds: 10
-    timeoutSeconds: 3
-    periodSeconds: 60
   priorityClassName: system-node-critical
   serviceAccountName: ""
 
