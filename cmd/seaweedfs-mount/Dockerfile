@@ -1,5 +1,5 @@
 FROM golang:1.24-alpine AS builder
-
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 RUN apk add git g++
 
 RUN mkdir -p /go/src/github.com/seaweedfs/
