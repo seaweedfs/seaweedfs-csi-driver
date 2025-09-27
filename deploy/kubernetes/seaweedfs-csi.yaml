@@ -369,6 +369,12 @@ spec:
       serviceAccountName: seaweedfs-node-sa
       containers:
         - name: seaweedfs-mount
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+            privileged: true
           image: zemiaozhou/seaweedfs-mount:latest
           imagePullPolicy: IfNotPresent
           args:
@@ -376,21 +382,33 @@ spec:
           env:
             - name: MOUNT_ENDPOINT
               value: unix:///var/lib/seaweedfs-mount/seaweedfs-mount.sock
-          ports:
-            - containerPort: 9808
-              name: healthz
-              protocol: TCP
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: healthz
-            initialDelaySeconds: 10
-            timeoutSeconds: 3
-            periodSeconds: 60
           volumeMounts:
+            - name: plugins-dir
+              mountPath: /var/lib/kubelet/plugins
+              mountPropagation: "Bidirectional"
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: "Bidirectional"
+            - mountPath: /dev
+              name: device-dir
+            - name: cache
+              mountPath: /var/cache/seaweedfs
             - name: mount-socket-dir
               mountPath: /var/lib/seaweedfs-mount
       volumes:
+        - name: plugins-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins
+            type: Directory
+        - name: pods-mount-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: Directory
+        - name: device-dir
+          hostPath:
+            path: /dev
+        - name: cache
+          emptyDir: { }
         - name: mount-socket-dir
           hostPath:
             path: /var/lib/seaweedfs-mount
