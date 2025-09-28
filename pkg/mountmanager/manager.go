@@ -97,6 +97,12 @@ func (m *Manager) Unmount(req *UnmountRequest) (*UnmountResponse, error) {
 		return &UnmountResponse{}, nil
 	}
 
+	if ok, err := mountutil.IsMountPoint(entry.targetPath); ok || mount.IsCorruptedMnt(err) {
+		if err = mountutil.Unmount(entry.targetPath); err != nil {
+			return &UnmountResponse{}, err
+		}
+	}
+
 	defer os.RemoveAll(entry.cacheDir)
 
 	if err := entry.process.stop(); err != nil {
@@ -266,10 +272,6 @@ func (p *weedMountProcess) wait() {
 }
 
 func (p *weedMountProcess) stop() error {
-	if p.cmd.Process == nil {
-		return nil
-	}
-
 	if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil && err != os.ErrProcessDone {
 		glog.Warningf("sending SIGTERM to weed mount failed: %v", err)
 	}
