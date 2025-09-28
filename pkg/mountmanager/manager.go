@@ -58,7 +58,7 @@ func (m *Manager) Mount(req *MountRequest) (*MountResponse, error) {
 
 	if entry := m.getMount(req.VolumeID); entry != nil {
 		if entry.targetPath == req.TargetPath {
-			glog.V(1).Infof("volume %s already mounted at %s", req.VolumeID, req.TargetPath)
+			glog.Infof("volume %s already mounted at %s", req.VolumeID, req.TargetPath)
 			return &MountResponse{LocalSocket: entry.localSocket}, nil
 		}
 		return nil, fmt.Errorf("volume %s already mounted at %s", req.VolumeID, entry.targetPath)
@@ -73,8 +73,7 @@ func (m *Manager) Mount(req *MountRequest) (*MountResponse, error) {
 	m.mounts[req.VolumeID] = entry
 	m.mu.Unlock()
 
-	go m.watchMount(req.VolumeID, entry)
-
+	glog.Infof("started weed mount process for volume %s at %s", req.VolumeID, req.TargetPath)
 	return &MountResponse{LocalSocket: entry.localSocket}, nil
 }
 
@@ -93,7 +92,7 @@ func (m *Manager) Unmount(req *UnmountRequest) (*UnmountResponse, error) {
 
 	entry := m.removeMount(req.VolumeID)
 	if entry == nil {
-		glog.V(1).Infof("volume %s not mounted", req.VolumeID)
+		glog.Infof("volume %s not mounted", req.VolumeID)
 		return &UnmountResponse{}, nil
 	}
 
@@ -109,6 +108,7 @@ func (m *Manager) Unmount(req *UnmountRequest) (*UnmountResponse, error) {
 		return nil, err
 	}
 
+	glog.Infof("stopped weed mount process for volume %s at %s", req.VolumeID, entry.targetPath)
 	return &UnmountResponse{}, nil
 }
 
@@ -125,17 +125,6 @@ func (m *Manager) removeMount(volumeID string) *mountEntry {
 	delete(m.mounts, volumeID)
 	m.locks.delete(volumeID)
 	return entry
-}
-
-func (m *Manager) watchMount(volumeID string, entry *mountEntry) {
-	<-entry.process.done
-	m.mu.Lock()
-	current, ok := m.mounts[volumeID]
-	if ok && current == entry {
-		delete(m.mounts, volumeID)
-	}
-	m.mu.Unlock()
-	os.RemoveAll(entry.cacheDir)
 }
 
 func (m *Manager) startMount(req *MountRequest) (*mountEntry, error) {
