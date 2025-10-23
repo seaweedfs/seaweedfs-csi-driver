@@ -2,17 +2,15 @@ package driver
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-	"sync"
-
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/datalocality"
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/utils"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"k8s.io/mount-utils"
+	"os"
+	"path/filepath"
 )
 
 func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
@@ -22,7 +20,7 @@ func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
 
 	return &NodeServer{
 		Driver:        n,
-		volumeMutexes: NewKeyMutex(),
+		volumeMutexes: utils.NewKeyMutex(),
 	}
 }
 
@@ -47,16 +45,6 @@ func NewControllerServiceCapability(cap csi.ControllerServiceCapability_RPC_Type
 			},
 		},
 	}
-}
-
-func ParseEndpoint(ep string) (string, string, error) {
-	if strings.HasPrefix(strings.ToLower(ep), "unix://") || strings.HasPrefix(strings.ToLower(ep), "tcp://") {
-		s := strings.SplitN(ep, "://", 2)
-		if s[1] != "" {
-			return s[0], s[1], nil
-		}
-	}
-	return "", "", fmt.Errorf("invalid endpoint: %v", ep)
 }
 
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
@@ -103,24 +91,6 @@ func removeDirContent(path string) error {
 	}
 
 	return nil
-}
-
-type KeyMutex struct {
-	mutexes sync.Map
-}
-
-func NewKeyMutex() *KeyMutex {
-	return &KeyMutex{}
-}
-
-func (km *KeyMutex) GetMutex(key string) *sync.Mutex {
-	m, _ := km.mutexes.LoadOrStore(key, &sync.Mutex{})
-
-	return m.(*sync.Mutex)
-}
-
-func (km *KeyMutex) RemoveMutex(key string) {
-	km.mutexes.Delete(key)
 }
 
 func CheckDataLocality(dataLocality *datalocality.DataLocality, dataCenter *string) error {

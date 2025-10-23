@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/utils"
 	"net"
 	"os"
 	"sync"
@@ -56,7 +57,7 @@ func (s *nonBlockingGRPCServer) ForceStop() {
 
 func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer) {
 
-	proto, addr, err := ParseEndpoint(endpoint)
+	proto, addr, err := utils.ParseEndpoint(endpoint)
 	if err != nil {
 		glog.Fatal(err.Error())
 	}

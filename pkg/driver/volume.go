@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/mount_pb"
 	"google.golang.org/grpc"
@@ -21,13 +22,15 @@ type Volume struct {
 
 	// unix socket used to manage volume
 	localSocket string
+	driver      *SeaweedFsDriver
 }
 
-func NewVolume(volumeID string, mounter Mounter) *Volume {
+func NewVolume(volumeID string, mounter Mounter, driver *SeaweedFsDriver) *Volume {
 	return &Volume{
 		VolumeId:    volumeID,
 		mounter:     mounter,
-		localSocket: GetLocalSocket(volumeID),
+		localSocket: mountmanager.LocalSocketPath(volumeID),
+		driver:      driver,
 	}
 }
 
@@ -114,22 +117,38 @@ func (vol *Volume) Unpublish(targetPath string) error {
 func (vol *Volume) Unstage(stagingTargetPath string) error {
 	glog.V(0).Infof("unmounting volume %s from %s", vol.VolumeId, stagingTargetPath)
 
-	if vol.unmounter == nil {
-		glog.Errorf("volume is not mounted: %s, path: %s", vol.VolumeId, stagingTargetPath)
-		return nil
-	}
-
-	if stagingTargetPath != vol.StagedPath {
+	if stagingTargetPath != "" && vol.StagedPath != "" && stagingTargetPath != vol.StagedPath {
 		glog.Warningf("staging path %s differs for volume %s at %s", stagingTargetPath, vol.VolumeId, vol.StagedPath)
 	}
 
-	if err := vol.unmounter.Unmount(); err != nil {
-		glog.Errorf("error unmounting volume during unstage: %s, err: %v", stagingTargetPath, err)
+	if err := vol.detachFromMountService(); err != nil {
 		return err
 	}
 
 	if err := os.Remove(stagingTargetPath); err != nil && !os.IsNotExist(err) {
 		glog.Errorf("error removing staging path for volume %s at %s, err: %v", vol.VolumeId, stagingTargetPath, err)
+		return err
+	}
+
+	return nil
+}
+
+func (vol *Volume) detachFromMountService() error {
+	if vol.unmounter != nil {
+		if err := vol.unmounter.Unmount(); err != nil {
+			glog.Errorf("error unmounting volume %s using cached unmounter: %v", vol.VolumeId, err)
+			return err
+		}
+		return nil
+	}
+
+	client, err := mountmanager.NewClient(vol.driver.mountEndpoint)
+	if err != nil {
+		return err
+	}
+
+	if _, err := client.Unmount(&mountmanager.UnmountRequest{VolumeID: vol.VolumeId}); err != nil {
+		glog.Errorf("error unmounting volume %s via mount service: %v", vol.VolumeId, err)
 		return err
 	}
 

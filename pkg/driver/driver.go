@@ -27,7 +27,8 @@ type SeaweedFsDriver struct {
 	nodeID  string
 	version string
 
-	endpoint string
+	endpoint      string
+	mountEndpoint string
 
 	vcap  []*csi.VolumeCapability_AccessMode
 	cscap []*csi.ControllerServiceCapability
@@ -48,7 +49,7 @@ type SeaweedFsDriver struct {
 	RunController bool
 }
 
-func NewSeaweedFsDriver(name, filer, nodeID, endpoint string, enableAttacher bool) *SeaweedFsDriver {
+func NewSeaweedFsDriver(name, filer, nodeID, endpoint, mountEndpoint string, enableAttacher bool) *SeaweedFsDriver {
 
 	glog.Infof("Driver: %v version: %v", name, version)
 
@@ -56,6 +57,7 @@ func NewSeaweedFsDriver(name, filer, nodeID, endpoint string, enableAttacher boo
 
 	n := &SeaweedFsDriver{
 		endpoint:       endpoint,
+		mountEndpoint:  mountEndpoint,
 		nodeID:         nodeID,
 		name:           name,
 		version:        version,

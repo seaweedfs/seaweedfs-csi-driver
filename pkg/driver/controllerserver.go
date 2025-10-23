@@ -53,7 +53,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	glog.V(4).Infof("params:%v", params)
 	capacity := req.GetCapacityRange().GetRequiredBytes()
 
-	if err := filer_pb.Mkdir(cs.Driver, "/buckets", volumeId, nil); err != nil {
+	if err := filer_pb.Mkdir(ctx, cs.Driver, "/buckets", volumeId, nil); err != nil {
 		return nil, fmt.Errorf("error setting bucket metadata: %v", err)
 	}
 
@@ -84,7 +84,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 	glog.V(4).Infof("deleting volume %s", volumeId)
 
-	if err := filer_pb.Remove(cs.Driver, "/buckets", volumeId, true, true, true, false, nil); err != nil {
+	if err := filer_pb.Remove(ctx, cs.Driver, "/buckets", volumeId, true, true, true, false, nil); err != nil {
 		return nil, fmt.Errorf("error setting bucket metadata: %v", err)
 	}
 
@@ -135,7 +135,7 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 		return nil, status.Error(codes.InvalidArgument, "Volume capabilities missing in request")
 	}
 
-	exists, err := filer_pb.Exists(cs.Driver, "/buckets", req.GetVolumeId(), true)
+	exists, err := filer_pb.Exists(ctx, cs.Driver, "/buckets", req.GetVolumeId(), true)
 	if err != nil {
 		return nil, fmt.Errorf("error checking bucket %s exists: %v", req.GetVolumeId(), err)
 	}

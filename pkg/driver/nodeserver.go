@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/utils"
 	"os"
 	"strings"
 	"sync"
@@ -21,7 +22,7 @@ type NodeServer struct {
 
 	// information about the managed volumes
 	volumes       sync.Map
-	volumeMutexes *KeyMutex
+	volumeMutexes *utils.KeyMutex
 }
 
 var _ = csi.NodeServer(&NodeServer{})
@@ -58,7 +59,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	volContext := req.GetVolumeContext()
-	readOnly := isVolumeReadOnly(req)
+	readOnly := isReadOnlyAccessMode(req.GetVolumeCapability())
 
 	mounter, err := newMounter(volumeID, readOnly, ns.Driver, volContext)
 	if err != nil {
@@ -67,7 +68,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, err
 	}
 
-	volume := NewVolume(volumeID, mounter)
+	volume := NewVolume(volumeID, mounter, ns.Driver)
 	if err := volume.Stage(stagingTargetPath); err != nil {
 		// node stage is unsuccessfull
 		ns.removeVolumeMutex(volumeID)
@@ -128,7 +129,11 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	volume, ok := ns.volumes.Load(volumeID)
 	if !ok {
-		return nil, status.Error(codes.FailedPrecondition, "volume hasn't been staged yet")
+		restored, err := ns.ensureVolumeForPublish(req)
+		if err != nil {
+			return nil, err
+		}
+		volume = restored
 	}
 
 	// When pod uses a volume in read-only mode, k8s will automatically
@@ -139,6 +144,43 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	glog.Infof("volume %s successfully published to %s", volumeID, targetPath)
 	return &csi.NodePublishVolumeResponse{}, nil
+}
+
+func (ns *NodeServer) ensureVolumeForPublish(req *csi.NodePublishVolumeRequest) (*Volume, error) {
+	volumeID := req.GetVolumeId()
+	stagingTargetPath := req.GetStagingTargetPath()
+
+	isMounted, err := checkMount(stagingTargetPath)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if isMounted {
+		volume := NewVolume(volumeID, nil, ns.Driver)
+		volume.StagedPath = stagingTargetPath
+		ns.volumes.Store(volumeID, volume)
+		return volume, nil
+	}
+
+	readOnly := isReadOnlyAccessMode(req.GetVolumeCapability())
+	mounter, err := newMounter(volumeID, readOnly, ns.Driver, req.GetVolumeContext())
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	volume := NewVolume(volumeID, mounter, ns.Driver)
+	if err := volume.Stage(stagingTargetPath); err != nil {
+		if os.IsPermission(err) {
+			return nil, status.Error(codes.PermissionDenied, err.Error())
+		}
+		if strings.Contains(err.Error(), "invalid argument") {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	ns.volumes.Store(volumeID, volume)
+	return volume, nil
 }
 
 func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
@@ -229,19 +271,21 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	volume, ok := ns.volumes.Load(volumeID)
 	if !ok {
 		glog.Warningf("volume %s hasn't been staged", volumeID)
+		volume = NewVolume(volumeID, nil, ns.Driver)
+		volume.(*Volume).StagedPath = stagingTargetPath
+	}
 
-		// make sure there is no any garbage
-		_ = mount.CleanupMountPoint(stagingTargetPath, mountutil, true)
-	} else {
-		if err := volume.(*Volume).Unstage(stagingTargetPath); err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		} else {
-			ns.volumes.Delete(volumeID)
-		}
+	vol := volume.(*Volume)
+	if err := vol.Unstage(stagingTargetPath); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if ok {
+		ns.volumes.Delete(volumeID)
 	}
 
 	// remove mutex on successfull unstage
-	ns.volumeMutexes.RemoveMutex(volumeID)
+	ns.volumeMutexes.Delete(volumeID)
 
 	glog.Infof("volume %s successfully unstaged from %s", volumeID, stagingTargetPath)
 
@@ -263,46 +307,39 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 		return nil, status.Error(codes.InvalidArgument, "Volume path missing in request")
 	}
 
-	// TODO Check if volume exists
-	// TODO Check if node exists
-
 	volumeMutex := ns.getVolumeMutex(volumeID)
 	volumeMutex.Lock()
 	defer volumeMutex.Unlock()
 
-	if volume, ok := ns.volumes.Load(volumeID); ok {
-		if err := volume.(*Volume).Quota(requiredBytes); err != nil {
-			return nil, err
-		}
+	volume, ok := ns.volumes.Load(volumeID)
+	if !ok {
+		volume = NewVolume(volumeID, nil, ns.Driver)
+	}
+
+	if err := volume.(*Volume).Quota(requiredBytes); err != nil {
+		return nil, err
 	}
 
 	return &csi.NodeExpandVolumeResponse{}, nil
 }
 
 func (ns *NodeServer) NodeCleanup() {
-	ns.volumes.Range(func(_, vol any) bool {
-		v := vol.(*Volume)
-		if len(v.StagedPath) > 0 {
-			glog.Infof("cleaning up volume %s at %s", v.VolumeId, v.StagedPath)
-			err := v.Unstage(v.StagedPath)
-			if err != nil {
-				glog.Warningf("error cleaning up volume %s at %s, err: %v", v.VolumeId, v.StagedPath, err)
-			}
-		}
-		return true
-	})
+	glog.Infof("node cleanup skipped; mount service retains mounts across restarts")
 }
 
 func (ns *NodeServer) getVolumeMutex(volumeID string) *sync.Mutex {
-	return ns.volumeMutexes.GetMutex(volumeID)
+	return ns.volumeMutexes.Get(volumeID)
 }
 
 func (ns *NodeServer) removeVolumeMutex(volumeID string) {
-	ns.volumeMutexes.RemoveMutex(volumeID)
+	ns.volumeMutexes.Delete(volumeID)
 }
 
-func isVolumeReadOnly(req *csi.NodeStageVolumeRequest) bool {
-	mode := req.GetVolumeCapability().GetAccessMode().Mode
+func isReadOnlyAccessMode(cap *csi.VolumeCapability) bool {
+	if cap == nil {
+		return false
+	}
+	mode := cap.GetAccessMode().GetMode()
 
 	readOnlyModes := []csi.VolumeCapability_AccessMode_Mode{
 		csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,

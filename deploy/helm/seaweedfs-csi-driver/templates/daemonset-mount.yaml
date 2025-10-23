@@ -1,0 +1,78 @@
+{{- if .Values.mountService.enabled }}
+{{- $chartName := include "seaweedfs-csi-driver.name" . }}
+{{- $mountEndpoint := default .Values.mountService.endpoint .Values.node.mountEndpoint }}
+{{- $mountSocketDir := default .Values.mountService.socketDir .Values.node.mountSocketDir }}
+{{- $mountHostPath := default .Values.mountService.hostPath .Values.node.mountHostPath }}
+{{- $mountSA := default (printf "%s-node-sa" $chartName) .Values.mountService.serviceAccountName }}
+{{- $priorityClass := default "system-node-critical" .Values.mountService.priorityClassName }}
+---
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: {{ printf "%s-mount" $chartName }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ printf "%s-mount" $chartName }}
+  updateStrategy:
+    {{ toYaml .Values.mountService.updateStrategy | nindent 4 }}
+  template:
+    metadata:
+      labels:
+        app: {{ printf "%s-mount" $chartName }}
+    spec:
+      priorityClassName: {{ $priorityClass }}
+      serviceAccountName: {{ $mountSA }}
+      {{- with .Values.mountService.affinity }}
+      affinity: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mountService.tolerations }}
+      tolerations: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: seaweedfs-mount
+          securityContext: {{ toYaml .Values.mountService.securityContext | nindent 12 }}
+          image: {{ .Values.mountService.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          args:
+            - --endpoint=$(MOUNT_ENDPOINT)
+          env:
+            - name: MOUNT_ENDPOINT
+              value: {{ $mountEndpoint | quote }}
+          volumeMounts:
+            - name: plugins-dir
+              mountPath: {{ .Values.node.volumes.plugins_dir }}
+              mountPropagation: "Bidirectional"
+            - name: pods-mount-dir
+              mountPath: {{ .Values.node.volumes.pods_mount_dir }}
+              mountPropagation: "Bidirectional"
+            - name: device-dir
+              mountPath: /dev
+            - name: cache
+              mountPath: /var/cache/seaweedfs
+            {{- if and $mountEndpoint $mountSocketDir }}
+            - name: mount-socket-dir
+              mountPath: {{ $mountSocketDir }}
+            {{- end }}
+          resources: {{ toYaml .Values.mountService.resources | nindent 12 }}
+      volumes:
+        - name: plugins-dir
+          hostPath:
+            path: {{ .Values.node.volumes.plugins_dir }}
+            type: Directory
+        - name: pods-mount-dir
+          hostPath:
+            path: {{ .Values.node.volumes.pods_mount_dir }}
+            type: Directory
+        - name: device-dir
+          hostPath:
+            path: /dev
+        - name: cache
+          emptyDir: {}
+        {{- if and $mountEndpoint $mountHostPath }}
+        - name: mount-socket-dir
+          hostPath:
+            path: {{ $mountHostPath }}
+            type: DirectoryOrCreate
+        {{- end }}
+{{- end }}
