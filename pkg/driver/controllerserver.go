@@ -54,7 +54,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	capacity := req.GetCapacityRange().GetRequiredBytes()
 
 	if err := filer_pb.Mkdir(ctx, cs.Driver, "/buckets", volumeId, nil); err != nil {
-		return nil, fmt.Errorf("error setting bucket metadata: %v", err)
+		return nil, fmt.Errorf("error creating bucket: %v", err)
 	}
 
 	glog.V(4).Infof("volume created %s", volumeId)
@@ -85,7 +85,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	glog.V(4).Infof("deleting volume %s", volumeId)
 
 	if err := filer_pb.Remove(ctx, cs.Driver, "/buckets", volumeId, true, true, true, false, nil); err != nil {
-		return nil, fmt.Errorf("error setting bucket metadata: %v", err)
+		return nil, fmt.Errorf("error deleting bucket: %v", err)
 	}
 
 	return &csi.DeleteVolumeResponse{}, nil
