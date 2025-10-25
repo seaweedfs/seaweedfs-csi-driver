@@ -8,7 +8,7 @@ You can skip this part if you have already running seaweedfs.
 Assumptions:
  - Running Nomad cluster
  - At least 3 nodes with static IP addresses
- - Enabled memroy oversuscription (https://learn.hashicorp.com/tutorials/nomad/memory-oversubscription?in=nomad%2Fadvanced-scheduling)
+ - Enabled memory oversubscription (https://learn.hashicorp.com/tutorials/nomad/memory-oversubscription?in=nomad%2Fadvanced-scheduling)
  - Running PostgreSQL instance for filer
 
 ```shell
