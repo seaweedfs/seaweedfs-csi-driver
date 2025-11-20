@@ -6,7 +6,7 @@ toolchain go1.24.4
 
 require (
 	github.com/container-storage-interface/spec v1.11.0
-	golang.org/x/net v0.46.0
+	golang.org/x/net v0.47.0
 	google.golang.org/grpc v1.75.1
 	k8s.io/client-go v0.32.0
 )
@@ -66,12 +66,12 @@ require (
 	github.com/zeebo/errs v1.4.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.43.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/image v0.32.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sys v0.37.0 // indirect
-	golang.org/x/term v0.36.0 // indirect
-	golang.org/x/text v0.30.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/term v0.37.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250818200422-3122310a409c // indirect
 	google.golang.org/grpc/examples v0.0.0-20231221225426-4f03f3ff32c9 // indirect
