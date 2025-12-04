@@ -123,12 +123,7 @@ func (vol *Volume) Unstage(stagingTargetPath string) error {
 		// after a CSI driver restart. In this case, we need to force unmount.
 		glog.Infof("volume %s has no unmounter (rebuilt from existing mount), using force unmount", vol.VolumeId)
 
-		// Try to unmount the staging path
-		if err := mountutil.Unmount(stagingTargetPath); err != nil {
-			glog.Warningf("error force unmounting volume %s: %v", vol.VolumeId, err)
-		}
-
-		// Clean up using mount utilities
+		// Clean up using mount utilities. This will also handle unmounting.
 		if err := mount.CleanupMountPoint(stagingTargetPath, mountutil, true); err != nil {
 			glog.Warningf("error cleaning up mount point for volume %s: %v", vol.VolumeId, err)
 		}

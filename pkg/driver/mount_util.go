@@ -83,10 +83,14 @@ func cleanupStaleStagingPath(stagingPath string) error {
 		// If stat fails with a different error (like corrupted mount), try force cleanup
 		if mount.IsCorruptedMnt(err) {
 			// Force unmount for corrupted mounts
-			if err := mount.CleanupMountPoint(stagingPath, mountutil, true); err != nil {
-				glog.Warningf("failed to cleanup corrupted mount point %s: %v", stagingPath, err)
-				return err
+			if cleanupErr := mount.CleanupMountPoint(stagingPath, mountutil, true); cleanupErr != nil {
+				glog.Warningf("failed to cleanup corrupted mount point %s: %v", stagingPath, cleanupErr)
+				return cleanupErr
 			}
+		} else {
+			// stat failed with an unexpected error, return it
+			glog.Warningf("stat on staging path %s failed during cleanup: %v", stagingPath, err)
+			return err
 		}
 	}
 
