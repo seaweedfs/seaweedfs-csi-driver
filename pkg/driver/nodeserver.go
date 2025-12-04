@@ -380,6 +380,10 @@ func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volCont
 	if capacity, err := k8s.GetVolumeCapacity(volumeID); err == nil {
 		if err := volume.Quota(capacity); err != nil {
 			glog.Warningf("failed to apply quota for volume %s: %v", volumeID, err)
+			// Clean up the staged mount since we're returning an error
+			if unstageErr := volume.Unstage(stagingTargetPath); unstageErr != nil {
+				glog.Errorf("failed to unstage volume %s after quota failure: %v", volumeID, unstageErr)
+			}
 			return nil, err
 		}
 	} else {
