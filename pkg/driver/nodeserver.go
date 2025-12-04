@@ -150,6 +150,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 			// Clean up stale staging path if it exists
 			if err := cleanupStaleStagingPath(stagingTargetPath); err != nil {
+				ns.removeVolumeMutex(volumeID)
 				return nil, status.Errorf(codes.Internal, "failed to cleanup stale staging path %s: %v", stagingTargetPath, err)
 			}
 
@@ -159,6 +160,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 			newVolume, err := ns.stageNewVolume(volumeID, stagingTargetPath, volContext, readOnly)
 			if err != nil {
+				ns.removeVolumeMutex(volumeID)
 				return nil, status.Errorf(codes.Internal, "failed to re-stage volume: %v", err)
 			}
 
