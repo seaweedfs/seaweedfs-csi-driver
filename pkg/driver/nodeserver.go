@@ -195,7 +195,11 @@ func isPublishVolumeReadOnly(req *csi.NodePublishVolumeRequest) bool {
 	if req.GetReadonly() {
 		return true
 	}
-	return isReadOnlyAccessMode(req.GetVolumeCapability().GetAccessMode().Mode)
+	cap := req.GetVolumeCapability()
+	if cap == nil || cap.GetAccessMode() == nil {
+		return false
+	}
+	return isReadOnlyAccessMode(cap.GetAccessMode().Mode)
 }
 
 func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
@@ -400,5 +404,9 @@ func isReadOnlyAccessMode(mode csi.VolumeCapability_AccessMode_Mode) bool {
 }
 
 func isVolumeReadOnly(req *csi.NodeStageVolumeRequest) bool {
-	return isReadOnlyAccessMode(req.GetVolumeCapability().GetAccessMode().Mode)
+	cap := req.GetVolumeCapability()
+	if cap == nil || cap.GetAccessMode() == nil {
+		return false
+	}
+	return isReadOnlyAccessMode(cap.GetAccessMode().Mode)
 }
