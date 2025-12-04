@@ -74,8 +74,9 @@ func cleanupStaleStagingPath(stagingPath string) error {
 	}
 
 	// Check if directory still exists and remove it
+	// Use RemoveAll to handle cases where directory is not empty after imperfect unmount
 	if _, err := os.Stat(stagingPath); err == nil {
-		if err := os.Remove(stagingPath); err != nil {
+		if err := os.RemoveAll(stagingPath); err != nil {
 			glog.Warningf("failed to remove staging path %s: %v", stagingPath, err)
 			return err
 		}
