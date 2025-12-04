@@ -75,7 +75,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	if _, err := os.Stat(stagingTargetPath); err == nil || mount.IsCorruptedMnt(err) {
 		glog.Infof("volume %s has stale staging path at %s, cleaning up", volumeID, stagingTargetPath)
 		if err := cleanupStaleStagingPath(stagingTargetPath); err != nil {
-			glog.Warningf("failed to cleanup stale staging path %s: %v, will try to stage anyway", stagingTargetPath, err)
+			ns.removeVolumeMutex(volumeID)
+			return nil, status.Errorf(codes.Internal, "failed to cleanup stale staging path %s: %v", stagingTargetPath, err)
 		}
 	}
 
@@ -149,7 +150,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 			// Clean up stale staging path if it exists
 			if err := cleanupStaleStagingPath(stagingTargetPath); err != nil {
-				glog.Warningf("failed to cleanup stale staging path %s: %v", stagingTargetPath, err)
+				return nil, status.Errorf(codes.Internal, "failed to cleanup stale staging path %s: %v", stagingTargetPath, err)
 			}
 
 			// Re-stage the volume using the shared helper
@@ -379,6 +380,7 @@ func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volCont
 	if capacity, err := k8s.GetVolumeCapacity(volumeID); err == nil {
 		if err := volume.Quota(capacity); err != nil {
 			glog.Warningf("failed to apply quota for volume %s: %v", volumeID, err)
+			return nil, err
 		}
 	} else {
 		glog.V(4).Infof("orchestration system is not compatible with the k8s api, error is: %s", err)
