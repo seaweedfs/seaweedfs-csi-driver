@@ -82,16 +82,9 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	volContext := req.GetVolumeContext()
 	readOnly := isVolumeReadOnly(req)
 
-	mounter, err := newMounter(volumeID, readOnly, ns.Driver, volContext)
+	volume, err := ns.stageNewVolume(volumeID, stagingTargetPath, volContext, readOnly)
 	if err != nil {
-		// node stage is unsuccessfull
-		ns.removeVolumeMutex(volumeID)
-		return nil, err
-	}
-
-	volume := NewVolume(volumeID, mounter)
-	if err := volume.Stage(stagingTargetPath); err != nil {
-		// node stage is unsuccessfull
+		// node stage is unsuccessful
 		ns.removeVolumeMutex(volumeID)
 
 		if os.IsPermission(err) {
@@ -101,17 +94,6 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	// In seaweedfs quota is not configured on seaweedfs servers.
-	// Quota is applied only per mount.
-	// Previously we used to cmdline parameter to apply it, but such way does not allow dynamic resizing.
-	if capacity, err := k8s.GetVolumeCapacity(volumeID); err == nil {
-		if err := volume.Quota(capacity); err != nil {
-			return nil, err
-		}
-	} else {
-		glog.Infof("orchestration system is not compatible with the k8s api, error is: %s", err)
 	}
 
 	ns.volumes.Store(volumeID, volume)
@@ -170,25 +152,13 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 				glog.Warningf("failed to cleanup stale staging path %s: %v", stagingTargetPath, err)
 			}
 
-			// Re-stage the volume
+			// Re-stage the volume using the shared helper
 			volContext := req.GetVolumeContext()
 			readOnly := isPublishVolumeReadOnly(req)
 
-			mounter, err := newMounter(volumeID, readOnly, ns.Driver, volContext)
+			newVolume, err := ns.stageNewVolume(volumeID, stagingTargetPath, volContext, readOnly)
 			if err != nil {
-				return nil, status.Errorf(codes.Internal, "failed to create mounter for re-staging: %v", err)
-			}
-
-			newVolume := NewVolume(volumeID, mounter)
-			if err := newVolume.Stage(stagingTargetPath); err != nil {
 				return nil, status.Errorf(codes.Internal, "failed to re-stage volume: %v", err)
-			}
-
-			// Apply quota if available
-			if capacity, err := k8s.GetVolumeCapacity(volumeID); err == nil {
-				if err := newVolume.Quota(capacity); err != nil {
-					glog.Warningf("failed to apply quota during re-staging: %v", err)
-				}
 			}
 
 			ns.volumes.Store(volumeID, newVolume)
@@ -225,20 +195,7 @@ func isPublishVolumeReadOnly(req *csi.NodePublishVolumeRequest) bool {
 	if req.GetReadonly() {
 		return true
 	}
-
-	mode := req.GetVolumeCapability().GetAccessMode().Mode
-	readOnlyModes := []csi.VolumeCapability_AccessMode_Mode{
-		csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
-		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
-	}
-
-	for _, readOnlyMode := range readOnlyModes {
-		if mode == readOnlyMode {
-			return true
-		}
-	}
-
-	return false
+	return isReadOnlyAccessMode(req.GetVolumeCapability().GetAccessMode().Mode)
 }
 
 func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
@@ -401,9 +358,33 @@ func (ns *NodeServer) removeVolumeMutex(volumeID string) {
 	ns.volumeMutexes.RemoveMutex(volumeID)
 }
 
-func isVolumeReadOnly(req *csi.NodeStageVolumeRequest) bool {
-	mode := req.GetVolumeCapability().GetAccessMode().Mode
+// stageNewVolume creates and stages a new volume with the given parameters.
+// This is a helper method used by both NodeStageVolume and NodePublishVolume (for re-staging).
+func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volContext map[string]string, readOnly bool) (*Volume, error) {
+	mounter, err := newMounter(volumeID, readOnly, ns.Driver, volContext)
+	if err != nil {
+		return nil, err
+	}
 
+	volume := NewVolume(volumeID, mounter)
+	if err := volume.Stage(stagingTargetPath); err != nil {
+		return nil, err
+	}
+
+	// Apply quota if available
+	if capacity, err := k8s.GetVolumeCapacity(volumeID); err == nil {
+		if err := volume.Quota(capacity); err != nil {
+			glog.Warningf("failed to apply quota for volume %s: %v", volumeID, err)
+		}
+	} else {
+		glog.V(4).Infof("orchestration system is not compatible with the k8s api, error is: %s", err)
+	}
+
+	return volume, nil
+}
+
+// isReadOnlyAccessMode checks if the given access mode is read-only.
+func isReadOnlyAccessMode(mode csi.VolumeCapability_AccessMode_Mode) bool {
 	readOnlyModes := []csi.VolumeCapability_AccessMode_Mode{
 		csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
 		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
@@ -416,4 +397,8 @@ func isVolumeReadOnly(req *csi.NodeStageVolumeRequest) bool {
 	}
 
 	return false
+}
+
+func isVolumeReadOnly(req *csi.NodeStageVolumeRequest) bool {
+	return isReadOnlyAccessMode(req.GetVolumeCapability().GetAccessMode().Mode)
 }
