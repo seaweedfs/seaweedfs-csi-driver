@@ -125,7 +125,8 @@ func (vol *Volume) Unstage(stagingTargetPath string) error {
 
 		// Clean up using mount utilities. This will also handle unmounting.
 		if err := mount.CleanupMountPoint(stagingTargetPath, mountutil, true); err != nil {
-			glog.Warningf("error cleaning up mount point for volume %s: %v", vol.VolumeId, err)
+			glog.Errorf("error cleaning up mount point for volume %s: %v", vol.VolumeId, err)
+			return err
 		}
 
 		return nil
