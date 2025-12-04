@@ -62,20 +62,20 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	// 1. The CSI driver restarted and lost its in-memory state
 	// 2. The FUSE process died leaving a stale mount
 	if isStagingPathHealthy(stagingTargetPath) {
-		// The staging path is healthy - this means the FUSE mount is still active
-		// (possibly from before driver restart). We need to clean it up and re-stage
-		// because we don't have the unmounter reference to properly manage it.
-		glog.Infof("volume %s has existing healthy mount at %s, will re-stage to get proper control", volumeID, stagingTargetPath)
+		// The staging path is healthy - rebuild the cache from the existing mount
+		// This preserves the existing FUSE mount and avoids disrupting any published volumes
+		glog.Infof("volume %s has existing healthy mount at %s, rebuilding cache", volumeID, stagingTargetPath)
+		volume := ns.rebuildVolumeFromStaging(volumeID, stagingTargetPath)
+		ns.volumes.Store(volumeID, volume)
+		glog.Infof("volume %s cache rebuilt from existing staging at %s", volumeID, stagingTargetPath)
+		return &csi.NodeStageVolumeResponse{}, nil
+	}
+
+	// Check if there's a stale/corrupted mount that needs cleanup
+	if _, err := os.Stat(stagingTargetPath); err == nil || mount.IsCorruptedMnt(err) {
+		glog.Infof("volume %s has stale staging path at %s, cleaning up", volumeID, stagingTargetPath)
 		if err := cleanupStaleStagingPath(stagingTargetPath); err != nil {
-			glog.Warningf("failed to cleanup existing healthy staging path %s: %v, will try to stage anyway", stagingTargetPath, err)
-		}
-	} else {
-		// Check if there's a stale/corrupted mount that needs cleanup
-		if _, err := os.Stat(stagingTargetPath); err == nil || mount.IsCorruptedMnt(err) {
-			glog.Infof("volume %s has stale staging path at %s, cleaning up", volumeID, stagingTargetPath)
-			if err := cleanupStaleStagingPath(stagingTargetPath); err != nil {
-				glog.Warningf("failed to cleanup stale staging path %s: %v, will try to stage anyway", stagingTargetPath, err)
-			}
+			glog.Warningf("failed to cleanup stale staging path %s: %v, will try to stage anyway", stagingTargetPath, err)
 		}
 	}
 
