@@ -51,10 +51,32 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	volumeMutex.Lock()
 	defer volumeMutex.Unlock()
 
-	// The volume has been staged.
+	// The volume has been staged and is in memory cache.
 	if _, ok := ns.volumes.Load(volumeID); ok {
 		glog.Infof("volume %s has been already staged", volumeID)
 		return &csi.NodeStageVolumeResponse{}, nil
+	}
+
+	// Phase 2 Enhancement: Check if staging path exists but is stale/corrupted
+	// This handles cases where:
+	// 1. The CSI driver restarted and lost its in-memory state
+	// 2. The FUSE process died leaving a stale mount
+	if isStagingPathHealthy(stagingTargetPath) {
+		// The staging path is healthy - this means the FUSE mount is still active
+		// (possibly from before driver restart). We need to clean it up and re-stage
+		// because we don't have the unmounter reference to properly manage it.
+		glog.Infof("volume %s has existing healthy mount at %s, will re-stage to get proper control", volumeID, stagingTargetPath)
+		if err := cleanupStaleStagingPath(stagingTargetPath); err != nil {
+			glog.Warningf("failed to cleanup existing healthy staging path %s: %v, will try to stage anyway", stagingTargetPath, err)
+		}
+	} else {
+		// Check if there's a stale/corrupted mount that needs cleanup
+		if _, err := os.Stat(stagingTargetPath); err == nil || mount.IsCorruptedMnt(err) {
+			glog.Infof("volume %s has stale staging path at %s, cleaning up", volumeID, stagingTargetPath)
+			if err := cleanupStaleStagingPath(stagingTargetPath); err != nil {
+				glog.Warningf("failed to cleanup stale staging path %s: %v, will try to stage anyway", stagingTargetPath, err)
+			}
+		}
 	}
 
 	volContext := req.GetVolumeContext()
@@ -128,7 +150,51 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	volume, ok := ns.volumes.Load(volumeID)
 	if !ok {
-		return nil, status.Error(codes.FailedPrecondition, "volume hasn't been staged yet")
+		// Phase 1: Self-healing for missing volume cache
+		// This handles the case where the CSI driver restarted and lost its in-memory state,
+		// but kubelet thinks the volume is already staged and directly calls NodePublishVolume.
+		glog.Infof("volume %s not found in cache, attempting self-healing", volumeID)
+
+		if isStagingPathHealthy(stagingTargetPath) {
+			// The staging path is healthy - rebuild volume cache from existing mount
+			glog.Infof("volume %s has healthy staging at %s, rebuilding cache", volumeID, stagingTargetPath)
+			volume = ns.rebuildVolumeFromStaging(volumeID, stagingTargetPath)
+			ns.volumes.Store(volumeID, volume)
+		} else {
+			// The staging path is not healthy - we need to re-stage the volume
+			// This requires volume context which we have from the request
+			glog.Infof("volume %s staging path %s is not healthy, re-staging", volumeID, stagingTargetPath)
+
+			// Clean up stale staging path if it exists
+			if err := cleanupStaleStagingPath(stagingTargetPath); err != nil {
+				glog.Warningf("failed to cleanup stale staging path %s: %v", stagingTargetPath, err)
+			}
+
+			// Re-stage the volume
+			volContext := req.GetVolumeContext()
+			readOnly := isPublishVolumeReadOnly(req)
+
+			mounter, err := newMounter(volumeID, readOnly, ns.Driver, volContext)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to create mounter for re-staging: %v", err)
+			}
+
+			newVolume := NewVolume(volumeID, mounter)
+			if err := newVolume.Stage(stagingTargetPath); err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to re-stage volume: %v", err)
+			}
+
+			// Apply quota if available
+			if capacity, err := k8s.GetVolumeCapacity(volumeID); err == nil {
+				if err := newVolume.Quota(capacity); err != nil {
+					glog.Warningf("failed to apply quota during re-staging: %v", err)
+				}
+			}
+
+			ns.volumes.Store(volumeID, newVolume)
+			volume = newVolume
+			glog.Infof("volume %s successfully re-staged to %s", volumeID, stagingTargetPath)
+		}
 	}
 
 	// When pod uses a volume in read-only mode, k8s will automatically
@@ -139,6 +205,40 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	glog.Infof("volume %s successfully published to %s", volumeID, targetPath)
 	return &csi.NodePublishVolumeResponse{}, nil
+}
+
+// rebuildVolumeFromStaging creates a Volume struct from an existing healthy staging mount.
+// This is used for self-healing when the CSI driver restarts but the FUSE mount is still active.
+// Note: The returned Volume won't have an unmounter, so Unstage will need special handling.
+func (ns *NodeServer) rebuildVolumeFromStaging(volumeID string, stagingPath string) *Volume {
+	return &Volume{
+		VolumeId:    volumeID,
+		StagedPath:  stagingPath,
+		localSocket: GetLocalSocket(volumeID),
+		// mounter and unmounter are nil - this is intentional
+		// The FUSE process is already running, we just need to track the volume
+	}
+}
+
+// isPublishVolumeReadOnly determines if a volume should be mounted read-only based on the publish request.
+func isPublishVolumeReadOnly(req *csi.NodePublishVolumeRequest) bool {
+	if req.GetReadonly() {
+		return true
+	}
+
+	mode := req.GetVolumeCapability().GetAccessMode().Mode
+	readOnlyModes := []csi.VolumeCapability_AccessMode_Mode{
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,
+		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,
+	}
+
+	for _, readOnlyMode := range readOnlyModes {
+		if mode == readOnlyMode {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {

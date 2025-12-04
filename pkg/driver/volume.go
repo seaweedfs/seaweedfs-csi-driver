@@ -114,13 +114,26 @@ func (vol *Volume) Unpublish(targetPath string) error {
 func (vol *Volume) Unstage(stagingTargetPath string) error {
 	glog.V(0).Infof("unmounting volume %s from %s", vol.VolumeId, stagingTargetPath)
 
-	if vol.unmounter == nil {
-		glog.Errorf("volume is not mounted: %s, path: %s", vol.VolumeId, stagingTargetPath)
-		return nil
+	if stagingTargetPath != vol.StagedPath && vol.StagedPath != "" {
+		glog.Warningf("staging path %s differs for volume %s at %s", stagingTargetPath, vol.VolumeId, vol.StagedPath)
 	}
 
-	if stagingTargetPath != vol.StagedPath {
-		glog.Warningf("staging path %s differs for volume %s at %s", stagingTargetPath, vol.VolumeId, vol.StagedPath)
+	if vol.unmounter == nil {
+		// This can happen when the volume was rebuilt from an existing staging path
+		// after a CSI driver restart. In this case, we need to force unmount.
+		glog.Infof("volume %s has no unmounter (rebuilt from existing mount), using force unmount", vol.VolumeId)
+
+		// Try to unmount the staging path
+		if err := mountutil.Unmount(stagingTargetPath); err != nil {
+			glog.Warningf("error force unmounting volume %s: %v", vol.VolumeId, err)
+		}
+
+		// Clean up using mount utilities
+		if err := mount.CleanupMountPoint(stagingTargetPath, mountutil, true); err != nil {
+			glog.Warningf("error cleaning up mount point for volume %s: %v", vol.VolumeId, err)
+		}
+
+		return nil
 	}
 
 	if err := vol.unmounter.Unmount(); err != nil {
