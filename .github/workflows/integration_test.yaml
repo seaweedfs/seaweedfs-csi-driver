@@ -1,0 +1,228 @@
+name: CSI Integration Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build CSI driver
+        run: |
+          go build -o _output/seaweedfs-csi-driver ./cmd/seaweedfs-csi-driver
+          go build -o _output/seaweedfs-mount ./cmd/seaweedfs-mount
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: csi-test
+
+      - name: Build and load Docker images
+        run: |
+          # Build CSI driver image
+          docker build -t seaweedfs-csi-driver:test -f cmd/seaweedfs-csi-driver/Dockerfile .
+          kind load docker-image seaweedfs-csi-driver:test --name csi-test
+          
+          # Build mount service image  
+          docker build -t seaweedfs-mount:test -f cmd/seaweedfs-mount/Dockerfile .
+          kind load docker-image seaweedfs-mount:test --name csi-test
+
+      - name: Deploy SeaweedFS
+        run: |
+          # Deploy SeaweedFS using a simple manifest
+          kubectl apply -f - <<EOF
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: seaweedfs
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: seaweedfs
+            namespace: seaweedfs
+          spec:
+            ports:
+              - name: master
+                port: 9333
+              - name: volume
+                port: 8080
+              - name: filer
+                port: 8888
+              - name: filer-grpc
+                port: 18888
+              - name: s3
+                port: 8333
+            selector:
+              app: seaweedfs
+          ---
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: seaweedfs
+            namespace: seaweedfs
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: seaweedfs
+            template:
+              metadata:
+                labels:
+                  app: seaweedfs
+              spec:
+                containers:
+                  - name: seaweedfs
+                    image: chrislusf/seaweedfs:latest
+                    args:
+                      - server
+                      - -dir=/data
+                      - -s3
+                      - -filer
+                      - -volume.max=10
+                      - -master.volumeSizeLimitMB=64
+                    ports:
+                      - containerPort: 9333
+                      - containerPort: 8080
+                      - containerPort: 8888
+                      - containerPort: 18888
+                      - containerPort: 8333
+                    volumeMounts:
+                      - name: data
+                        mountPath: /data
+                volumes:
+                  - name: data
+                    emptyDir: {}
+          EOF
+          
+          # Wait for SeaweedFS to be ready
+          kubectl wait --for=condition=available --timeout=120s deployment/seaweedfs -n seaweedfs
+          kubectl get pods -n seaweedfs
+
+      - name: Deploy CSI Driver
+        run: |
+          # Create namespace
+          kubectl create namespace seaweedfs-csi || true
+          
+          # Deploy CSI driver with test images
+          cat deploy/kubernetes/seaweedfs-csi.yaml | \
+            sed 's|chrislusf/seaweedfs-csi-driver:dev|seaweedfs-csi-driver:test|g' | \
+            sed 's|chrislusf/seaweedfs-mount:dev|seaweedfs-mount:test|g' | \
+            sed 's|localhost:8888|seaweedfs.seaweedfs.svc.cluster.local:8888|g' | \
+            kubectl apply -f -
+          
+          # Wait for CSI driver pods to be ready
+          sleep 10
+          kubectl wait --for=condition=ready pod -l app=csi-seaweedfs-node -n seaweedfs-csi --timeout=120s || true
+          kubectl get pods -n seaweedfs-csi
+
+      - name: Create StorageClass and test PVC
+        run: |
+          # Create StorageClass
+          kubectl apply -f - <<EOF
+          apiVersion: storage.k8s.io/v1
+          kind: StorageClass
+          metadata:
+            name: seaweedfs-csi
+          provisioner: seaweedfs-csi-driver
+          volumeBindingMode: Immediate
+          reclaimPolicy: Delete
+          EOF
+          
+          # Create test PVC
+          kubectl apply -f - <<EOF
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: test-pvc
+          spec:
+            accessModes:
+              - ReadWriteMany
+            resources:
+              requests:
+                storage: 1Gi
+            storageClassName: seaweedfs-csi
+          EOF
+          
+          # Wait for PVC to be bound
+          kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/test-pvc --timeout=60s || {
+            echo "PVC not bound, checking events..."
+            kubectl describe pvc test-pvc
+            kubectl logs -n seaweedfs-csi -l app=csi-seaweedfs-controller --tail=50
+            exit 1
+          }
+
+      - name: Run functional test
+        run: |
+          # Create a test pod that uses the PVC
+          kubectl apply -f - <<EOF
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: test-pod
+          spec:
+            containers:
+              - name: test
+                image: busybox
+                command: ["sleep", "3600"]
+                volumeMounts:
+                  - name: data
+                    mountPath: /data
+            volumes:
+              - name: data
+                persistentVolumeClaim:
+                  claimName: test-pvc
+          EOF
+          
+          # Wait for pod to be ready
+          kubectl wait --for=condition=ready pod/test-pod --timeout=120s || {
+            echo "Pod not ready, checking status..."
+            kubectl describe pod test-pod
+            kubectl logs -n seaweedfs-csi -l app=csi-seaweedfs-node --tail=100
+            exit 1
+          }
+          
+          # Test write
+          kubectl exec test-pod -- sh -c 'echo "Hello SeaweedFS CSI" > /data/test.txt'
+          
+          # Test read
+          kubectl exec test-pod -- cat /data/test.txt | grep "Hello SeaweedFS CSI"
+          
+          # Test file listing
+          kubectl exec test-pod -- ls -la /data/
+          
+          echo "✅ Functional test passed!"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          kubectl delete pod test-pod --ignore-not-found
+          kubectl delete pvc test-pvc --ignore-not-found
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          echo "=== CSI Controller Logs ==="
+          kubectl logs -n seaweedfs-csi -l app=csi-seaweedfs-controller --tail=200 || true
+          echo "=== CSI Node Logs ==="
+          kubectl logs -n seaweedfs-csi -l app=csi-seaweedfs-node --tail=200 || true
+          echo "=== Mount Service Logs ==="
+          kubectl logs -n seaweedfs-csi -l app=seaweedfs-mount --tail=200 || true
+          echo "=== SeaweedFS Logs ==="
+          kubectl logs -n seaweedfs -l app=seaweedfs --tail=200 || true
+          echo "=== All Pods ==="
+          kubectl get pods -A
+          echo "=== Events ==="
+          kubectl get events --sort-by='.lastTimestamp' | tail -50
+
