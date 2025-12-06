@@ -62,7 +62,9 @@ func NewSeaweedFsDriver(name, filer, nodeID, endpoint, mountEndpoint string, ena
 	volumeSocketDir := mountmanager.DefaultSocketDir
 	if mountEndpoint != "" {
 		_, address, err := mountmanager.ParseEndpoint(mountEndpoint)
-		if err == nil && address != "" {
+		if err != nil {
+			glog.Warningf("invalid mount endpoint %q, using default socket directory %q: %v", mountEndpoint, volumeSocketDir, err)
+		} else if address != "" {
 			volumeSocketDir = filepath.Dir(address)
 		}
 	}
