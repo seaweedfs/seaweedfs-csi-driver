@@ -140,7 +140,7 @@ func (m *Manager) startMount(req *MountRequest) (*mountEntry, error) {
 	if cacheDir == "" {
 		return nil, errors.New("cacheDir is required")
 	}
-	if err := os.MkdirAll(cacheDir, 0750); err != nil {
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		return nil, fmt.Errorf("creating cache dir: %w", err)
 	}
 
@@ -189,7 +189,7 @@ func ensureTargetClean(targetPath string) error {
 	}
 
 	// Ensure the path exists and is a directory.
-	return os.MkdirAll(targetPath, 0750)
+	return os.MkdirAll(targetPath, 0755)
 }
 
 func validateMountRequest(req *MountRequest) error {
@@ -266,7 +266,7 @@ func (p *weedMountProcess) wait() {
 }
 
 func (p *weedMountProcess) stop() error {
-	if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil && err != os.ErrProcessDone {
+	if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		glog.Warningf("sending SIGTERM to weed mount failed: %v", err)
 	}
 
@@ -276,7 +276,7 @@ func (p *weedMountProcess) stop() error {
 	case <-time.After(5 * time.Second):
 	}
 
-	if err := p.cmd.Process.Kill(); err != nil && err != os.ErrProcessDone {
+	if err := p.cmd.Process.Kill(); err != nil {
 		glog.Warningf("killing weed mount failed: %v", err)
 	}
 
