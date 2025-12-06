@@ -71,15 +71,16 @@ seaweedfsCsiPlugin:
       add: ["SYS_ADMIN"]
     allowPrivilegeEscalation: true
 
-# Mount Service Configuration
+# Mount Service Configuration (opt-in feature)
 # The mount service runs as a separate DaemonSet to provide mount resilience.
 # When enabled, FUSE mounts survive CSI driver restarts/upgrades.
 # The node.mountEndpoint, node.mountSocketDir, and node.mountHostPath values
 # default to the corresponding mountService.* values when left empty.
+# NOTE: Enabling this deploys an additional DaemonSet with privileged containers.
 mountService:
-  # Set to true (default) for mount resilience - mounts survive CSI driver restarts
-  # Set to false to disable the separate mount service (mounts managed by CSI driver directly)
-  enabled: true
+  # Set to true for mount resilience - mounts survive CSI driver restarts
+  # Set to false (default) to disable the separate mount service (mounts managed by CSI driver directly)
+  enabled: false
   image:  chrislusf/seaweedfs-mount:dev
   # Endpoint for communication between CSI driver and mount service
   endpoint: unix:///var/lib/seaweedfs-mount/seaweedfs-mount.sock
