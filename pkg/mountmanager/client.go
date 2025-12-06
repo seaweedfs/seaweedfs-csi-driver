@@ -85,7 +85,10 @@ func (c *Client) doPost(path string, payload any, out any) error {
 		if err := json.NewDecoder(resp.Body).Decode(&errResp); err == nil && errResp.Error != "" {
 			return errors.New(errResp.Error)
 		}
-		data, _ := io.ReadAll(resp.Body)
+		data, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("mount service error: %s (failed to read body: %v)", resp.Status, readErr)
+		}
 		return fmt.Errorf("mount service error: %s (%s)", resp.Status, string(data))
 	}
 
