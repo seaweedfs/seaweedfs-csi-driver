@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/mount_pb"
 	"google.golang.org/grpc"
@@ -21,13 +22,15 @@ type Volume struct {
 
 	// unix socket used to manage volume
 	localSocket string
+	driver      *SeaweedFsDriver
 }
 
-func NewVolume(volumeID string, mounter Mounter) *Volume {
+func NewVolume(volumeID string, mounter Mounter, driver *SeaweedFsDriver) *Volume {
 	return &Volume{
 		VolumeId:    volumeID,
 		mounter:     mounter,
-		localSocket: GetLocalSocket(volumeID),
+		localSocket: mountmanager.LocalSocketPath(driver.volumeSocketDir, volumeID),
+		driver:      driver,
 	}
 }
 
