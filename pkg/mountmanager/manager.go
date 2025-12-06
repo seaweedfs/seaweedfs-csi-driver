@@ -261,7 +261,9 @@ func startWeedMountProcess(command string, args []string, target string, volumeI
 	go process.wait()
 
 	if err := waitForMount(target, 10*time.Second); err != nil {
-		_ = process.stop()
+		if stopErr := process.stop(); stopErr != nil {
+			glog.Warningf("[%s] failed to stop mount process after mount wait failure: %v", volumeID, stopErr)
+		}
 		return nil, err
 	}
 
@@ -275,6 +277,7 @@ func (p *weedMountProcess) wait() {
 		glog.Infof("weed mount exit (pid: %d, target: %s)", p.cmd.Process.Pid, p.target)
 	}
 
+	// Brief delay to allow FUSE cleanup and pending I/O to complete before unmounting
 	time.Sleep(100 * time.Millisecond)
 	_ = kubeMounter.Unmount(p.target)
 
