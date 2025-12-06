@@ -116,11 +116,13 @@ jobs:
           for i in {1..30}; do
             if kubectl exec -n seaweedfs deploy/seaweedfs -- wget -q -O- http://localhost:8888/; then
               echo "SeaweedFS filer is ready"
-              break
+              exit 0
             fi
             echo "Waiting for filer... ($i/30)"
             sleep 2
           done
+          echo "SeaweedFS filer did not become ready in time"
+          exit 1
 
       - name: Deploy CSI Driver
         run: |
@@ -132,11 +134,11 @@ jobs:
             sed 's|SEAWEEDFS_FILER:8888|seaweedfs.seaweedfs.svc.cluster.local:8888|g' | \
             kubectl apply -f -
           
-          # Wait for CSI driver pods to be ready
+          # Wait for CSI driver pods to be ready (fail fast if they don't start)
           sleep 15
-          kubectl wait --for=condition=ready pod -l app=seaweedfs-controller --timeout=120s || true
-          kubectl wait --for=condition=ready pod -l app=seaweedfs-node --timeout=120s || true
-          kubectl wait --for=condition=ready pod -l app=seaweedfs-mount --timeout=120s || true
+          kubectl wait --for=condition=ready pod -l app=seaweedfs-controller --timeout=120s
+          kubectl wait --for=condition=ready pod -l app=seaweedfs-node --timeout=120s
+          kubectl wait --for=condition=ready pod -l app=seaweedfs-mount --timeout=120s
           kubectl get pods -l 'app in (seaweedfs-controller,seaweedfs-node,seaweedfs-mount)'
 
       - name: Create StorageClass and test PVC
