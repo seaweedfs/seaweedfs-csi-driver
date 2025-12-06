@@ -172,22 +172,23 @@ func (m *Manager) startMount(req *MountRequest) (*mountEntry, error) {
 }
 
 func ensureTargetClean(targetPath string) error {
-	isMount, err := kubeMounter.IsMountPoint(targetPath)
+	// Use IsLikelyNotMountPoint instead of deprecated IsMountPoint
+	notMnt, err := kubeMounter.IsLikelyNotMountPoint(targetPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Path does not exist, which is a clean state. Directory will be created below.
 		} else if mount.IsCorruptedMnt(err) {
 			glog.Warningf("Target path %s is a corrupted mount, attempting to unmount", targetPath)
-			if err := kubeMounter.Unmount(targetPath); err != nil {
-				return fmt.Errorf("failed to unmount corrupted mount %s: %w", targetPath, err)
+			if unmountErr := kubeMounter.Unmount(targetPath); unmountErr != nil {
+				return fmt.Errorf("failed to unmount corrupted mount %s: %w", targetPath, unmountErr)
 			}
 		} else {
 			return err
 		}
-	} else if isMount {
+	} else if !notMnt {
 		glog.Infof("Target path %s is an existing mount, attempting to unmount", targetPath)
-		if err := kubeMounter.Unmount(targetPath); err != nil {
-			return fmt.Errorf("failed to unmount existing mount %s: %w", targetPath, err)
+		if unmountErr := kubeMounter.Unmount(targetPath); unmountErr != nil {
+			return fmt.Errorf("failed to unmount existing mount %s: %w", targetPath, unmountErr)
 		}
 	}
 
