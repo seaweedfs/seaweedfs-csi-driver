@@ -48,47 +48,8 @@ func main() {
 	manager := mountmanager.NewManager(mountmanager.Config{WeedBinary: *weedBinary})
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/mount", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-
-		var req mountmanager.MountRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid request: "+err.Error())
-			return
-		}
-
-		resp, err := manager.Mount(&req)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-
-		writeJSON(w, http.StatusOK, resp)
-	})
-
-	mux.HandleFunc("/unmount", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-
-		var req mountmanager.UnmountRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid request: "+err.Error())
-			return
-		}
-
-		resp, err := manager.Unmount(&req)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-
-		writeJSON(w, http.StatusOK, resp)
-	})
+	mux.HandleFunc("/mount", makePostHandler(manager.Mount))
+	mux.HandleFunc("/unmount", makePostHandler(manager.Unmount))
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -129,4 +90,29 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, mountmanager.ErrorResponse{Error: message})
+}
+
+// makePostHandler creates a generic HTTP POST handler that decodes JSON request,
+// calls the manager function, and encodes the JSON response.
+func makePostHandler[Req any, Resp any](managerFunc func(*Req) (*Resp, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+
+		var req Req
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request: "+err.Error())
+			return
+		}
+
+		resp, err := managerFunc(&req)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
 }
