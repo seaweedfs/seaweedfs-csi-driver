@@ -99,22 +99,15 @@ jobs:
                       - containerPort: 8888
                       - containerPort: 18888
                       - containerPort: 8333
+                    # Readiness probe checks filer is responding
                     readinessProbe:
                       httpGet:
                         path: /
                         port: 8888
-                      initialDelaySeconds: 10
+                      initialDelaySeconds: 15
                       periodSeconds: 5
                       timeoutSeconds: 5
                       failureThreshold: 30
-                    livenessProbe:
-                      httpGet:
-                        path: /cluster/healthz
-                        port: 9333
-                      initialDelaySeconds: 20
-                      periodSeconds: 10
-                      timeoutSeconds: 5
-                      failureThreshold: 3
                     volumeMounts:
                       - name: data
                         mountPath: /data
