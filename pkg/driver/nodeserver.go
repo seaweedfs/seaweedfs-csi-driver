@@ -8,6 +8,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/k8s"
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -185,9 +186,10 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 // Note: The returned Volume won't have an unmounter, so Unstage will need special handling.
 func (ns *NodeServer) rebuildVolumeFromStaging(volumeID string, stagingPath string) *Volume {
 	return &Volume{
-		VolumeId:   volumeID,
-		StagedPath: stagingPath,
-		driver:     ns.Driver,
+		VolumeId:    volumeID,
+		StagedPath:  stagingPath,
+		driver:      ns.Driver,
+		localSocket: mountmanager.LocalSocketPath(ns.Driver.volumeSocketDir, volumeID),
 		// mounter and unmounter are nil - this is intentional
 		// The FUSE process is already running, we just need to track the volume
 		// The mount service will have the mount tracked if it's still alive
