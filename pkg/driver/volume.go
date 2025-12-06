@@ -29,7 +29,7 @@ func NewVolume(volumeID string, mounter Mounter, driver *SeaweedFsDriver) *Volum
 	return &Volume{
 		VolumeId:    volumeID,
 		mounter:     mounter,
-		localSocket: mountmanager.LocalSocketPath(volumeID),
+		localSocket: mountmanager.LocalSocketPath(driver.volumeSocketDir, volumeID),
 		driver:      driver,
 	}
 }

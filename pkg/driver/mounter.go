@@ -68,7 +68,7 @@ func (m *mountServiceMounter) Mount(target string) (Unmounter, error) {
 		cacheBase = os.TempDir()
 	}
 	cacheDir := filepath.Join(cacheBase, m.volumeID)
-	localSocket := mountmanager.LocalSocketPath(m.volumeID)
+	localSocket := mountmanager.LocalSocketPath(m.driver.volumeSocketDir, m.volumeID)
 
 	args, err := m.buildMountArgs(target, cacheDir, localSocket, filers)
 	if err != nil {

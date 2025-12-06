@@ -98,7 +98,7 @@ func (m *Manager) Unmount(req *UnmountRequest) (*UnmountResponse, error) {
 
 	if ok, err := kubeMounter.IsMountPoint(entry.targetPath); ok || mount.IsCorruptedMnt(err) {
 		if err = kubeMounter.Unmount(entry.targetPath); err != nil {
-			return &UnmountResponse{}, err
+			return nil, err
 		}
 	}
 
