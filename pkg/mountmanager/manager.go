@@ -1,8 +1,10 @@
 package mountmanager
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -90,7 +92,8 @@ func (m *Manager) Unmount(req *UnmountRequest) (*UnmountResponse, error) {
 	lock.Lock()
 	defer lock.Unlock()
 
-	entry := m.removeMount(req.VolumeID)
+	// Use getMount first to check if mounted, only remove from state after cleanup succeeds
+	entry := m.getMount(req.VolumeID)
 	if entry == nil {
 		glog.Infof("volume %s not mounted", req.VolumeID)
 		return &UnmountResponse{}, nil
@@ -110,6 +113,9 @@ func (m *Manager) Unmount(req *UnmountRequest) (*UnmountResponse, error) {
 	if err := os.RemoveAll(entry.cacheDir); err != nil {
 		glog.Warningf("failed to remove cache dir %s for volume %s: %v", entry.cacheDir, req.VolumeID, err)
 	}
+
+	// Only remove from state after all cleanup operations succeeded
+	m.removeMount(req.VolumeID)
 
 	glog.Infof("stopped weed mount process for volume %s at %s", req.VolumeID, entry.targetPath)
 	return &UnmountResponse{}, nil
@@ -154,7 +160,7 @@ func (m *Manager) startMount(req *MountRequest) (*mountEntry, error) {
 		return nil, errors.New("mountArgs is required")
 	}
 
-	process, err := startWeedMountProcess(m.weedBinary, args, targetPath)
+	process, err := startWeedMountProcess(m.weedBinary, args, targetPath, req.VolumeID)
 	if err != nil {
 		return nil, err
 	}
@@ -225,16 +231,28 @@ type weedMountProcess struct {
 	done   chan struct{}
 }
 
-func startWeedMountProcess(command string, args []string, target string) (*weedMountProcess, error) {
+func startWeedMountProcess(command string, args []string, target string, volumeID string) (*weedMountProcess, error) {
 	cmd := exec.Command(command, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 
-	glog.V(0).Infof("Starting weed mount: %s %s", command, strings.Join(args, " "))
+	// Capture stdout/stderr and log with volume ID prefix for better debugging
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("creating stdout pipe: %w", err)
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("creating stderr pipe: %w", err)
+	}
+
+	glog.V(0).Infof("[%s] Starting weed mount: %s %s", volumeID, command, strings.Join(args, " "))
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("starting weed mount: %w", err)
 	}
+
+	// Forward stdout/stderr with volume ID prefix for better debugging
+	go forwardLogs(stdoutPipe, volumeID, "stdout")
+	go forwardLogs(stderrPipe, volumeID, "stderr")
 
 	process := &weedMountProcess{
 		cmd:    cmd,
@@ -306,5 +324,16 @@ func waitForMount(path string, timeout time.Duration) error {
 		if elapsed >= timeout {
 			return errors.New("timeout waiting for mount")
 		}
+	}
+}
+
+// forwardLogs reads from a pipe and logs each line with a volume ID prefix.
+func forwardLogs(pipe io.ReadCloser, volumeID string, stream string) {
+	scanner := bufio.NewScanner(pipe)
+	for scanner.Scan() {
+		glog.Infof("[%s] %s: %s", volumeID, stream, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		glog.Warningf("[%s] error reading %s: %v", volumeID, stream, err)
 	}
 }
