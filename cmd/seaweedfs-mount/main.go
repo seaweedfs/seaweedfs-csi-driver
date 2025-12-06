@@ -62,7 +62,7 @@ func main() {
 
 		resp, err := manager.Mount(&req)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
@@ -83,7 +83,7 @@ func main() {
 
 		resp, err := manager.Unmount(&req)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
