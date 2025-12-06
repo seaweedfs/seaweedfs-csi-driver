@@ -124,10 +124,8 @@ jobs:
 
       - name: Deploy CSI Driver
         run: |
-          # Create namespace
-          kubectl create namespace seaweedfs-csi || true
-          
           # Deploy CSI driver with test images and correct filer address
+          # The seaweedfs-csi.yaml deploys to 'default' namespace
           cat deploy/kubernetes/seaweedfs-csi.yaml | \
             sed 's|chrislusf/seaweedfs-csi-driver:dev|seaweedfs-csi-driver:test|g' | \
             sed 's|chrislusf/seaweedfs-mount:dev|seaweedfs-mount:test|g' | \
@@ -136,10 +134,10 @@ jobs:
           
           # Wait for CSI driver pods to be ready
           sleep 15
-          kubectl wait --for=condition=ready pod -l app=csi-seaweedfs-controller -n seaweedfs-csi --timeout=120s || true
-          kubectl wait --for=condition=ready pod -l app=csi-seaweedfs-node -n seaweedfs-csi --timeout=120s || true
-          kubectl wait --for=condition=ready pod -l app=seaweedfs-mount -n seaweedfs-csi --timeout=120s || true
-          kubectl get pods -n seaweedfs-csi
+          kubectl wait --for=condition=ready pod -l app=seaweedfs-controller --timeout=120s || true
+          kubectl wait --for=condition=ready pod -l app=seaweedfs-node --timeout=120s || true
+          kubectl wait --for=condition=ready pod -l app=seaweedfs-mount --timeout=120s || true
+          kubectl get pods -l 'app in (seaweedfs-controller,seaweedfs-node,seaweedfs-mount)'
 
       - name: Create StorageClass and test PVC
         run: |
@@ -173,7 +171,7 @@ jobs:
           kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/test-pvc --timeout=60s || {
             echo "PVC not bound, checking events..."
             kubectl describe pvc test-pvc
-            kubectl logs -n seaweedfs-csi -l app=csi-seaweedfs-controller --tail=50
+            kubectl logs -l app=seaweedfs-controller --tail=50
             exit 1
           }
 
@@ -203,7 +201,7 @@ jobs:
           kubectl wait --for=condition=ready pod/test-pod --timeout=120s || {
             echo "Pod not ready, checking status..."
             kubectl describe pod test-pod
-            kubectl logs -n seaweedfs-csi -l app=csi-seaweedfs-node --tail=100
+            kubectl logs -l app=seaweedfs-node --tail=100
             exit 1
           }
           
@@ -228,11 +226,11 @@ jobs:
         if: failure()
         run: |
           echo "=== CSI Controller Logs ==="
-          kubectl logs -n seaweedfs-csi -l app=csi-seaweedfs-controller --tail=200 || true
+          kubectl logs -l app=seaweedfs-controller --tail=200 || true
           echo "=== CSI Node Logs ==="
-          kubectl logs -n seaweedfs-csi -l app=csi-seaweedfs-node --tail=200 || true
+          kubectl logs -l app=seaweedfs-node --tail=200 || true
           echo "=== Mount Service Logs ==="
-          kubectl logs -n seaweedfs-csi -l app=seaweedfs-mount --tail=200 || true
+          kubectl logs -l app=seaweedfs-mount --tail=200 || true
           echo "=== SeaweedFS Logs ==="
           kubectl logs -n seaweedfs -l app=seaweedfs --tail=200 || true
           echo "=== All Pods ==="
