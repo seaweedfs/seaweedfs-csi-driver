@@ -102,10 +102,13 @@ func (m *Manager) Unmount(req *UnmountRequest) (*UnmountResponse, error) {
 		}
 	}
 
-	defer os.RemoveAll(entry.cacheDir)
-
 	if err := entry.process.stop(); err != nil {
 		return nil, err
+	}
+
+	// Remove cache dir only after process has been successfully stopped
+	if err := os.RemoveAll(entry.cacheDir); err != nil {
+		glog.Warningf("failed to remove cache dir %s for volume %s: %v", entry.cacheDir, req.VolumeID, err)
 	}
 
 	glog.Infof("stopped weed mount process for volume %s at %s", req.VolumeID, entry.targetPath)

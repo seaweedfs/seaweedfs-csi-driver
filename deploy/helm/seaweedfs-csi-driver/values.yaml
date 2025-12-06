@@ -80,7 +80,7 @@ mountService:
   # Set to true (default) for mount resilience - mounts survive CSI driver restarts
   # Set to false to disable the separate mount service (mounts managed by CSI driver directly)
   enabled: true
-  image:  chrislusf/seaweedfs-mount:latest
+  image:  chrislusf/seaweedfs-mount:dev
   # Endpoint for communication between CSI driver and mount service
   endpoint: unix:///var/lib/seaweedfs-mount/seaweedfs-mount.sock
   # Host directory for mount service socket files
@@ -92,10 +92,10 @@ mountService:
     capabilities:
       add: ["SYS_ADMIN"]
     allowPrivilegeEscalation: true
+  # Use OnDelete strategy since mount service is not yet resilient to its own restarts.
+  # This allows manual, controlled updates to prevent automated disruption of active mounts.
   updateStrategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 25%
+    type: OnDelete
   affinity: {}
   tolerations:
   resources: {}
