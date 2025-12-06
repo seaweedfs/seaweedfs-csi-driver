@@ -134,7 +134,7 @@ spec:
             {{- end }}
             - name: cache
               mountPath: /var/cache/seaweedfs
-            {{- if and $mountEndpoint $mountSocketDir }}
+            {{- if and $mountEndpoint $mountSocketDir $mountHostPath }}
             - name: mount-socket-dir
               mountPath: {{ $mountSocketDir }}
             {{- end }}
@@ -233,7 +233,7 @@ spec:
           secret:
             secretName: {{ .Values.tlsSecret }}
         {{- end }}
-        {{- if and $mountEndpoint $mountHostPath }}
+        {{- if and $mountEndpoint $mountSocketDir $mountHostPath }}
         - name: mount-socket-dir
           hostPath:
             path: {{ $mountHostPath }}

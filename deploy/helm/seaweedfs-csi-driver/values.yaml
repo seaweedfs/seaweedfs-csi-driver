@@ -71,11 +71,21 @@ seaweedfsCsiPlugin:
       add: ["SYS_ADMIN"]
     allowPrivilegeEscalation: true
 
+# Mount Service Configuration
+# The mount service runs as a separate DaemonSet to provide mount resilience.
+# When enabled, FUSE mounts survive CSI driver restarts/upgrades.
+# The node.mountEndpoint, node.mountSocketDir, and node.mountHostPath values
+# default to the corresponding mountService.* values when left empty.
 mountService:
+  # Set to true (default) for mount resilience - mounts survive CSI driver restarts
+  # Set to false to disable the separate mount service (mounts managed by CSI driver directly)
   enabled: true
   image:  chrislusf/seaweedfs-mount:latest
+  # Endpoint for communication between CSI driver and mount service
   endpoint: unix:///var/lib/seaweedfs-mount/seaweedfs-mount.sock
+  # Host directory for mount service socket files
   hostPath: /var/lib/seaweedfs-mount
+  # Container path where socket directory is mounted
   socketDir: /var/lib/seaweedfs-mount
   securityContext:
     privileged: true
@@ -114,9 +124,12 @@ dataLocality: "none"
 node:
   # Deploy node daemonset
   enabled: true
-  mountEndpoint: ""
-  mountSocketDir: ""
-  mountHostPath: ""
+  # Mount service connection settings for the CSI node driver.
+  # When empty (default), these inherit from mountService.* values above.
+  # Only set these to override the mountService defaults.
+  mountEndpoint: ""    # defaults to mountService.endpoint
+  mountSocketDir: ""   # defaults to mountService.socketDir
+  mountHostPath: ""    # defaults to mountService.hostPath
   # When seaweedfs-csi-driver-node pod on node is recreated, all pods on same node using seaweed-csi PV will stop working.
   # For safe update set updateStrategy.type: OnDelete and manually move pods who use seaweed-csi PV, then delete  seaweedfs-csi-driver-node damonset pod
   updateStrategy:
