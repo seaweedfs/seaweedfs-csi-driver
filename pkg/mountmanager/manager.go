@@ -99,12 +99,9 @@ func (m *Manager) Unmount(req *UnmountRequest) (*UnmountResponse, error) {
 		return &UnmountResponse{}, nil
 	}
 
-	if ok, err := kubeMounter.IsMountPoint(entry.targetPath); ok || mount.IsCorruptedMnt(err) {
-		if err = kubeMounter.Unmount(entry.targetPath); err != nil {
-			return nil, err
-		}
-	}
-
+	// Note: We don't explicitly unmount here because weedMountProcess.wait()
+	// handles the unmount when the process terminates (either gracefully or forcefully).
+	// This centralizes unmount logic and avoids potential race conditions.
 	if err := entry.process.stop(); err != nil {
 		return nil, err
 	}
