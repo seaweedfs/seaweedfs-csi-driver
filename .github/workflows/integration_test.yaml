@@ -40,7 +40,7 @@ jobs:
 
       - name: Deploy SeaweedFS
         run: |
-          # Deploy SeaweedFS using a simple manifest
+          # Deploy SeaweedFS using a simple manifest with proper health checks
           kubectl apply -f - <<EOF
           apiVersion: v1
           kind: Namespace
@@ -99,6 +99,22 @@ jobs:
                       - containerPort: 8888
                       - containerPort: 18888
                       - containerPort: 8333
+                    readinessProbe:
+                      httpGet:
+                        path: /
+                        port: 8888
+                      initialDelaySeconds: 10
+                      periodSeconds: 5
+                      timeoutSeconds: 5
+                      failureThreshold: 30
+                    livenessProbe:
+                      httpGet:
+                        path: /cluster/healthz
+                        port: 9333
+                      initialDelaySeconds: 20
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 3
                     volumeMounts:
                       - name: data
                         mountPath: /data
@@ -107,21 +123,25 @@ jobs:
                     emptyDir: {}
           EOF
           
-          # Wait for SeaweedFS to be ready
-          kubectl wait --for=condition=available --timeout=120s deployment/seaweedfs -n seaweedfs
+          # Wait for SeaweedFS deployment to be available
+          kubectl wait --for=condition=available --timeout=180s deployment/seaweedfs -n seaweedfs
           kubectl get pods -n seaweedfs
           
-          # Wait for SeaweedFS filer to be responsive
+          # Wait for SeaweedFS filer to be responsive (readiness probe ensures this)
           echo "Waiting for SeaweedFS filer to be ready..."
-          for i in {1..30}; do
-            if kubectl exec -n seaweedfs deploy/seaweedfs -- wget -q -O- http://localhost:8888/; then
+          for i in {1..60}; do
+            if kubectl exec -n seaweedfs deploy/seaweedfs -- wget -q -O- http://localhost:8888/ 2>/dev/null; then
               echo "SeaweedFS filer is ready"
               exit 0
             fi
-            echo "Waiting for filer... ($i/30)"
-            sleep 2
+            echo "Waiting for filer... ($i/60)"
+            sleep 3
           done
           echo "SeaweedFS filer did not become ready in time"
+          echo "=== Pod Status ==="
+          kubectl get pods -n seaweedfs -o wide
+          echo "=== Pod Logs ==="
+          kubectl logs -n seaweedfs -l app=seaweedfs --tail=100
           exit 1
 
       - name: Deploy CSI Driver
