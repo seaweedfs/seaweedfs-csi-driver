@@ -356,10 +356,10 @@ spec:
   selector:
     matchLabels:
       app: seaweedfs-mount
+  # Use OnDelete strategy since mount service is not yet resilient to its own restarts.
+  # This allows manual, controlled updates to prevent automated disruption of active mounts.
   updateStrategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 25%
+    type: OnDelete
   template:
     metadata:
       labels:
