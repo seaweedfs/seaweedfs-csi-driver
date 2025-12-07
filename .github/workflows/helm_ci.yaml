@@ -63,7 +63,7 @@ jobs:
               echo "::warning::Please update the version in deploy/helm/seaweedfs-csi-driver/Chart.yaml"
               echo "::warning::Current version: $CURRENT_VERSION"
             else
-              echo "✓ Chart version was updated from $BASE_VERSION to $CURRENT_VERSION"
+              echo "Chart version was updated from $BASE_VERSION to $CURRENT_VERSION"
             fi
           fi
 

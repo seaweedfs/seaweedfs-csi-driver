@@ -76,5 +76,5 @@ jobs:
               issue_number: context.payload.release.id,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '✅ Helm chart version ${{ steps.chart_version.outputs.version }} has been published successfully!'
+              body: 'Helm chart version ${{ steps.chart_version.outputs.version }} has been published successfully!'
             })
