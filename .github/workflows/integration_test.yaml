@@ -92,7 +92,7 @@ jobs:
                       - -filer
                       - -master.peers=none
                       - -volume.max=10
-                      - -master.volumeSizeLimitMB=64
+                      - -master.volumeSizeLimitMB=16
                     ports:
                       - containerPort: 9333
                       - containerPort: 8080
@@ -116,26 +116,14 @@ jobs:
                     emptyDir: {}
           EOF
           
-          # Wait for SeaweedFS deployment to be available
-          kubectl wait --for=condition=available --timeout=180s deployment/seaweedfs -n seaweedfs
+          # Wait for SeaweedFS pod to be ready (readiness probe checks filer port 8888)
+          echo "Waiting for SeaweedFS to be ready..."
+          kubectl wait --for=condition=ready pod -l app=seaweedfs -n seaweedfs --timeout=180s
           kubectl get pods -n seaweedfs
           
-          # Wait for SeaweedFS filer to be responsive (readiness probe ensures this)
-          echo "Waiting for SeaweedFS filer to be ready..."
-          for i in {1..60}; do
-            if kubectl exec -n seaweedfs deploy/seaweedfs -- wget -q -O- http://localhost:8888/ 2>/dev/null; then
-              echo "SeaweedFS filer is ready"
-              exit 0
-            fi
-            echo "Waiting for filer... ($i/60)"
-            sleep 3
-          done
-          echo "SeaweedFS filer did not become ready in time"
-          echo "=== Pod Status ==="
-          kubectl get pods -n seaweedfs -o wide
-          echo "=== Pod Logs ==="
-          kubectl logs -n seaweedfs -l app=seaweedfs --tail=100
-          exit 1
+          # Brief additional wait for internal services to stabilize
+          sleep 5
+          echo "SeaweedFS is ready"
 
       - name: Deploy CSI Driver
         run: |
