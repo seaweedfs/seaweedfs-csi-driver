@@ -1,5 +1,5 @@
 {{- if and .Values.node.enabled (not .Values.mountService.enabled) -}}
-{{-   fail "mountService.enabled must be true when node.enabled is true. The CSI driver requires the mount service to function." -}}
+{{-   fail "mountService.enabled must be true when node.enabled is true. The CSI driver node component requires the mount service to mount volumes." -}}
 {{- end -}}
 {{- if .Values.node.enabled}}
 {{- $mountEndpoint := default .Values.mountService.endpoint .Values.node.mountEndpoint }}

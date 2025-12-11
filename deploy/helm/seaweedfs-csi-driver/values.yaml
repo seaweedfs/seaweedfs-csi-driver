@@ -73,12 +73,12 @@ seaweedfsCsiPlugin:
 
 # Mount Service Configuration
 # The mount service runs as a separate DaemonSet that manages FUSE mounts.
-# This is required for the CSI driver to function properly.
+# This is required for the CSI driver node component to function properly.
 # The node.mountEndpoint, node.mountSocketDir, and node.mountHostPath values
 # default to the corresponding mountService.* values when left empty.
 # NOTE: This deploys an additional DaemonSet with privileged containers.
 mountService:
-  # Must be enabled for the CSI driver to mount volumes
+  # Must be enabled for the CSI driver node component to mount volumes
   enabled: true
   image:  chrislusf/seaweedfs-mount:dev
   # Endpoint for communication between CSI driver and mount service
