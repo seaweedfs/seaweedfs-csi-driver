@@ -1,3 +1,6 @@
+{{- if and .Values.node.enabled (not .Values.mountService.enabled) -}}
+{{-   fail "mountService.enabled must be true when node.enabled is true. The CSI driver requires the mount service to function." -}}
+{{- end -}}
 {{- if .Values.node.enabled}}
 {{- $mountEndpoint := default .Values.mountService.endpoint .Values.node.mountEndpoint }}
 {{- $mountSocketDir := default .Values.mountService.socketDir .Values.node.mountSocketDir }}
