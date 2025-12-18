@@ -67,14 +67,7 @@ jobs:
           target_dir: helm
           branch: gh-pages
       
-      - name: Comment on release
-        if: github.event_name == 'release'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.payload.release.id,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: 'Helm chart version ${{ steps.chart_version.outputs.version }} has been published successfully!'
-            })
+      - name: Log success
+        run: |
+          echo "✅ Helm chart version ${{ steps.chart_version.outputs.version }} has been published successfully!"
+          echo "View at: https://github.com/${{ github.repository }}/tree/gh-pages/helm"
