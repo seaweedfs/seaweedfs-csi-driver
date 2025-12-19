@@ -61,6 +61,9 @@ spec:
             {{- with .Values.concurrentWriters }}
             - --concurrentWriters={{ . }}
             {{- end }}
+            {{- with .Values.concurrentReaders }}
+            - --concurrentReaders={{ . }}
+            {{- end }}
             {{- with .Values.cacheCapacityMB }}
             - --cacheCapacityMB={{ . }}
             {{- end }}

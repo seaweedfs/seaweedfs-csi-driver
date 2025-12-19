@@ -134,7 +134,7 @@ func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket s
 		"filer":              strings.Join(filers, ","),
 		"filer.path":         path,
 		"cacheCapacityMB":    strconv.Itoa(m.driver.CacheCapacityMB),
-		"concurrentReaders":  "",
+		"concurrentReaders":  strconv.Itoa(m.driver.ConcurrentReaders),
 		"concurrentWriters":  strconv.Itoa(m.driver.ConcurrentWriters),
 		"map.uid":            m.driver.UidMap,
 		"map.gid":            m.driver.GidMap,
