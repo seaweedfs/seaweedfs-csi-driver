@@ -51,19 +51,33 @@ jobs:
           echo "version=$NEW" >> $GITHUB_OUTPUT
           echo "New SeaweedFS version: $NEW"
           
-          # Extract commit hash for changelog link
+          # Extract commit hash (last part after the final dash)
           COMMIT_HASH=$(echo "$NEW" | sed 's/.*-//')
           echo "commit=$COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "Commit hash: $COMMIT_HASH"
+
+      - name: Update Dockerfile commit hashes
+        run: |
+          COMMIT="${{ steps.new_version.outputs.commit }}"
+          echo "Updating Dockerfiles to commit: $COMMIT"
+          
+          # Update both Dockerfiles with the new commit hash
+          sed -i "s/^ARG SEAWEEDFS_COMMIT=.*/ARG SEAWEEDFS_COMMIT=$COMMIT/" cmd/seaweedfs-mount/Dockerfile
+          sed -i "s/^ARG SEAWEEDFS_COMMIT=.*/ARG SEAWEEDFS_COMMIT=$COMMIT/" cmd/seaweedfs-mount/Dockerfile.dev
+          
+          # Show the changes
+          grep "ARG SEAWEEDFS_COMMIT" cmd/seaweedfs-mount/Dockerfile cmd/seaweedfs-mount/Dockerfile.dev
 
       - name: Check for changes
         id: check_changes
         run: |
-          if git diff --quiet go.mod go.sum; then
+          if git diff --quiet go.mod go.sum cmd/seaweedfs-mount/Dockerfile cmd/seaweedfs-mount/Dockerfile.dev; then
             echo "changed=false" >> $GITHUB_OUTPUT
             echo "No changes detected"
           else
             echo "changed=true" >> $GITHUB_OUTPUT
-            echo "Changes detected"
+            echo "Changes detected:"
+            git diff --stat
           fi
 
       - name: Create Pull Request
