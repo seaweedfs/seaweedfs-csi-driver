@@ -1,5 +1,5 @@
 # VERSION=latest make push
-.PHONY: build container clean
+.PHONY: build container clean deps push
 
 REGISTRY_NAME=chrislusf
 IMAGE_NAME=seaweedfs-csi-driver
