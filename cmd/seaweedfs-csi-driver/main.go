@@ -19,9 +19,11 @@ var (
 
 	filer             = flag.String("filer", "localhost:8888", "filer server")
 	endpoint          = flag.String("endpoint", "unix://tmp/seaweedfs-csi.sock", "CSI endpoint to accept gRPC calls")
+	mountEndpoint     = flag.String("mountEndpoint", "unix:///tmp/seaweedfs-mount.sock", "mount service endpoint")
 	nodeID            = flag.String("nodeid", "", "node id")
 	version           = flag.Bool("version", false, "Print the version and exit.")
-	concurrentWriters = flag.Int("concurrentWriters", 32, "limit concurrent goroutine writers if not 0")
+	concurrentWriters = flag.Int("concurrentWriters", 128, "limit concurrent goroutine writers if not 0")
+	concurrentReaders = flag.Int("concurrentReaders", 128, "limit concurrent chunk fetches for read operations")
 	cacheCapacityMB   = flag.Int("cacheCapacityMB", 0, "local file chunk cache capacity in MB")
 	cacheDir          = flag.String("cacheDir", os.TempDir(), "local cache directory for file chunks and meta data")
 	uidMap            = flag.String("map.uid", "", "map local uid to uid on filer, comma-separated <local_uid>:<filer_uid>")
@@ -78,12 +80,13 @@ func main() {
 
 	glog.Infof("connect to filer %s", *filer)
 
-	drv := driver.NewSeaweedFsDriver(*driverName, *filer, *nodeID, *endpoint, *enableAttacher)
+	drv := driver.NewSeaweedFsDriver(*driverName, *filer, *nodeID, *endpoint, *mountEndpoint, *enableAttacher)
 
 	drv.RunNode = runNode
 	drv.RunController = runController
 
 	drv.ConcurrentWriters = *concurrentWriters
+	drv.ConcurrentReaders = *concurrentReaders
 	drv.CacheCapacityMB = *cacheCapacityMB
 	drv.CacheDir = *cacheDir
 	drv.UidMap = *uidMap

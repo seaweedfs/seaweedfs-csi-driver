@@ -7,7 +7,8 @@ tlsSecret: ""
 #logVerbosity: 4
 #cacheCapacityMB: 0
 
-#concurrentWriters: 32
+#concurrentWriters: 128
+#concurrentReaders: 128
 
 imagePullPolicy: "IfNotPresent"
 
@@ -71,6 +72,37 @@ seaweedfsCsiPlugin:
       add: ["SYS_ADMIN"]
     allowPrivilegeEscalation: true
 
+# Mount Service Configuration
+# The mount service runs as a separate DaemonSet that manages FUSE mounts.
+# This is required for the CSI driver node component to function properly.
+# The node.mountEndpoint, node.mountSocketDir, and node.mountHostPath values
+# default to the corresponding mountService.* values when left empty.
+# NOTE: This deploys an additional DaemonSet with privileged containers.
+mountService:
+  # Must be enabled for the CSI driver node component to mount volumes
+  enabled: true
+  image:  chrislusf/seaweedfs-mount:dev
+  # Endpoint for communication between CSI driver and mount service
+  endpoint: unix:///var/lib/seaweedfs-mount/seaweedfs-mount.sock
+  # Host directory for mount service socket files
+  hostPath: /var/lib/seaweedfs-mount
+  # Container path where socket directory is mounted
+  socketDir: /var/lib/seaweedfs-mount
+  securityContext:
+    privileged: true
+    capabilities:
+      add: ["SYS_ADMIN"]
+    allowPrivilegeEscalation: true
+  # Use OnDelete strategy since mount service is not yet resilient to its own restarts.
+  # This allows manual, controlled updates to prevent automated disruption of active mounts.
+  updateStrategy:
+    type: OnDelete
+  affinity: {}
+  tolerations:
+  resources: {}
+  priorityClassName: system-node-critical
+  serviceAccountName: ""
+
 driverName: seaweedfs-csi-driver
 
 controller:
@@ -93,6 +125,12 @@ dataLocality: "none"
 node:
   # Deploy node daemonset
   enabled: true
+  # Mount service connection settings for the CSI node driver.
+  # When empty (default), these inherit from mountService.* values above.
+  # Only set these to override the mountService defaults.
+  mountEndpoint: ""    # defaults to mountService.endpoint
+  mountSocketDir: ""   # defaults to mountService.socketDir
+  mountHostPath: ""    # defaults to mountService.hostPath
   # When seaweedfs-csi-driver-node pod on node is recreated, all pods on same node using seaweed-csi PV will stop working.
   # For safe update set updateStrategy.type: OnDelete and manually move pods who use seaweed-csi PV, then delete  seaweedfs-csi-driver-node damonset pod
   updateStrategy:

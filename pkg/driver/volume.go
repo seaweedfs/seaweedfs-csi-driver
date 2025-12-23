@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/mount_pb"
 	"google.golang.org/grpc"
@@ -21,13 +22,15 @@ type Volume struct {
 
 	// unix socket used to manage volume
 	localSocket string
+	driver      *SeaweedFsDriver
 }
 
-func NewVolume(volumeID string, mounter Mounter) *Volume {
+func NewVolume(volumeID string, mounter Mounter, driver *SeaweedFsDriver) *Volume {
 	return &Volume{
 		VolumeId:    volumeID,
 		mounter:     mounter,
-		localSocket: GetLocalSocket(volumeID),
+		localSocket: mountmanager.LocalSocketPath(driver.volumeSocketDir, volumeID),
+		driver:      driver,
 	}
 }
 
@@ -114,13 +117,22 @@ func (vol *Volume) Unpublish(targetPath string) error {
 func (vol *Volume) Unstage(stagingTargetPath string) error {
 	glog.V(0).Infof("unmounting volume %s from %s", vol.VolumeId, stagingTargetPath)
 
-	if vol.unmounter == nil {
-		glog.Errorf("volume is not mounted: %s, path: %s", vol.VolumeId, stagingTargetPath)
-		return nil
+	if stagingTargetPath != vol.StagedPath && vol.StagedPath != "" {
+		glog.Warningf("staging path %s differs for volume %s at %s", stagingTargetPath, vol.VolumeId, vol.StagedPath)
 	}
 
-	if stagingTargetPath != vol.StagedPath {
-		glog.Warningf("staging path %s differs for volume %s at %s", stagingTargetPath, vol.VolumeId, vol.StagedPath)
+	if vol.unmounter == nil {
+		// This can happen when the volume was rebuilt from an existing staging path
+		// after a CSI driver restart. In this case, we need to force unmount.
+		glog.Infof("volume %s has no unmounter (rebuilt from existing mount), using force unmount", vol.VolumeId)
+
+		// Clean up using mount utilities. This will also handle unmounting.
+		if err := mount.CleanupMountPoint(stagingTargetPath, mountutil, true); err != nil {
+			glog.Errorf("error cleaning up mount point for volume %s: %v", vol.VolumeId, err)
+			return err
+		}
+
+		return nil
 	}
 
 	if err := vol.unmounter.Unmount(); err != nil {

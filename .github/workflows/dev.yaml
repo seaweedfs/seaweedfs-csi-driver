@@ -15,11 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      - name: Docker meta
-        id: docker_meta
-        uses: docker/metadata-action@v3
+      - name: Docker meta (csi-driver)
+        id: docker_meta_csi
+        uses: docker/metadata-action@v5
         with:
           images: |
             chrislusf/seaweedfs-csi-driver
@@ -30,6 +30,21 @@ jobs:
           labels: |
             org.opencontainers.image.title=seaweedfs-csi-driver
             org.opencontainers.image.description=SeaweedFS is a distributed storage system for blobs, objects, files, and data lake, to store and serve billions of files fast!
+            org.opencontainers.image.vendor=Chris Lu
+
+      - name: Docker meta (mount-service)
+        id: docker_meta_mount
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            chrislusf/seaweedfs-mount
+          tags: |
+            type=raw,value=dev
+          flavor: |
+            latest=true
+          labels: |
+            org.opencontainers.image.title=seaweedfs-mount
+            org.opencontainers.image.description=SeaweedFS CSI mount helper service
             org.opencontainers.image.vendor=Chris Lu
 
       - name: Fetch history
@@ -44,36 +59,45 @@ jobs:
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" | sed 's/\//_/g' >> $GITHUB_ENV
 
       - name: Setup QEMU
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@v3
 
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@v3
         with:
           buildkitd-flags: "--debug"
 
       - name: Login to DockerHub
-        # if: ${{ startsWith(github.ref, 'refs/tags/') }}
-        uses: docker/login-action@v2
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
         with:
-          # username: ${{ secrets.DOCKERHUB_USERNAME }}
           username: chrislusf
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build
-        # if: ${{ startsWith(github.ref, 'refs/tags/') }}
-        uses: docker/build-push-action@v2
+      - name: Build csi-driver image
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
           file: ./cmd/seaweedfs-csi-driver/Dockerfile
           platforms: linux/amd64, linux/arm, linux/arm64, linux/386
-          tags: ${{ steps.docker_meta.outputs.tags }}
-          labels: ${{ steps.docker_meta.outputs.labels }}
+          tags: ${{ steps.docker_meta_csi.outputs.tags }}
+          labels: ${{ steps.docker_meta_csi.outputs.labels }}
+
+      - name: Build mount-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          file: ./cmd/seaweedfs-mount/Dockerfile
+          platforms: linux/amd64, linux/arm, linux/arm64, linux/386
+          tags: ${{ steps.docker_meta_mount.outputs.tags }}
+          labels: ${{ steps.docker_meta_mount.outputs.labels }}
+
   helm:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Helm check
         uses: igabaydulin/helm-check-action@0.1.4
         env:

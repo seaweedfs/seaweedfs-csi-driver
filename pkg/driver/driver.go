@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/datalocality"
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
@@ -27,7 +29,9 @@ type SeaweedFsDriver struct {
 	nodeID  string
 	version string
 
-	endpoint string
+	endpoint        string
+	mountEndpoint   string
+	volumeSocketDir string // directory for volume sockets, derived from mountEndpoint
 
 	vcap  []*csi.VolumeCapability_AccessMode
 	cscap []*csi.ControllerServiceCapability
@@ -36,6 +40,7 @@ type SeaweedFsDriver struct {
 	filerIndex        int
 	grpcDialOption    grpc.DialOption
 	ConcurrentWriters int
+	ConcurrentReaders int
 	CacheCapacityMB   int
 	CacheDir          string
 	UidMap            string
@@ -48,20 +53,33 @@ type SeaweedFsDriver struct {
 	RunController bool
 }
 
-func NewSeaweedFsDriver(name, filer, nodeID, endpoint string, enableAttacher bool) *SeaweedFsDriver {
+func NewSeaweedFsDriver(name, filer, nodeID, endpoint, mountEndpoint string, enableAttacher bool) *SeaweedFsDriver {
 
 	glog.Infof("Driver: %v version: %v", name, version)
 
 	util.LoadConfiguration("security", false)
 
+	// Derive volumeSocketDir from mountEndpoint
+	volumeSocketDir := mountmanager.DefaultSocketDir
+	if mountEndpoint != "" {
+		_, address, err := mountmanager.ParseEndpoint(mountEndpoint)
+		if err != nil {
+			glog.Warningf("invalid mount endpoint %q, using default socket directory %q: %v", mountEndpoint, volumeSocketDir, err)
+		} else if address != "" {
+			volumeSocketDir = filepath.Dir(address)
+		}
+	}
+
 	n := &SeaweedFsDriver{
-		endpoint:       endpoint,
-		nodeID:         nodeID,
-		name:           name,
-		version:        version,
-		filers:         pb.ServerAddresses(filer).ToAddresses(),
-		grpcDialOption: security.LoadClientTLS(util.GetViper(), "grpc.client"),
-		signature:      util.RandomInt32(),
+		endpoint:        endpoint,
+		mountEndpoint:   mountEndpoint,
+		volumeSocketDir: volumeSocketDir,
+		nodeID:          nodeID,
+		name:            name,
+		version:         version,
+		filers:          pb.ServerAddresses(filer).ToAddresses(),
+		grpcDialOption:  security.LoadClientTLS(util.GetViper(), "grpc.client"),
+		signature:       util.RandomInt32(),
 	}
 
 	n.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{

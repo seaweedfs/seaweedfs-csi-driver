@@ -1,4 +1,10 @@
+{{- if and .Values.node.enabled (not .Values.mountService.enabled) -}}
+{{-   fail "mountService.enabled must be true when node.enabled is true. The CSI driver node component requires the mount service to mount volumes." -}}
+{{- end -}}
 {{- if .Values.node.enabled}}
+{{- $mountEndpoint := default .Values.mountService.endpoint .Values.node.mountEndpoint }}
+{{- $mountSocketDir := default .Values.mountService.socketDir .Values.node.mountSocketDir }}
+{{- $mountHostPath := default .Values.mountService.hostPath .Values.node.mountHostPath }}
 ---
 kind: DaemonSet
 apiVersion: apps/v1
@@ -41,6 +47,9 @@ spec:
             - --filer=$(SEAWEEDFS_FILER)
             - --nodeid=$(NODE_ID)
             - --driverName=$(DRIVER_NAME)
+            {{- if $mountEndpoint }}
+            - --mountEndpoint=$(MOUNT_ENDPOINT)
+            {{- end }}
             - --cacheDir=/var/cache/seaweedfs
             {{- if ne "none" .Values.dataLocality}}
             - "--dataLocality={{ .Values.dataLocality }}"
@@ -51,6 +60,9 @@ spec:
             - --components=node
             {{- with .Values.concurrentWriters }}
             - --concurrentWriters={{ . }}
+            {{- end }}
+            {{- with .Values.concurrentReaders }}
+            - --concurrentReaders={{ . }}
             {{- end }}
             {{- with .Values.cacheCapacityMB }}
             - --cacheCapacityMB={{ . }}
@@ -66,6 +78,10 @@ spec:
                   fieldPath: spec.nodeName
             - name: DRIVER_NAME
               value: {{ .Values.driverName | quote }}
+            {{- if $mountEndpoint }}
+            - name: MOUNT_ENDPOINT
+              value: {{ $mountEndpoint | quote }}
+            {{- end }}
             {{- if .Values.node.injectTopologyInfoFromNodeLabel.enabled }}
             - name: DATACENTER
               valueFrom:
@@ -124,6 +140,10 @@ spec:
             {{- end }}
             - name: cache
               mountPath: /var/cache/seaweedfs
+            {{- if and $mountEndpoint $mountSocketDir $mountHostPath }}
+            - name: mount-socket-dir
+              mountPath: {{ $mountSocketDir }}
+            {{- end }}
           resources: {{ toYaml .Values.node.resources | nindent 12 }}
 
         # driver registrar
@@ -218,5 +238,11 @@ spec:
         - name: tls
           secret:
             secretName: {{ .Values.tlsSecret }}
+        {{- end }}
+        {{- if and $mountEndpoint $mountSocketDir $mountHostPath }}
+        - name: mount-socket-dir
+          hostPath:
+            path: {{ $mountHostPath }}
+            type: DirectoryOrCreate
         {{- end }}
 {{- end }}

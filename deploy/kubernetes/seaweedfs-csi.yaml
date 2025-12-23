@@ -216,12 +216,13 @@ spec:
               add:
               - SYS_ADMIN
             privileged: true
-          image: chrislusf/seaweedfs-csi-driver:latest
+          image: chrislusf/seaweedfs-csi-driver:dev
           imagePullPolicy: IfNotPresent
           args:
             - --endpoint=$(CSI_ENDPOINT)
             - --filer=$(SEAWEEDFS_FILER)
             - --nodeid=$(NODE_ID)
+            - --mountEndpoint=$(MOUNT_ENDPOINT)
             - --cacheDir=/var/cache/seaweedfs
             - --dataLocality=none
             - --components=node
@@ -234,6 +235,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: MOUNT_ENDPOINT
+              value: unix:///var/lib/seaweedfs-mount/seaweedfs-mount.sock
           ports:
             - containerPort: 9808
               name: healthz
@@ -258,6 +261,8 @@ spec:
               name: device-dir
             - name: cache
               mountPath: /var/cache/seaweedfs
+            - name: mount-socket-dir
+              mountPath: /var/lib/seaweedfs-mount
           resources: 
             null
 
@@ -338,6 +343,76 @@ spec:
             path: /dev
         - name: cache
           emptyDir: {}
+        - name: mount-socket-dir
+          hostPath:
+            path: /var/lib/seaweedfs-mount
+            type: DirectoryOrCreate
+---
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: seaweedfs-mount
+spec:
+  selector:
+    matchLabels:
+      app: seaweedfs-mount
+  # Use OnDelete strategy since mount service is not yet resilient to its own restarts.
+  # This allows manual, controlled updates to prevent automated disruption of active mounts.
+  updateStrategy:
+    type: OnDelete
+  template:
+    metadata:
+      labels:
+        app: seaweedfs-mount
+    spec:
+      priorityClassName: system-node-critical
+      serviceAccountName: seaweedfs-node-sa
+      containers:
+        - name: seaweedfs-mount
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+            privileged: true
+          image: chrislusf/seaweedfs-mount:dev
+          imagePullPolicy: IfNotPresent
+          args:
+            - --endpoint=$(MOUNT_ENDPOINT)
+          env:
+            - name: MOUNT_ENDPOINT
+              value: unix:///var/lib/seaweedfs-mount/seaweedfs-mount.sock
+          volumeMounts:
+            - name: plugins-dir
+              mountPath: /var/lib/kubelet/plugins
+              mountPropagation: "Bidirectional"
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: "Bidirectional"
+            - mountPath: /dev
+              name: device-dir
+            - name: cache
+              mountPath: /var/cache/seaweedfs
+            - name: mount-socket-dir
+              mountPath: /var/lib/seaweedfs-mount
+      volumes:
+        - name: plugins-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins
+            type: Directory
+        - name: pods-mount-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: Directory
+        - name: device-dir
+          hostPath:
+            path: /dev
+        - name: cache
+          emptyDir: { }
+        - name: mount-socket-dir
+          hostPath:
+            path: /var/lib/seaweedfs-mount
+            type: DirectoryOrCreate
 ---
 # Source: seaweedfs-csi-driver/templates/deployment.yaml
 kind: Deployment
@@ -369,7 +444,7 @@ spec:
       containers:
         # SeaweedFs Plugin (controller)
         - name: seaweedfs-csi-plugin
-          image: chrislusf/seaweedfs-csi-driver:latest
+          image: chrislusf/seaweedfs-csi-driver:dev
           imagePullPolicy: IfNotPresent
           args :
             - --endpoint=$(CSI_ENDPOINT)

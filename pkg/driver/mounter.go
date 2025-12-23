@@ -1,23 +1,16 @@
 package driver
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"syscall"
-	"time"
+	"path/filepath"
+	"strconv"
+	"strings"
 
-	"os/exec"
-
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/datalocality"
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
-	"k8s.io/mount-utils"
 )
-
-// Config holds values to configure the driver
-type Config struct {
-	// Region          string
-	Filer string
-}
 
 type Unmounter interface {
 	Unmount() error
@@ -27,107 +20,183 @@ type Mounter interface {
 	Mount(target string) (Unmounter, error)
 }
 
-type fuseUnmounter struct {
-	path string
-	cmd  *exec.Cmd
+type mountServiceMounter struct {
+	driver     *SeaweedFsDriver
+	volumeID   string
+	readOnly   bool
+	volContext map[string]string
+	client     *mountmanager.Client
+}
 
-	finished chan struct{}
+type mountServiceUnmounter struct {
+	client   *mountmanager.Client
+	volumeID string
 }
 
 func newMounter(volumeID string, readOnly bool, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
-	path, ok := volContext["path"]
-	if !ok {
-		path = fmt.Sprintf("/buckets/%s", volumeID)
-	}
-
-	collection, ok := volContext["collection"]
-	if !ok {
-		collection = volumeID
-	}
-
-	return newSeaweedFsMounter(volumeID, path, collection, readOnly, driver, volContext)
-}
-
-func fuseMount(path string, command string, args []string) (Unmounter, error) {
-	cmd := exec.Command(command, args...)
-	glog.V(0).Infof("Mounting fuse with command: %s and args: %s", command, args)
-
-	// log fuse process messages - we need an easy way to investigate crashes in case it happens
-	cmd.Stderr = os.Stderr
-	cmd.Stdout = os.Stdout
-
-	err := cmd.Start()
+	client, err := mountmanager.NewClient(driver.mountEndpoint)
 	if err != nil {
-		glog.Errorf("running weed mount: %v", err)
-		return nil, fmt.Errorf("error fuseMount command: %s\nargs: %s\nerror: %v", command, args, err)
-	}
-
-	fu := &fuseUnmounter{
-		path: path,
-		cmd:  cmd,
-
-		finished: make(chan struct{}),
-	}
-
-	// avoid zombie processes
-	go func() {
-		if err := cmd.Wait(); err != nil {
-			glog.Errorf("weed mount exit, pid: %d, path: %v, error: %v", cmd.Process.Pid, path, err)
-		} else {
-			glog.Infof("weed mount exit, pid: %d, path: %v", cmd.Process.Pid, path)
-		}
-
-		// make sure we'll have no stale mounts
-		time.Sleep(time.Millisecond * 100)
-		_ = mountutil.Unmount(path)
-
-		close(fu.finished)
-	}()
-
-	if err = waitForMount(path, 10*time.Second); err != nil {
-		glog.Errorf("weed mount timeout, pid: %d, path: %v", cmd.Process.Pid, path)
-
-		_ = fu.finish(time.Second * 10)
 		return nil, err
-	} else {
-		return fu, nil
 	}
+
+	contextCopy := make(map[string]string, len(volContext))
+	for k, v := range volContext {
+		contextCopy[k] = v
+	}
+
+	return &mountServiceMounter{
+		driver:     driver,
+		volumeID:   volumeID,
+		readOnly:   readOnly,
+		volContext: contextCopy,
+		client:     client,
+	}, nil
 }
 
-func (fu *fuseUnmounter) finish(timeout time.Duration) error {
-	// ignore error, just inform we want process to exit
-	// SIGHUP is used to reload weed config - we need to use SIGTERM
-	_ = fu.cmd.Process.Signal(syscall.SIGTERM)
+func (m *mountServiceMounter) Mount(target string) (Unmounter, error) {
+	if target == "" {
+		return nil, fmt.Errorf("target path is required")
+	}
 
-	if err := fu.waitFinished(timeout); err != nil {
-		glog.Errorf("weed mount terminate timeout, pid: %d, path: %v", fu.cmd.Process.Pid, fu.path)
-		_ = fu.cmd.Process.Kill()
-		if err = fu.waitFinished(time.Second * 1); err != nil {
-			glog.Errorf("weed mount kill timeout, pid: %d, path: %v", fu.cmd.Process.Pid, fu.path)
-			return err
+	filers := make([]string, len(m.driver.filers))
+	for i, address := range m.driver.filers {
+		filers[i] = string(address)
+	}
+
+	cacheBase := m.driver.CacheDir
+	if cacheBase == "" {
+		cacheBase = os.TempDir()
+	}
+	cacheDir := filepath.Join(cacheBase, m.volumeID)
+	localSocket := mountmanager.LocalSocketPath(m.driver.volumeSocketDir, m.volumeID)
+
+	args, err := m.buildMountArgs(target, cacheDir, localSocket, filers)
+	if err != nil {
+		return nil, err
+	}
+
+	req := &mountmanager.MountRequest{
+		VolumeID:    m.volumeID,
+		TargetPath:  target,
+		CacheDir:    cacheDir,
+		MountArgs:   args,
+		LocalSocket: localSocket,
+	}
+
+	_, err = m.client.Mount(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return &mountServiceUnmounter{
+		client:   m.client,
+		volumeID: m.volumeID,
+	}, nil
+}
+
+func (u *mountServiceUnmounter) Unmount() error {
+	_, err := u.client.Unmount(&mountmanager.UnmountRequest{VolumeID: u.volumeID})
+	return err
+}
+
+func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket string, filers []string) ([]string, error) {
+	volumeContext := m.volContext
+	if volumeContext == nil {
+		volumeContext = map[string]string{}
+	}
+
+	path := volumeContext["path"]
+	if path == "" {
+		path = fmt.Sprintf("/buckets/%s", m.volumeID)
+	}
+
+	collection := volumeContext["collection"]
+	if collection == "" {
+		collection = m.volumeID
+	}
+
+	args := []string{
+		"-logtostderr=true",
+		"mount",
+		"-dirAutoCreate=true",
+		"-umask=000",
+		fmt.Sprintf("-dir=%s", targetPath),
+		fmt.Sprintf("-localSocket=%s", localSocket),
+		fmt.Sprintf("-cacheDir=%s", cacheDir),
+	}
+
+	if m.readOnly {
+		args = append(args, "-readOnly")
+	}
+
+	argsMap := map[string]string{
+		"collection":         collection,
+		"filer":              strings.Join(filers, ","),
+		"filer.path":         path,
+		"cacheCapacityMB":    strconv.Itoa(m.driver.CacheCapacityMB),
+		"concurrentReaders":  strconv.Itoa(m.driver.ConcurrentReaders),
+		"concurrentWriters":  strconv.Itoa(m.driver.ConcurrentWriters),
+		"map.uid":            m.driver.UidMap,
+		"map.gid":            m.driver.GidMap,
+		"disk":               "",
+		"dataCenter":         "",
+		"replication":        "",
+		"ttl":                "",
+		"chunkSizeLimitMB":   "",
+		"volumeServerAccess": "",
+		"readRetryTime":      "",
+	}
+
+	dataLocality := m.driver.DataLocality
+	if contextLocality, ok := volumeContext["dataLocality"]; ok && contextLocality != "" {
+		if dl, ok := datalocality.FromString(contextLocality); ok {
+			dataLocality = dl
+		} else {
+			return nil, fmt.Errorf("invalid volumeContext dataLocality: %s", contextLocality)
 		}
 	}
 
-	return nil
-}
-
-func (fu *fuseUnmounter) waitFinished(timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	select {
-	case <-ctx.Done():
-		return context.DeadlineExceeded
-	case <-fu.finished:
-		return nil
+	dataCenter := m.driver.DataCenter
+	if err := CheckDataLocality(&dataLocality, &dataCenter); err != nil {
+		return nil, err
 	}
-}
 
-func (fu *fuseUnmounter) Unmount() error {
-	if ok, err := mountutil.IsMountPoint(fu.path); ok || mount.IsCorruptedMnt(err) {
-		if err := mountutil.Unmount(fu.path); err != nil {
-			return err
+	switch dataLocality {
+	case datalocality.Write_preferLocalDc:
+		argsMap["dataCenter"] = dataCenter
+	}
+
+	parameterArgMap := map[string]string{
+		"uidMap":    "map.uid",
+		"gidMap":    "map.gid",
+		"filerPath": "filer.path",
+		"diskType":  "disk",
+	}
+
+	ignoredArgs := map[string]struct{}{"dataLocality": {}}
+
+	for key, value := range volumeContext {
+		if _, ignored := ignoredArgs[key]; ignored {
+			continue
+		}
+		if mapped, ok := parameterArgMap[key]; ok {
+			key = mapped
+		}
+		if _, ok := argsMap[key]; !ok {
+			glog.Warningf("VolumeContext '%s' ignored", key)
+			continue
+		}
+		if value != "" {
+			argsMap[key] = value
 		}
 	}
 
-	return fu.finish(time.Second * 5)
+	for key, value := range argsMap {
+		if value == "" {
+			continue
+		}
+		args = append(args, fmt.Sprintf("-%s=%s", key, value))
+	}
+
+	return args, nil
 }
