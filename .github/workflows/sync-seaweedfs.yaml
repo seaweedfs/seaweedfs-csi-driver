@@ -80,8 +80,16 @@ jobs:
             git diff --stat
           fi
 
-      - name: Create Pull Request
+      - name: Run tests
         if: steps.check_changes.outputs.changed == 'true' || inputs.force_update == 'true'
+        id: run_tests
+        run: |
+          echo "Validating compilation and running tests"
+          go version
+          go test ./... -v
+
+      - name: Create Pull Request
+        if: (steps.check_changes.outputs.changed == 'true' || inputs.force_update == 'true') && steps.run_tests.outcome == 'success'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
