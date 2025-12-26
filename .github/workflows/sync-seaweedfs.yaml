@@ -81,7 +81,7 @@ jobs:
           fi
 
       - name: Run tests
-        if: steps.check_changes.outputs.changed == 'true' || inputs.force_update == 'true'
+        if: steps.check_changes.outputs.changed == 'true' || github.event.inputs.force_update == 'true'
         id: run_tests
         run: |
           echo "Validating compilation and running tests"
@@ -89,7 +89,7 @@ jobs:
           go test ./... -v
 
       - name: Create Pull Request
-        if: (steps.check_changes.outputs.changed == 'true' || inputs.force_update == 'true') && steps.run_tests.outcome == 'success'
+        if: (steps.check_changes.outputs.changed == 'true' || github.event.inputs.force_update == 'true') && steps.run_tests.outcome == 'success'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
