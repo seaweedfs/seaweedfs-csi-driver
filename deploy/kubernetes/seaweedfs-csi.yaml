@@ -216,7 +216,7 @@ spec:
               - SYS_ADMIN
             privileged: true
           image: chrislusf/seaweedfs-mount:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           args:
             - --endpoint=$(MOUNT_ENDPOINT)
           env:
@@ -289,7 +289,7 @@ spec:
               - SYS_ADMIN
             privileged: true
           image: chrislusf/seaweedfs-csi-driver:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           args:
             - --endpoint=$(CSI_ENDPOINT)
             - --filer=$(SEAWEEDFS_FILER)
@@ -340,7 +340,7 @@ spec:
         # driver registrar
         - name: driver-registrar
           image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.8.0
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           args:
             - --csi-address=$(ADDRESS)
             - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
@@ -376,7 +376,7 @@ spec:
         # liveness probe
         - name: csi-liveness-probe
           image: registry.k8s.io/sig-storage/livenessprobe:v2.10.0
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           args:
             - --csi-address=$(ADDRESS)
             - --http-endpoint=:9808
@@ -450,7 +450,7 @@ spec:
         # SeaweedFs Plugin (controller)
         - name: seaweedfs-csi-plugin
           image: chrislusf/seaweedfs-csi-driver:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           args :
             - --endpoint=$(CSI_ENDPOINT)
             - --filer=$(SEAWEEDFS_FILER)
@@ -483,7 +483,7 @@ spec:
         # provisioner
         - name: csi-provisioner
           image: registry.k8s.io/sig-storage/csi-provisioner:v3.5.0
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           args:
             - --csi-address=$(ADDRESS)
             - --leader-election
@@ -512,7 +512,7 @@ spec:
         # resizer
         - name: csi-resizer
           image: registry.k8s.io/sig-storage/csi-resizer:v1.8.0
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           args:
             - --csi-address=$(ADDRESS)
             - --leader-election
@@ -540,7 +540,7 @@ spec:
         # attacher
         - name: csi-attacher
           image: registry.k8s.io/sig-storage/csi-attacher:v4.3.0
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           args:
             - --csi-address=$(ADDRESS)
             - --leader-election
@@ -568,7 +568,7 @@ spec:
         # liveness probe
         - name: csi-liveness-probe
           image: registry.k8s.io/sig-storage/livenessprobe:v2.10.0
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           args:
             - --csi-address=$(ADDRESS)
             - --http-endpoint=:9808
