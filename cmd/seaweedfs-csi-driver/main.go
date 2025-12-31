@@ -52,12 +52,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = checkPreconditions()
-	if err != nil {
-		glog.Error("Precondition failed: ", err)
-		os.Exit(1)
-	}
-
 	runNode := false
 	runController := false
 	for _, c := range strings.Split(*components, ",") {
@@ -75,6 +69,12 @@ func main() {
 	glog.Infof("will run node: %v, controller: %v, attacher: %v", runNode, runController, *enableAttacher)
 	if !runNode && !runController {
 		glog.Errorf("at least one component should be enabled: either controller or node (use --components=...)")
+		os.Exit(1)
+	}
+
+	err = checkPreconditions(runNode)
+	if err != nil {
+		glog.Error("Precondition failed: ", err)
 		os.Exit(1)
 	}
 
@@ -110,13 +110,15 @@ func convertRequiredValues() error {
 	return nil
 }
 
-func checkPreconditions() error {
+func checkPreconditions(runNode bool) error {
 	if err := driver.CheckDataLocality(&dataLocality, dataCenter); err != nil {
 		return err
 	}
 
-	if len(*nodeID) == 0 {
-		return fmt.Errorf("driver requires node id to be set, use -nodeid=")
+	if runNode {
+		if len(*nodeID) == 0 {
+			return fmt.Errorf("driver requires node id to be set, use -nodeid=")
+		}
 	}
 
 	return nil
