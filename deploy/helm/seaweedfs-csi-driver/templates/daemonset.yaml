@@ -137,6 +137,7 @@ spec:
             {{- if .Values.tlsSecret }}
             - name: tls
               mountPath: /var/run/secrets/app/tls
+              readOnly: true
             {{- end }}
             - name: cache
               mountPath: /var/cache/seaweedfs

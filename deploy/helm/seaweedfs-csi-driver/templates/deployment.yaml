@@ -98,6 +98,7 @@ spec:
            {{- if .Values.tlsSecret }}
             - name: tls
               mountPath: /var/run/secrets/app/tls
+              readOnly: true
            {{- end }}
           resources: {{ toYaml .Values.controller.resources | nindent 12 }}
 
