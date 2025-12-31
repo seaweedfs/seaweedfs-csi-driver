@@ -457,7 +457,7 @@ spec:
           args :
             - --endpoint=$(CSI_ENDPOINT)
             - --filer=$(SEAWEEDFS_FILER)
-            - --nodeid=$(NODE_ID)
+
             - --driverName=$(DRIVER_NAME)
             - --components=controller
             - --attacher=true
@@ -466,10 +466,7 @@ spec:
               value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
             - name: SEAWEEDFS_FILER
               value: "SEAWEEDFS_FILER:8888"
-            - name: NODE_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
+
             - name: DRIVER_NAME
               value: "seaweedfs-csi-driver"
           ports:

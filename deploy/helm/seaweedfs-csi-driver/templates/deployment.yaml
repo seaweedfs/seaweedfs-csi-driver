@@ -46,7 +46,7 @@ spec:
           args :
             - --endpoint=$(CSI_ENDPOINT)
             - --filer=$(SEAWEEDFS_FILER)
-            - --nodeid=$(NODE_ID)
+
             - --driverName=$(DRIVER_NAME)
             - --components=controller
             - --attacher={{ .Values.csiAttacher.enabled }}
@@ -55,10 +55,7 @@ spec:
               value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
             - name: SEAWEEDFS_FILER
               value: {{ .Values.seaweedfsFiler | quote }}
-            - name: NODE_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
+
             - name: DRIVER_NAME
               value: {{ .Values.driverName | quote }}
             {{- if .Values.tlsSecret }}
