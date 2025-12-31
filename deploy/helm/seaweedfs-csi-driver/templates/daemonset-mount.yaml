@@ -39,6 +39,14 @@ spec:
           env:
             - name: MOUNT_ENDPOINT
               value: {{ $mountEndpoint | quote }}
+            {{- if .Values.tlsSecret }}
+            - name: WEED_GRPC_CLIENT_KEY
+              value: /var/run/secrets/app/tls/tls.key
+            - name: WEED_GRPC_CLIENT_CERT
+              value: /var/run/secrets/app/tls/tls.crt
+            - name: WEED_GRPC_CA
+              value: /var/run/secrets/app/tls/ca.crt
+            {{- end }}
           volumeMounts:
             - name: plugins-dir
               mountPath: {{ .Values.node.volumes.plugins_dir }}
@@ -50,6 +58,10 @@ spec:
               mountPath: /dev
             - name: cache
               mountPath: /var/cache/seaweedfs
+            {{- if .Values.tlsSecret }}
+            - name: tls
+              mountPath: /var/run/secrets/app/tls
+            {{- end }}
             {{- if and $mountEndpoint $mountSocketDir $mountHostPath }}
             - name: mount-socket-dir
               mountPath: {{ $mountSocketDir }}
@@ -74,5 +86,10 @@ spec:
           hostPath:
             path: {{ $mountHostPath }}
             type: DirectoryOrCreate
+        {{- end }}
+        {{- if .Values.tlsSecret }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.tlsSecret }}
         {{- end }}
 {{- end }}
