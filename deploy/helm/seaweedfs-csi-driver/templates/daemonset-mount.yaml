@@ -61,6 +61,7 @@ spec:
             {{- if .Values.tlsSecret }}
             - name: tls
               mountPath: /var/run/secrets/app/tls
+              readOnly: true
             {{- end }}
             {{- if and $mountEndpoint $mountSocketDir $mountHostPath }}
             - name: mount-socket-dir
