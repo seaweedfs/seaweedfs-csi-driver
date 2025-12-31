@@ -10,7 +10,7 @@ tlsSecret: ""
 #concurrentWriters: 128
 #concurrentReaders: 128
 
-imagePullPolicy: "Always"
+imagePullPolicy: "IfNotPresent"
 
 #imagePullSecrets:
 #- name: mycredentials
