@@ -1,3 +1,7 @@
+# WARNING: This manifest does NOT include TLS configuration by default.
+# To enable TLS, it is recommended to use the Helm chart with tlsSecret configured.
+# If you must use this static manifest, you will need to manually patch the DaemonSets
+# to include the necessary TLS environment variables and volume mounts.
 ---
 # Source: seaweedfs-csi-driver/templates/serviceaccounts.yaml
 apiVersion: v1
