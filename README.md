@@ -72,6 +72,9 @@ $ kubectl apply -f deploy/kubernetes/seaweedfs-csi.yaml
 $ kubectl get po -n kube-system
 ```
 
+### TLS Support
+The provided static manifest `deploy/kubernetes/seaweedfs-csi.yaml` does not include TLS configuration by default. To enable TLS, it is recommended to use [Helm](#kubernetes-helm) with `tlsSecret` configured. If you must use static manifests, you will need to manually patch the `seaweedfs-mount` and `seaweedfs-node` DaemonSets to include the necessary TLS environment variables and volume mounts.
+
 ### Uninstall
 
 ```

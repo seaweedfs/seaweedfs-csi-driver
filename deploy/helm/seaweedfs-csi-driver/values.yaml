@@ -10,7 +10,7 @@ tlsSecret: ""
 #concurrentWriters: 128
 #concurrentReaders: 128
 
-imagePullPolicy: "IfNotPresent"
+imagePullPolicy: "Always"
 
 #imagePullSecrets:
 #- name: mycredentials
@@ -81,7 +81,7 @@ seaweedfsCsiPlugin:
 mountService:
   # Must be enabled for the CSI driver node component to mount volumes
   enabled: true
-  image:  chrislusf/seaweedfs-mount:dev
+  image:  chrislusf/seaweedfs-mount:latest
   # Endpoint for communication between CSI driver and mount service
   endpoint: unix:///var/lib/seaweedfs-mount/seaweedfs-mount.sock
   # Host directory for mount service socket files
