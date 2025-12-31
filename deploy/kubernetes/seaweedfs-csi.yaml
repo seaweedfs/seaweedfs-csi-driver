@@ -316,9 +316,6 @@ spec:
             - name: MOUNT_ENDPOINT
               value: "unix:///var/lib/seaweedfs-mount/seaweedfs-mount.sock"
           ports:
-            - containerPort: 9808
-              name: healthz
-              protocol: TCP
           livenessProbe:
             httpGet:
               path: /healthz
@@ -474,9 +471,6 @@ spec:
             - name: DRIVER_NAME
               value: "seaweedfs-csi-driver"
           ports:
-            - containerPort: 9808
-              name: healthz
-              protocol: TCP
           livenessProbe:
             httpGet:
               path: /healthz

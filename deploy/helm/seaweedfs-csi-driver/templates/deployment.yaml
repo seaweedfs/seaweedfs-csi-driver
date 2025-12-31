@@ -71,9 +71,7 @@ spec:
               value: {{ . | quote }}
             {{- end }}
           ports:
-            - containerPort: 9808
-              name: healthz
-              protocol: TCP
+
           {{- with .Values.controller.livenessProbe }}
           livenessProbe:
             httpGet:

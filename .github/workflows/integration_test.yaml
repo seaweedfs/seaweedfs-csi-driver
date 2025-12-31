@@ -130,8 +130,8 @@ jobs:
           # Deploy CSI driver with test images and correct filer address
           # The seaweedfs-csi.yaml deploys to 'default' namespace
           cat deploy/kubernetes/seaweedfs-csi.yaml | \
-            sed 's|chrislusf/seaweedfs-csi-driver:dev|seaweedfs-csi-driver:test|g' | \
-            sed 's|chrislusf/seaweedfs-mount:dev|seaweedfs-mount:test|g' | \
+            sed 's|chrislusf/seaweedfs-csi-driver:latest|seaweedfs-csi-driver:test|g' | \
+            sed 's|chrislusf/seaweedfs-mount:latest|seaweedfs-mount:test|g' | \
             sed 's|SEAWEEDFS_FILER:8888|seaweedfs.seaweedfs.svc.cluster.local:8888|g' | \
             kubectl apply -f -
           
