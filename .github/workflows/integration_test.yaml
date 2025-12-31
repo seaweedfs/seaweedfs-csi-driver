@@ -189,7 +189,7 @@ jobs:
           spec:
             containers:
               - name: test
-                image: busybox
+                image: registry.k8s.io/e2e-test-images/busybox:1.29-4
                 command: ["sleep", "3600"]
                 volumeMounts:
                   - name: data
