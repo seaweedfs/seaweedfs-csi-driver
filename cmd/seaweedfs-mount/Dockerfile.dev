@@ -1,6 +1,6 @@
 # SEAWEEDFS_COMMIT should match the commit in go.mod for reproducibility
 # Update via: docker build --build-arg SEAWEEDFS_COMMIT=<hash> ...
-ARG SEAWEEDFS_COMMIT=c688b697009c
+ARG SEAWEEDFS_COMMIT=0f786cf0d28f
 
 FROM golang:1.25-alpine AS builder
 
