@@ -29,4 +29,4 @@ And running:
 
 ## Usage
 
-See [Testing](https://github.com/seaweedfs/seaweedfs-csi-driver?tab=readme-ov-file#testing) on some usage examples.
+See [Testing](https://github.com/seaweedfs/seaweedfs-csi-driver#testing) on some usage examples.
