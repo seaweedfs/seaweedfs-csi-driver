@@ -10,22 +10,29 @@ See [seaweedfs-csi-driver](https://github.com/seaweedfs/seaweedfs-csi-driver) fo
 
 Add the Helm repository:
 
-    helm repo add seaweedfs-csi-driver https://seaweedfs.github.io/seaweedfs-csi-driver/helm
-    helm repo update
+```bash
+helm repo add seaweedfs-csi-driver https://seaweedfs.github.io/seaweedfs-csi-driver/helm
+helm repo update
+```
   
 Install the chart. You will need to specify the location of the SeaweedFS filer URL by either running:
 
-    helm install --set seaweedfsFiler=<filerHost:port> my-seaweedfs-csi-driver seaweedfs-csi-driver/seaweedfs-csi-driver
-  
+```bash
+helm install --set seaweedfsFiler=<filerHost:port> my-seaweedfs-csi-driver seaweedfs-csi-driver/seaweedfs-csi-driver
+```
+
 Or by configuring a seaweedfs-overrides.yaml file containing (for example):
 
-  # For a SeaweedFS instance running locally under the "seaweed" namespace - adjust for your configuration
-  seaweedfsFiler: "seaweedfs-filer.seaweed.svc.cluster.local:8888"
+```yaml
+# For a SeaweedFS instance running locally under the "seaweed" namespace - adjust for your configuration
+seaweedfsFiler: "seaweedfs-filer.seaweed.svc.cluster.local:8888"
+```
 
 And running:
 
-    helm install my-seaweedfs-csi-driver seaweedfs-csi-driver/seaweedfs-csi-driver -f seaweedfs-overrides.yaml
-
+```bash
+helm install my-seaweedfs-csi-driver seaweedfs-csi-driver/seaweedfs-csi-driver -f seaweedfs-overrides.yaml
+```
 
 ## Usage
 
