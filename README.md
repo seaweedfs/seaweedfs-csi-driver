@@ -91,13 +91,13 @@ $ kubectl delete -f deploy/kubernetes/seaweedfs-csi.yaml
 ```bash
 git clone https://github.com/seaweedfs/seaweedfs-csi-driver.git
 ```
-2. Edit `./seaweedfs-csi-driver/deploy/helm/values.yaml` if required and Install
+2. Edit `./deploy/helm/seaweedfs-csi-driver/values.yaml` if required and Install
 ```bash
-helm install --set seaweedfsFiler=<filerHost:port> seaweedfs-csi-driver ./seaweedfs-csi-driver/deploy/helm/seaweedfs-csi-driver
+helm install --set seaweedfsFiler=<filerHost:port> seaweedfs-csi-driver ./deploy/helm/seaweedfs-csi-driver
 ```
 Example with multiple filers :
 ```bash
-helm install seaweedfs-csi-driver ./seaweedfs-csi-driver/deploy/helm/seaweedfs-csi-driver/ \
+helm install seaweedfs-csi-driver ./deploy/helm/seaweedfs-csi-driver/ \
   --namespace seaweedfs-csi-driver \
   --set seaweedfsFiler="<filerHost:port>\,<filerHost:port>\,<filerHost:port>\,<filerHost:port>\,<filerHost:port>"
 ```
