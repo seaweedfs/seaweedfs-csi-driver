@@ -211,3 +211,26 @@ roleRef:
   kind: Role
   name: {{ template "seaweedfs-csi-driver.name" . }}-leader-election-controller-role
   apiGroup: rbac.authorization.k8s.io
+
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "seaweedfs-csi-driver.name" . }}-resizer-role
+rules:
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["volumeattributesclasses"]
+    verbs: ["get", "list", "watch"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ template "seaweedfs-csi-driver.name" . }}-resizer-binding
+subjects:
+  - kind: ServiceAccount
+    namespace: {{ .Release.Namespace }}
+    name: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
+roleRef:
+  kind: ClusterRole
+  name: {{ template "seaweedfs-csi-driver.name" . }}-resizer-role
+  apiGroup: rbac.authorization.k8s.io
