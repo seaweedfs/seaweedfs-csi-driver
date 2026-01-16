@@ -7,12 +7,12 @@ toolchain go1.24.11
 require (
 	github.com/container-storage-interface/spec v1.11.0
 	golang.org/x/net v0.48.0
-	google.golang.org/grpc v1.77.0
+	google.golang.org/grpc v1.78.0
 	k8s.io/client-go v0.32.0
 )
 
 require (
-	github.com/seaweedfs/seaweedfs v0.0.0-20260110020259-379c032868e0
+	github.com/seaweedfs/seaweedfs v0.0.0-20260116203148-0a4657770002
 	k8s.io/apimachinery v0.32.0
 	k8s.io/mount-utils v0.32.0
 )
