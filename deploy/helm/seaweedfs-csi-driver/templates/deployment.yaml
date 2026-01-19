@@ -72,24 +72,6 @@ spec:
             {{- end }}
           ports:
 
-          {{- with .Values.controller.livenessProbe }}
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: healthz
-            {{- with .failureThreshold }}
-            failureThreshold: {{ . }}
-            {{- end }}
-            {{- with .initialDelaySeconds }}
-            initialDelaySeconds: {{ . }}
-            {{- end }}
-            {{- with .timeoutSeconds }}
-            timeoutSeconds: {{ . }}
-            {{- end }}
-            {{- with .periodSeconds }}
-            periodSeconds: {{ . }}
-            {{- end }}
-          {{- end }}
           volumeMounts:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
@@ -115,12 +97,11 @@ spec:
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
           ports:
             - containerPort: 9809
-              name: healthz
           {{- with .Values.csiProvisioner.livenessProbe }}
           livenessProbe:
             httpGet:
               path: /healthz/leader-election
-              port: healthz
+              port: 9809
             {{- with .failureThreshold }}
             failureThreshold: {{ . }}
             {{- end }}
@@ -154,12 +135,11 @@ spec:
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
           ports:
             - containerPort: 9810
-              name: healthz
           {{- with .Values.csiResizer.livenessProbe }}
           livenessProbe:
             httpGet:
               path: /healthz/leader-election
-              port: healthz
+              port: 9810
             {{- with .failureThreshold }}
             failureThreshold: {{ . }}
             {{- end }}
@@ -193,12 +173,11 @@ spec:
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
           ports:
             - containerPort: 9811
-              name: healthz
           {{- with .Values.csiAttacher.livenessProbe }}
           livenessProbe:
             httpGet:
               path: /healthz/leader-election
-              port: healthz
+              port: 9811
             {{- with .failureThreshold }}
             failureThreshold: {{ . }}
             {{- end }}
@@ -231,11 +210,26 @@ spec:
               value: /var/lib/csi/sockets/pluginproxy/csi.sock
           ports:
             - containerPort: 9808
-              name: livenessprobe
           volumeMounts:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
           resources: {{ toYaml .Values.csiLivenessProbe.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9808
+            {{- with .failureThreshold }}
+            failureThreshold: {{ . }}
+            {{- end }}
+            {{- with .initialDelaySeconds }}
+            initialDelaySeconds: {{ . }}
+            {{- end }}
+            {{- with .timeoutSeconds }}
+            timeoutSeconds: {{ . }}
+            {{- end }}
+            {{- with .periodSeconds }}
+            periodSeconds: {{ . }}
+            {{- end }}
         {{- end }}
 
       volumes:
