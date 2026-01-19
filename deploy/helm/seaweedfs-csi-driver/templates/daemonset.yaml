@@ -103,24 +103,6 @@ spec:
             {{- end }}
           ports:
 
-          {{- with .Values.node.livenessProbe }}
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: healthz
-            {{- with .failureThreshold }}
-            failureThreshold: {{ . }}
-            {{- end }}
-            {{- with .initialDelaySeconds }}
-            initialDelaySeconds: {{ . }}
-            {{- end }}
-            {{- with .timeoutSeconds }}
-            timeoutSeconds: {{ . }}
-            {{- end }}
-            {{- with .periodSeconds }}
-            periodSeconds: {{ . }}
-            {{- end }}
-          {{- end }}
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
@@ -166,11 +148,10 @@ spec:
           {{- with .Values.csiNodeDriverRegistrar.livenessProbe }}
           ports:
             - containerPort: 9809
-              name: healthz
           livenessProbe:
             httpGet:
               path: /healthz
-              port: healthz
+              port: 9809
             {{- with .failureThreshold }}
             failureThreshold: {{ . }}
             {{- end }}
@@ -204,11 +185,26 @@ spec:
               value: /csi/csi.sock
           ports:
             - containerPort: 9808
-              name: livenessprobe
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
           resources: {{ toYaml .Values.csiLivenessProbe.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9808
+            {{- with .failureThreshold }}
+            failureThreshold: {{ . }}
+            {{- end }}
+            {{- with .initialDelaySeconds }}
+            initialDelaySeconds: {{ . }}
+            {{- end }}
+            {{- with .timeoutSeconds }}
+            timeoutSeconds: {{ . }}
+            {{- end }}
+            {{- with .periodSeconds }}
+            periodSeconds: {{ . }}
+            {{- end }}
         {{- end }}
 
       volumes:
