@@ -218,6 +218,7 @@ spec:
             httpGet:
               path: /healthz
               port: 9808
+            {{- with .Values.controller.livenessProbe }}
             {{- with .failureThreshold }}
             failureThreshold: {{ . }}
             {{- end }}
@@ -229,6 +230,7 @@ spec:
             {{- end }}
             {{- with .periodSeconds }}
             periodSeconds: {{ . }}
+            {{- end }}
             {{- end }}
         {{- end }}
 
