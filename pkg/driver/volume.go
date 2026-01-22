@@ -144,15 +144,7 @@ func (vol *Volume) Unstage(stagingTargetPath string) error {
 	}
 
 	// Always attempt to remove the cache directory and socket file
-	cacheDir := GetCacheDir(vol.driver.CacheDir, vol.VolumeId)
-	if err := os.RemoveAll(cacheDir); err != nil {
-		glog.Warningf("failed to remove cache dir %s for volume %s: %v", cacheDir, vol.VolumeId, err)
-	}
-
-	localSocket := GetLocalSocket(vol.driver.volumeSocketDir, vol.VolumeId)
-	if err := os.Remove(localSocket); err != nil && !os.IsNotExist(err) {
-		glog.Warningf("failed to remove local socket %s for volume %s: %v", localSocket, vol.VolumeId, err)
-	}
+	CleanupVolumeResources(vol.driver, vol.VolumeId)
 
 	return nil
 }
