@@ -17,9 +17,13 @@ import (
 )
 
 func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
-	if n.CacheDir != "" && n.CacheDir != os.TempDir() {
-		if err := removeDirContent(n.CacheDir); err != nil {
-			glog.Warning("error cleaning up cache dir")
+	if n.CacheDir != "" {
+		cleanCacheDir := filepath.Clean(n.CacheDir)
+		cleanTempDir := filepath.Clean(os.TempDir())
+		if cleanCacheDir != cleanTempDir {
+			if err := removeDirContent(cleanCacheDir); err != nil {
+				glog.Warningf("error cleaning up cache dir %s: %v", cleanCacheDir, err)
+			}
 		}
 	}
 
@@ -42,8 +46,21 @@ func GetLocalSocket(volumeSocketDir, volumeID string) string {
 
 func CleanupVolumeResources(driver *SeaweedFsDriver, volumeID string) {
 	cacheDir := GetCacheDir(driver.CacheDir, volumeID)
-	if err := os.RemoveAll(cacheDir); err != nil {
-		glog.Warningf("failed to remove cache dir %s for volume %s: %v", cacheDir, volumeID, err)
+
+	// Validate that cacheDir is within cacheBase to prevent path traversal
+	cacheBase := driver.CacheDir
+	if cacheBase == "" {
+		cacheBase = os.TempDir()
+	}
+	cleanCacheBase := filepath.Clean(cacheBase)
+	cleanCacheDir := filepath.Clean(cacheDir)
+	rel, err := filepath.Rel(cleanCacheBase, cleanCacheDir)
+	if err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+		if err := os.RemoveAll(cleanCacheDir); err != nil {
+			glog.Warningf("failed to remove cache dir %s for volume %s: %v", cleanCacheDir, volumeID, err)
+		}
+	} else {
+		glog.Warningf("skipping cache dir removal for volume %s: invalid path %s (rel: %s, err: %v)", volumeID, cleanCacheDir, rel, err)
 	}
 
 	localSocket := GetLocalSocket(driver.volumeSocketDir, volumeID)
