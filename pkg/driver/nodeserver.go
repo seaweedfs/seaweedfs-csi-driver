@@ -301,15 +301,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		_ = mount.CleanupMountPoint(stagingTargetPath, mountutil, true)
 
 		// Also clean up cache directory and socket if they exist
-		cacheDir := GetCacheDir(ns.Driver.CacheDir, volumeID)
-		if err := os.RemoveAll(cacheDir); err != nil {
-			glog.Warningf("failed to remove cache dir %s for volume %s: %v", cacheDir, volumeID, err)
-		}
-
-		localSocket := GetLocalSocket(ns.Driver.volumeSocketDir, volumeID)
-		if err := os.Remove(localSocket); err != nil && !os.IsNotExist(err) {
-			glog.Warningf("failed to remove local socket %s for volume %s: %v", localSocket, volumeID, err)
-		}
+		CleanupVolumeResources(ns.Driver, volumeID)
 	} else {
 		if err := volume.(*Volume).Unstage(stagingTargetPath); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())

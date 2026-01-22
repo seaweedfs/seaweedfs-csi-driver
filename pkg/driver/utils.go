@@ -40,6 +40,18 @@ func GetLocalSocket(volumeSocketDir, volumeID string) string {
 	return mountmanager.LocalSocketPath(volumeSocketDir, volumeID)
 }
 
+func CleanupVolumeResources(driver *SeaweedFsDriver, volumeID string) {
+	cacheDir := GetCacheDir(driver.CacheDir, volumeID)
+	if err := os.RemoveAll(cacheDir); err != nil {
+		glog.Warningf("failed to remove cache dir %s for volume %s: %v", cacheDir, volumeID, err)
+	}
+
+	localSocket := GetLocalSocket(driver.volumeSocketDir, volumeID)
+	if err := os.Remove(localSocket); err != nil && !os.IsNotExist(err) {
+		glog.Warningf("failed to remove local socket %s for volume %s: %v", localSocket, volumeID, err)
+	}
+}
+
 func NewIdentityServer(d *SeaweedFsDriver) *IdentityServer {
 	return &IdentityServer{
 		Driver: d,
