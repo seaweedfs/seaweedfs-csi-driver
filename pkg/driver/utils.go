@@ -9,6 +9,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/datalocality"
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -16,14 +17,27 @@ import (
 )
 
 func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
-	if err := removeDirContent(n.CacheDir); err != nil {
-		glog.Warning("error cleaning up cache dir")
+	if n.CacheDir != "" && n.CacheDir != os.TempDir() {
+		if err := removeDirContent(n.CacheDir); err != nil {
+			glog.Warning("error cleaning up cache dir")
+		}
 	}
 
 	return &NodeServer{
 		Driver:        n,
 		volumeMutexes: NewKeyMutex(),
 	}
+}
+
+func GetCacheDir(cacheBase, volumeID string) string {
+	if cacheBase == "" {
+		cacheBase = os.TempDir()
+	}
+	return filepath.Join(cacheBase, volumeID)
+}
+
+func GetLocalSocket(volumeSocketDir, volumeID string) string {
+	return mountmanager.LocalSocketPath(volumeSocketDir, volumeID)
 }
 
 func NewIdentityServer(d *SeaweedFsDriver) *IdentityServer {

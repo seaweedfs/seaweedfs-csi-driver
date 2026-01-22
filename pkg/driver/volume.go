@@ -131,18 +131,27 @@ func (vol *Volume) Unstage(stagingTargetPath string) error {
 			glog.Errorf("error cleaning up mount point for volume %s: %v", vol.VolumeId, err)
 			return err
 		}
+	} else {
+		if err := vol.unmounter.Unmount(); err != nil {
+			glog.Errorf("error unmounting volume during unstage: %s, err: %v", stagingTargetPath, err)
+			return err
+		}
 
-		return nil
+		if err := os.Remove(stagingTargetPath); err != nil && !os.IsNotExist(err) {
+			glog.Errorf("error removing staging path for volume %s at %s, err: %v", vol.VolumeId, stagingTargetPath, err)
+			return err
+		}
 	}
 
-	if err := vol.unmounter.Unmount(); err != nil {
-		glog.Errorf("error unmounting volume during unstage: %s, err: %v", stagingTargetPath, err)
-		return err
+	// Always attempt to remove the cache directory and socket file
+	cacheDir := GetCacheDir(vol.driver.CacheDir, vol.VolumeId)
+	if err := os.RemoveAll(cacheDir); err != nil {
+		glog.Warningf("failed to remove cache dir %s for volume %s: %v", cacheDir, vol.VolumeId, err)
 	}
 
-	if err := os.Remove(stagingTargetPath); err != nil && !os.IsNotExist(err) {
-		glog.Errorf("error removing staging path for volume %s at %s, err: %v", vol.VolumeId, stagingTargetPath, err)
-		return err
+	localSocket := GetLocalSocket(vol.driver.volumeSocketDir, vol.VolumeId)
+	if err := os.Remove(localSocket); err != nil && !os.IsNotExist(err) {
+		glog.Warningf("failed to remove local socket %s for volume %s: %v", localSocket, vol.VolumeId, err)
 	}
 
 	return nil

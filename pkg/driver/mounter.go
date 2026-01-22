@@ -2,8 +2,6 @@ package driver
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -63,12 +61,8 @@ func (m *mountServiceMounter) Mount(target string) (Unmounter, error) {
 		filers[i] = string(address)
 	}
 
-	cacheBase := m.driver.CacheDir
-	if cacheBase == "" {
-		cacheBase = os.TempDir()
-	}
-	cacheDir := filepath.Join(cacheBase, m.volumeID)
-	localSocket := mountmanager.LocalSocketPath(m.driver.volumeSocketDir, m.volumeID)
+	cacheDir := GetCacheDir(m.driver.CacheDir, m.volumeID)
+	localSocket := GetLocalSocket(m.driver.volumeSocketDir, m.volumeID)
 
 	args, err := m.buildMountArgs(target, cacheDir, localSocket, filers)
 	if err != nil {
