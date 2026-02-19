@@ -1,6 +1,8 @@
 package driver
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -37,7 +39,11 @@ func GetCacheDir(cacheBase, volumeID string) string {
 	if cacheBase == "" {
 		cacheBase = os.TempDir()
 	}
-	return filepath.Join(cacheBase, volumeID)
+	// volumeIDs are full paths in seaweedfs
+	// Use hash value instead to get flat cache dir structure
+	h := sha256.Sum256([]byte(volumeID))
+	hashStr := hex.EncodeToString(h[:])
+	return filepath.Join(cacheBase, hashStr)
 }
 
 func GetLocalSocket(volumeSocketDir, volumeID string) string {
