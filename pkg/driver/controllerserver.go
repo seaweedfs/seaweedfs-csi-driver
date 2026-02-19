@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"path"
 	"regexp"
 	"strings"
 
@@ -30,12 +31,44 @@ var _ = csi.ControllerServer(&ControllerServer{})
 func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	glog.Infof("create volume req: %v", req.GetName())
 
+	params := req.GetParameters()
+	if params == nil {
+		params = make(map[string]string)
+	}
+	glog.V(4).Infof("params:%v", params)
+
 	// Check arguments
-	suggestedVolumeId := req.GetName()
-	if suggestedVolumeId == "" {
+	requestedVolumeId := req.GetName()
+	if requestedVolumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "Name missing in request")
 	}
-	volumeId := sanitizeVolumeId(suggestedVolumeId)
+
+	// Resolving path for volume
+	volumePath := params["path"]
+	var parentDir, volumeName string
+	if volumePath == "" {
+		// If path is implicit, use provided parentDir, or default to creating buckets
+
+		// FIXME: need to use bucketDir in Filer config since it can be set to alternative paths
+		parentDir = params["parentDir"]
+		if parentDir == "" {
+			parentDir = "/buckets"
+		}
+
+		// Detect if this volume is a bucket by checking parentDir
+		if parentDir == "/buckets" {
+			volumeName = sanitizeVolumeIdS3(requestedVolumeId)
+		}
+		volumePath = path.Join(parentDir, volumeName)
+	} else {
+		// if path is explicit, extract parentDir and volumeName out of it
+		parentDir = path.Dir(volumePath)
+		volumeName = path.Base(volumePath)
+	}
+
+	// Store resolved names back to volume context
+	params["parentDir"] = parentDir
+	params["volumeName"] = volumeName
 
 	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		glog.V(3).Infof("invalid create volume req: %v", req)
@@ -46,22 +79,19 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.InvalidArgument, "Volume Capabilities missing in request")
 	}
 
-	params := req.GetParameters()
-	if params == nil {
-		params = make(map[string]string)
-	}
-	glog.V(4).Infof("params:%v", params)
 	capacity := req.GetCapacityRange().GetRequiredBytes()
 
-	if err := filer_pb.Mkdir(ctx, cs.Driver, "/buckets", volumeId, nil); err != nil {
-		return nil, fmt.Errorf("error creating bucket: %v", err)
+	if err := filer_pb.Mkdir(ctx, cs.Driver, parentDir, volumeName, nil); err != nil {
+		return nil, fmt.Errorf("error creating volume: %v", err)
 	}
 
-	glog.V(4).Infof("volume created %s", volumeId)
+	glog.V(4).Infof("volume created %s at %s", requestedVolumeId, volumePath)
 
+	// Use full paths as VolumeID
+	// This keeps everything stateless
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      volumeId,
+			VolumeId:      volumePath,
 			CapacityBytes: capacity,
 			VolumeContext: params,
 		},
@@ -84,7 +114,10 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 	glog.V(4).Infof("deleting volume %s", volumeId)
 
-	if err := filer_pb.Remove(ctx, cs.Driver, "/buckets", volumeId, true, true, true, false, nil); err != nil {
+	parentDir := path.Dir(volumeId)
+	volumeName := path.Base(volumeId)
+
+	if err := filer_pb.Remove(ctx, cs.Driver, parentDir, volumeName, true, true, true, false, nil); err != nil {
 		return nil, fmt.Errorf("error deleting bucket: %v", err)
 	}
 
@@ -125,23 +158,28 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 }
 
 func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
-	glog.Infof("validate volume capabilities req: %v", req.GetVolumeId())
+	volumeId := req.VolumeId
+
+	glog.Infof("validate volume capabilities req: %v", volumeId)
 
 	// Check arguments
-	if req.GetVolumeId() == "" {
+	if volumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
 	}
 	if req.GetVolumeCapabilities() == nil {
 		return nil, status.Error(codes.InvalidArgument, "Volume capabilities missing in request")
 	}
 
-	exists, err := filer_pb.Exists(ctx, cs.Driver, "/buckets", req.GetVolumeId(), true)
+	parentDir := path.Dir(volumeId)
+	volumeName := path.Base(volumeId)
+
+	exists, err := filer_pb.Exists(ctx, cs.Driver, parentDir, volumeName, true)
 	if err != nil {
-		return nil, fmt.Errorf("error checking bucket %s exists: %v", req.GetVolumeId(), err)
+		return nil, fmt.Errorf("error checking bucket %s exists: %v", volumeId, err)
 	}
 	if !exists {
 		// return an error if the volume requested does not exist
-		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume with id %s does not exist", req.GetVolumeId()))
+		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume with id %s does not exist", volumeId))
 	}
 
 	// We currently only support RWO
@@ -192,7 +230,7 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	}, nil
 }
 
-func sanitizeVolumeId(volumeId string) string {
+func sanitizeVolumeIdS3(volumeId string) string {
 	volumeId = strings.ToLower(volumeId)
 	// NOTE: leave original length-only logic to ensure backward compatibility with volumes
 	// that happened to work because their suggested volumeId was too long

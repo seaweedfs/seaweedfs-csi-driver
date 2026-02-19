@@ -99,14 +99,13 @@ func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket s
 		volumeContext = map[string]string{}
 	}
 
-	path := volumeContext["path"]
-	if path == "" {
-		path = fmt.Sprintf("/buckets/%s", m.volumeID)
-	}
+	// path should already be resolved in controller and passed as volumeID
+	path := m.volumeID
 
 	collection := volumeContext["collection"]
 	if collection == "" {
-		collection = m.volumeID
+		// Use volumeName when collection is not set
+		collection = volumeContext["volumeName"]
 	}
 
 	args := []string{
@@ -161,13 +160,17 @@ func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket s
 	}
 
 	parameterArgMap := map[string]string{
-		"uidMap":    "map.uid",
-		"gidMap":    "map.gid",
-		"filerPath": "filer.path",
-		"diskType":  "disk",
+		"uidMap":   "map.uid",
+		"gidMap":   "map.gid",
+		"diskType": "disk",
 	}
 
-	ignoredArgs := map[string]struct{}{"dataLocality": {}}
+	ignoredArgs := map[string]struct{}{
+		"dataLocality": {},
+		"path":         {},
+		"parentDir":    {},
+		"volumeName":   {},
+	}
 
 	for key, value := range volumeContext {
 		if _, ignored := ignoredArgs[key]; ignored {
