@@ -2,6 +2,7 @@ package driver
 
 import (
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 
@@ -99,13 +100,19 @@ func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket s
 		volumeContext = map[string]string{}
 	}
 
-	// path should already be resolved in controller and passed as volumeID
-	path := m.volumeID
+	var filerPath string
+	if path.IsAbs(m.volumeID) {
+		// path already resolved in controller and passed as volumeID
+		filerPath = m.volumeID
+	} else {
+		// Backward-compatibility for legacy volume ID
+		filerPath = path.Join("/buckets", m.volumeID)
+	}
 
 	collection := volumeContext["collection"]
 	if collection == "" {
-		// Use volumeName when collection is not set
-		collection = volumeContext["volumeName"]
+		// Use path basename when collection is not set
+		collection = path.Base(filerPath)
 	}
 
 	args := []string{
@@ -125,7 +132,7 @@ func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket s
 	argsMap := map[string]string{
 		"collection":         collection,
 		"filer":              strings.Join(filers, ","),
-		"filer.path":         path,
+		"filer.path":         filerPath,
 		"cacheCapacityMB":    strconv.Itoa(m.driver.CacheCapacityMB),
 		"concurrentReaders":  strconv.Itoa(m.driver.ConcurrentReaders),
 		"concurrentWriters":  strconv.Itoa(m.driver.ConcurrentWriters),
