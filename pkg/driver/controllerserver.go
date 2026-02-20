@@ -64,6 +64,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		volumePath = path.Join(parentDir, volumeName)
 	} else {
 		// if path is explicit, extract parentDir and volumeName out of it
+		volumePath = path.Clean(volumePath)
 		parentDir = path.Dir(volumePath)
 		volumeName = path.Base(volumePath)
 	}
