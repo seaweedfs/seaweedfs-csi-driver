@@ -58,6 +58,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		// Detect if this volume is a bucket by checking parentDir
 		if parentDir == "/buckets" {
 			volumeName = sanitizeVolumeIdS3(requestedVolumeId)
+		} else {
+			volumeName = requestedVolumeId
 		}
 		volumePath = path.Join(parentDir, volumeName)
 	} else {
