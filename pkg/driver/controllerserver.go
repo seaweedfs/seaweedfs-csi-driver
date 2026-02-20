@@ -120,7 +120,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	volumeName := path.Base(volumeId)
 
 	if err := filer_pb.Remove(ctx, cs.Driver, parentDir, volumeName, true, true, true, false, nil); err != nil {
-		return nil, fmt.Errorf("error deleting bucket: %v", err)
+		return nil, fmt.Errorf("error deleting volume %s: %v", volumeId, err)
 	}
 
 	return &csi.DeleteVolumeResponse{}, nil
