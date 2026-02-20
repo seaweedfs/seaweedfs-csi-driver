@@ -116,8 +116,15 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	}
 	glog.V(4).Infof("deleting volume %s", volumeId)
 
-	parentDir := path.Dir(volumeId)
-	volumeName := path.Base(volumeId)
+	var parentDir, volumeName string
+	if path.IsAbs(volumeId) {
+		parentDir = path.Dir(volumeId)
+		volumeName = path.Base(volumeId)
+	} else {
+		// Backward-compatibility with legacy volume ID
+		parentDir = "/buckets"
+		volumeName = volumeId
+	}
 
 	if err := filer_pb.Remove(ctx, cs.Driver, parentDir, volumeName, true, true, true, false, nil); err != nil {
 		return nil, fmt.Errorf("error deleting volume %s: %v", volumeId, err)
@@ -172,8 +179,15 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 		return nil, status.Error(codes.InvalidArgument, "Volume capabilities missing in request")
 	}
 
-	parentDir := path.Dir(volumeId)
-	volumeName := path.Base(volumeId)
+	var parentDir, volumeName string
+	if path.IsAbs(volumeId) {
+		parentDir = path.Dir(volumeId)
+		volumeName = path.Base(volumeId)
+	} else {
+		// Backward-compatibility with legacy volume ID
+		parentDir = "/buckets"
+		volumeName = volumeId
+	}
 
 	exists, err := filer_pb.Exists(ctx, cs.Driver, parentDir, volumeName, true)
 	if err != nil {
