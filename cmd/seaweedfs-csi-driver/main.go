@@ -25,6 +25,7 @@ var (
 	concurrentWriters = flag.Int("concurrentWriters", 128, "limit concurrent goroutine writers if not 0")
 	concurrentReaders = flag.Int("concurrentReaders", 128, "limit concurrent chunk fetches for read operations")
 	cacheCapacityMB   = flag.Int("cacheCapacityMB", 0, "local file chunk cache capacity in MB")
+	cacheMetaTtlSec   = flag.Int("cacheMetaTtlSec", 60, "metadata cache TTL in seconds")
 	cacheDir          = flag.String("cacheDir", os.TempDir(), "local cache directory for file chunks and meta data")
 	uidMap            = flag.String("map.uid", "", "map local uid to uid on filer, comma-separated <local_uid>:<filer_uid>")
 	gidMap            = flag.String("map.gid", "", "map local gid to gid on filer, comma-separated <local_gid>:<filer_gid>")
@@ -88,6 +89,7 @@ func main() {
 	drv.ConcurrentWriters = *concurrentWriters
 	drv.ConcurrentReaders = *concurrentReaders
 	drv.CacheCapacityMB = *cacheCapacityMB
+	drv.CacheMetaTtlSec = *cacheMetaTtlSec
 	drv.CacheDir = *cacheDir
 	drv.UidMap = *uidMap
 	drv.GidMap = *gidMap
