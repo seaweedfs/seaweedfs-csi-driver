@@ -42,6 +42,7 @@ type SeaweedFsDriver struct {
 	ConcurrentWriters int
 	ConcurrentReaders int
 	CacheCapacityMB   int
+	CacheMetaTtlSec   int
 	CacheDir          string
 	UidMap            string
 	GidMap            string

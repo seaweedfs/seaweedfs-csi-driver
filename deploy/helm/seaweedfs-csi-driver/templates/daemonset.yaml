@@ -67,6 +67,9 @@ spec:
             {{- with .Values.cacheCapacityMB }}
             - --cacheCapacityMB={{ . }}
             {{- end }}
+            {{- with .Values.cacheMetaTtlSec }}
+            - --cacheMetaTtlSec={{ . }}
+            {{- end }}
           env:
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock

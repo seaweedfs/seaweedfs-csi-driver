@@ -6,6 +6,7 @@ isDefaultStorageClass: false
 tlsSecret: ""
 #logVerbosity: 4
 #cacheCapacityMB: 0
+#cacheMetaTtlSec: 60
 
 #concurrentWriters: 128
 #concurrentReaders: 128
