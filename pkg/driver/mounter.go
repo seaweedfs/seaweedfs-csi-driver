@@ -105,8 +105,16 @@ func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket s
 		// path already resolved in controller and passed as volumeID
 		filerPath = m.volumeID
 	} else {
-		// Backward-compatibility for legacy volume ID
-		filerPath = path.Join("/buckets", m.volumeID)
+		// non-absolute-path volume ID, volume is either legacy or this is a static provision
+		contextPath := volumeContext["path"]
+		if contextPath == "" {
+			// Backward-compatibility for legacy volume ID
+			filerPath = path.Join("/buckets", m.volumeID)
+		} else {
+			// This is a static provision
+			// Always use the context path parameter as filerPath
+			filerPath = contextPath
+		}
 	}
 
 	collection := volumeContext["collection"]
