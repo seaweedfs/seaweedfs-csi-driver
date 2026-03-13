@@ -10,7 +10,7 @@ require (
 )
 
 require (
-	github.com/seaweedfs/seaweedfs v0.0.0-20260310054203-d89a78d9e3ce
+	github.com/seaweedfs/seaweedfs v0.0.0-20260313225735-577a8459c9f7
 	k8s.io/apimachinery v0.32.0
 	k8s.io/mount-utils v0.32.0
 )
