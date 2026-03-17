@@ -215,7 +215,7 @@ spec:
               add:
               - SYS_ADMIN
             privileged: true
-          image: chrislusf/seaweedfs-mount:latest
+          image: chrislusf/seaweedfs-mount:v1.4.5
           imagePullPolicy: IfNotPresent
           args:
             - --endpoint=$(MOUNT_ENDPOINT)
@@ -288,7 +288,7 @@ spec:
               add:
               - SYS_ADMIN
             privileged: true
-          image: chrislusf/seaweedfs-csi-driver:latest
+          image: chrislusf/seaweedfs-csi-driver:v1.4.5
           imagePullPolicy: IfNotPresent
           args:
             - --endpoint=$(CSI_ENDPOINT)
@@ -449,7 +449,7 @@ spec:
       containers:
         # SeaweedFs Plugin (controller)
         - name: seaweedfs-csi-plugin
-          image: chrislusf/seaweedfs-csi-driver:latest
+          image: chrislusf/seaweedfs-csi-driver:v1.4.5
           imagePullPolicy: IfNotPresent
           args :
             - --endpoint=$(CSI_ENDPOINT)
