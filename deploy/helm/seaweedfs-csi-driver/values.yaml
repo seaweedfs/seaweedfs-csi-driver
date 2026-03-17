@@ -66,7 +66,8 @@ csiLivenessProbe:
   resources: {}
 
 seaweedfsCsiPlugin:
-  image: chrislusf/seaweedfs-csi-driver:latest
+  image: chrislusf/seaweedfs-csi-driver
+  # tag defaults to Chart.appVersion when not set
   securityContext:
     privileged: true
     capabilities:
@@ -82,7 +83,8 @@ seaweedfsCsiPlugin:
 mountService:
   # Must be enabled for the CSI driver node component to mount volumes
   enabled: true
-  image:  chrislusf/seaweedfs-mount:latest
+  image: chrislusf/seaweedfs-mount
+  # tag defaults to Chart.appVersion when not set
   # Endpoint for communication between CSI driver and mount service
   endpoint: unix:///var/lib/seaweedfs-mount/seaweedfs-mount.sock
   # Host directory for mount service socket files

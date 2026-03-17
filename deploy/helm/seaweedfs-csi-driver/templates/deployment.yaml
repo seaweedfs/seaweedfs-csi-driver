@@ -41,7 +41,7 @@ spec:
       containers:
         # SeaweedFs Plugin (controller)
         - name: seaweedfs-csi-plugin
-          image: {{.Values.seaweedfsCsiPlugin.image}}
+          image: {{ .Values.seaweedfsCsiPlugin.image }}:{{ .Values.seaweedfsCsiPlugin.tag | default .Chart.AppVersion }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           args :
             - --endpoint=$(CSI_ENDPOINT)

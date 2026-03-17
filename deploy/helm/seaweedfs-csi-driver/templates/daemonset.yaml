@@ -40,7 +40,7 @@ spec:
         # SeaweedFs Plugin (node)
         - name: csi-seaweedfs-plugin
           securityContext: {{ toYaml .Values.seaweedfsCsiPlugin.securityContext | nindent 12 }}
-          image: {{.Values.seaweedfsCsiPlugin.image }}
+          image: {{ .Values.seaweedfsCsiPlugin.image }}:{{ .Values.seaweedfsCsiPlugin.tag | default .Chart.AppVersion }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           args:
             - --endpoint=$(CSI_ENDPOINT)

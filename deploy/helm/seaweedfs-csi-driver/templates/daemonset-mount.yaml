@@ -32,7 +32,7 @@ spec:
       containers:
         - name: seaweedfs-mount
           securityContext: {{ toYaml .Values.mountService.securityContext | nindent 12 }}
-          image: {{ .Values.mountService.image }}
+          image: {{ .Values.mountService.image }}:{{ .Values.mountService.tag | default .Chart.AppVersion }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           args:
             - --endpoint=$(MOUNT_ENDPOINT)
