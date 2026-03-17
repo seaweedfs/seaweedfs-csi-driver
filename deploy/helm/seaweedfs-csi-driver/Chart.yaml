@@ -3,4 +3,4 @@ name: seaweedfs-csi-driver
 description: A Helm chart for Kubernetes CSI backed by a SeaweedFS cluster
 type: application
 version: 0.2.11
-appVersion: latest
+appVersion: v1.4.5
