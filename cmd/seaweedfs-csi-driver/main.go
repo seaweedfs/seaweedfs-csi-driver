@@ -119,6 +119,14 @@ func checkPreconditions(runNode bool) error {
 
 	if runNode {
 		if len(*nodeID) == 0 {
+			// Try to detect node ID from environment variable
+			if envNodeID := os.Getenv("NODE_ID"); envNodeID != "" {
+				*nodeID = envNodeID
+			} else if hostname, err := os.Hostname(); err == nil && hostname != "" {
+				*nodeID = hostname
+			}
+		}
+		if len(*nodeID) == 0 {
 			return fmt.Errorf("driver requires node id to be set, use -nodeid=")
 		}
 	}
