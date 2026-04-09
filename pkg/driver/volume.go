@@ -29,6 +29,11 @@ type Volume struct {
 	publishPaths sync.Map          // targetPath (string) -> bool (readOnly)
 	volContext   map[string]string  // volume context stored for re-staging
 	readOnly     bool               // FUSE-level readOnly flag
+
+	// bindMountFn is used by Publish to perform the bind mount from the
+	// staging path to the pod-specific target path. Populated by the
+	// NodeServer that owns this volume; tests override it with a fake.
+	bindMountFn BindMountFn
 }
 
 func NewVolume(volumeID string, mounter Mounter, driver *SeaweedFsDriver) *Volume {
@@ -76,17 +81,21 @@ func (vol *Volume) Publish(stagingTargetPath string, targetPath string, readOnly
 		return nil
 	}
 
-	// Use bind mount to create an alias of the real mount point.
+	bind := vol.bindMountFn
+	if bind == nil {
+		bind = defaultBindMount
+	}
+	return bind(stagingTargetPath, targetPath, readOnly)
+}
+
+// defaultBindMount performs a real bind mount via mountutil. It is the
+// production implementation of BindMountFn.
+func defaultBindMount(source, target string, readOnly bool) error {
 	mountOptions := []string{"bind"}
 	if readOnly {
 		mountOptions = append(mountOptions, "ro")
 	}
-
-	if err := mountutil.Mount(stagingTargetPath, targetPath, "", mountOptions); err != nil {
-		return err
-	}
-
-	return nil
+	return mountutil.Mount(source, target, "", mountOptions)
 }
 
 func (vol *Volume) Quota(sizeByte int64) error {

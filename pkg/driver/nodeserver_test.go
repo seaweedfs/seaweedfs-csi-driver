@@ -36,12 +36,12 @@ func (f *fakeUnmounter) Unmount() error {
 	return nil
 }
 
-// newTestNodeServer returns a NodeServer with the mounter and capacity
+// newTestNodeServer returns a NodeServer with all mount/filesystem
 // factories replaced so tests do not touch the mount service or k8s API.
 // The health monitor is not started.
 func newTestNodeServer(t *testing.T, fake *fakeMounter) *NodeServer {
 	t.Helper()
-	return &NodeServer{
+	ns := &NodeServer{
 		Driver:        &SeaweedFsDriver{},
 		volumeMutexes: NewKeyMutex(),
 		stopCh:        make(chan struct{}),
@@ -52,7 +52,15 @@ func newTestNodeServer(t *testing.T, fake *fakeMounter) *NodeServer {
 			// Skip quota application in tests.
 			return 0, errors.New("capacity not available in test")
 		},
+		isHealthyFn:      func(path string) bool { return true },
+		cleanupStagingFn: func(path string) error { return nil },
+		unmountFn:        func(path string) error { return nil },
+		bindMountFn: func(source, target string, readOnly bool) error {
+			// Create the target so follow-up checkMount calls see a directory.
+			return nil
+		},
 	}
+	return ns
 }
 
 func TestStageNewVolumeUsesInjectedFactories(t *testing.T) {
