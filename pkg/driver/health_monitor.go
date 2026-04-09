@@ -65,12 +65,18 @@ func (ns *NodeServer) checkHealth(path string) bool {
 	}
 }
 
-// checkAndRecoverVolumes inspects every staged volume and kicks off
-// recovery work for any that have a dead staging mount or a dropped
-// publish bind mount. Recovery is launched per-volume in its own goroutine
-// so that a slow unmount or FUSE start for one volume does not stall the
-// sweep for the others. The per-volume mutex taken inside recoverVolume /
-// retryPublishPaths still prevents concurrent recoveries for the same id.
+// checkAndRecoverVolumes iterates the volume map and launches one
+// background goroutine per volume to perform its health check and any
+// needed recovery work. The sweep loop itself only touches the
+// in-flight set — it does not block on health checks, so a single hung
+// FUSE can never stall inspection of other volumes.
+//
+// ns.activeRecoveries deduplicates in-flight work: if a recovery for a
+// given volumeID is already running (e.g. because the previous sweep's
+// goroutine is blocked on a slow unmount), the new sweep skips it
+// instead of spawning a second goroutine that would just pile up on
+// the same mutex. This prevents goroutine exhaustion when a volume is
+// stuck.
 func (ns *NodeServer) checkAndRecoverVolumes() {
 	ns.volumes.Range(func(key, value interface{}) bool {
 		volumeID := key.(string)
@@ -79,28 +85,67 @@ func (ns *NodeServer) checkAndRecoverVolumes() {
 		if vol.StagedPath == "" {
 			return true
 		}
-
-		if !ns.checkHealth(vol.StagedPath) {
-			glog.Warningf("health monitor: detected unhealthy staging mount for volume %s at %s", volumeID, vol.StagedPath)
-			ns.launchRecovery(func() { ns.recoverVolume(volumeID) }, volumeID, "full-recovery")
-			return true
-		}
-
-		// Staging is alive; check whether any publish bind mounts have
-		// been dropped (e.g. from a previous partial recovery) and need
-		// to be re-bound without tearing down the FUSE mount.
-		if ns.hasUnhealthyPublishPath(vol) {
-			glog.Warningf("health monitor: detected unhealthy publish mount for volume %s", volumeID)
-			ns.launchRecovery(func() { ns.retryPublishPaths(volumeID) }, volumeID, "publish-retry")
-		}
+		ns.launchVolumeHealthCheck(volumeID)
 		return true
 	})
+}
+
+// launchVolumeHealthCheck spawns the per-volume health check goroutine
+// if one is not already running for this volumeID. The goroutine is the
+// place where slow work (checkHealth, unmount, re-mount, re-bind) runs.
+// Tests synchronize via ns.recoveryWg.
+func (ns *NodeServer) launchVolumeHealthCheck(volumeID string) {
+	if _, loaded := ns.activeRecoveries.LoadOrStore(volumeID, struct{}{}); loaded {
+		glog.V(4).Infof("health monitor: health check already in progress for volume %s, skipping", volumeID)
+		return
+	}
+
+	ns.recoveryWg.Add(1)
+	go func() {
+		defer ns.recoveryWg.Done()
+		defer ns.activeRecoveries.Delete(volumeID)
+		defer func() {
+			if r := recover(); r != nil {
+				glog.Errorf("health monitor: health check for volume %s panicked: %v\n%s", volumeID, r, debug.Stack())
+			}
+		}()
+		ns.performVolumeHealthCheck(volumeID)
+	}()
+}
+
+// performVolumeHealthCheck runs inside the per-volume goroutine. It
+// does the potentially-slow health checks off the sweep thread and
+// dispatches to full recovery or publish-retry as needed.
+func (ns *NodeServer) performVolumeHealthCheck(volumeID string) {
+	val, ok := ns.volumes.Load(volumeID)
+	if !ok {
+		return
+	}
+	vol := val.(*Volume)
+	if vol.StagedPath == "" {
+		return
+	}
+
+	if !ns.checkHealth(vol.StagedPath) {
+		glog.Warningf("health monitor: detected unhealthy staging mount for volume %s at %s", volumeID, vol.StagedPath)
+		ns.recoverVolume(volumeID)
+		return
+	}
+
+	// Staging is alive; check whether any publish bind mounts have
+	// been dropped (e.g. from a previous partial recovery) and need
+	// to be re-bound without tearing down the FUSE mount.
+	if ns.hasUnhealthyPublishPath(vol) {
+		glog.Warningf("health monitor: detected unhealthy publish mount for volume %s", volumeID)
+		ns.retryPublishPaths(volumeID)
+	}
 }
 
 // hasUnhealthyPublishPath returns true if any of the Volume's tracked
 // publish paths is not currently a live, readable mount point. It uses
 // the same isHealthyFn as staging so behavior stays consistent across
-// both mount levels.
+// both mount levels. This runs inside the per-volume goroutine so a
+// slow check for one volume does not affect others.
 func (ns *NodeServer) hasUnhealthyPublishPath(vol *Volume) bool {
 	unhealthy := false
 	vol.publishPaths.Range(func(k, _ interface{}) bool {
@@ -111,22 +156,6 @@ func (ns *NodeServer) hasUnhealthyPublishPath(vol *Volume) bool {
 		return true
 	})
 	return unhealthy
-}
-
-// launchRecovery runs fn in a goroutine with panic recovery. Tests can
-// wait on ns.recoveryWg after driving a sweep to synchronize on
-// in-flight recovery work.
-func (ns *NodeServer) launchRecovery(fn func(), volumeID, kind string) {
-	ns.recoveryWg.Add(1)
-	go func() {
-		defer ns.recoveryWg.Done()
-		defer func() {
-			if r := recover(); r != nil {
-				glog.Errorf("health monitor: %s for volume %s panicked: %v\n%s", kind, volumeID, r, debug.Stack())
-			}
-		}()
-		fn()
-	}()
 }
 
 // retryPublishPaths re-binds publish paths whose bind mount has gone
