@@ -190,8 +190,9 @@ func (ns *NodeServer) retryPublishPaths(volumeID string) {
 		// Clear any stale/corrupt mount first so Publish's checkMount
 		// does not short-circuit on a leftover mount.
 		if err := ns.unmountFn(path); err != nil {
+			glog.Warningf("health monitor: unmount of publish path %s for volume %s failed: %v, trying force cleanup", path, volumeID, err)
 			if cleanupErr := mount.CleanupMountPoint(path, mountutil, true); cleanupErr != nil {
-				glog.Warningf("health monitor: force cleanup of publish path %s failed: %v", path, cleanupErr)
+				glog.Errorf("health monitor: force cleanup of publish path %s for volume %s also failed: %v", path, volumeID, cleanupErr)
 			}
 		}
 		if err := vol.Publish(vol.StagedPath, path, readOnly); err != nil {
