@@ -49,6 +49,11 @@ type NodeServer struct {
 	// sweep to synchronize on the recovery work.
 	recoveryWg sync.WaitGroup
 
+	// activeRecoveries holds the volumeIDs that currently have a
+	// recovery goroutine in flight, used to prevent successive sweeps
+	// from piling up new recovery goroutines on top of a hung one.
+	activeRecoveries sync.Map // map[string]struct{}
+
 	// Injectable factories / operations (overridden in tests).
 	mounterFactory   MounterFactory
 	capacityFn       CapacityFn

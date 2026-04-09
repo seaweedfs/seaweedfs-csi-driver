@@ -295,6 +295,43 @@ func TestHealthMonitorSkipsVolumesWithoutContext(t *testing.T) {
 	}
 }
 
+// TestHealthMonitorDeduplicatesInFlightRecovery verifies that a second
+// sweep arriving while a recovery for the same volume is still in
+// flight does not spawn a duplicate goroutine. This is the regression
+// test for the gemini-code-assist concern about goroutine pile-up when
+// a FUSE-related syscall hangs during recovery.
+func TestHealthMonitorDeduplicatesInFlightRecovery(t *testing.T) {
+	state := newFakeMountState()
+	ns := newNodeServerWithFakes(t, state)
+
+	// Pre-populate the in-flight set directly so any sweep for "vol-1"
+	// is expected to skip. We do not delete it, so even after the
+	// sweep the slot remains "busy" — mimicking a hung recovery.
+	ns.activeRecoveries.Store("vol-1", struct{}{})
+
+	stagingPath := filepath.Join(t.TempDir(), "staging")
+	vol, err := ns.stageNewVolume("vol-1", stagingPath, map[string]string{}, false)
+	if err != nil {
+		t.Fatalf("stageNewVolume: %v", err)
+	}
+	ns.volumes.Store("vol-1", vol)
+
+	// Flip staging to unhealthy — normally this would trigger full recovery.
+	state.healthy.Store(false)
+
+	before := state.stageCalls
+	ns.checkAndRecoverVolumes()
+	ns.recoveryWg.Wait()
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	// No new stage call should have happened because the sweep found
+	// an in-flight marker and bailed out.
+	if state.stageCalls != before {
+		t.Errorf("expected no new stage calls while recovery is in flight, got %d new", state.stageCalls-before)
+	}
+}
+
 // TestHealthMonitorRetriesFailedPublishes verifies the second-chance
 // publish retry path: if staging is healthy but a previously recovered
 // volume has a publish bind mount that never came back up, the next
