@@ -11,6 +11,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/datalocality"
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/k8s"
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"golang.org/x/net/context"
@@ -30,9 +31,11 @@ func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
 	}
 
 	ns := &NodeServer{
-		Driver:        n,
-		volumeMutexes: NewKeyMutex(),
-		stopCh:        make(chan struct{}),
+		Driver:         n,
+		volumeMutexes:  NewKeyMutex(),
+		stopCh:         make(chan struct{}),
+		mounterFactory: newMounter,
+		capacityFn:     k8s.GetVolumeCapacity,
 	}
 	ns.startHealthMonitor(defaultHealthCheckInterval)
 	return ns

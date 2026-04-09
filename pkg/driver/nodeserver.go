@@ -7,13 +7,20 @@ import (
 	"sync"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/k8s"
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/mount-utils"
 )
+
+// MounterFactory creates a Mounter for a volume. It is a field on NodeServer
+// so tests can substitute a fake that does not touch the real mount service.
+type MounterFactory func(volumeID string, readOnly bool, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error)
+
+// CapacityFn resolves the desired capacity (bytes) for a volume from the
+// orchestrator. Tests can replace this to avoid real Kubernetes API calls.
+type CapacityFn func(volumeID string) (int64, error)
 
 type NodeServer struct {
 	csi.UnimplementedNodeServer
@@ -26,6 +33,10 @@ type NodeServer struct {
 
 	// stopCh signals the health monitor goroutine to stop
 	stopCh chan struct{}
+
+	// Injectable factories (overridden in tests).
+	mounterFactory MounterFactory
+	capacityFn     CapacityFn
 }
 
 var _ = csi.NodeServer(&NodeServer{})
@@ -382,8 +393,10 @@ func (ns *NodeServer) removeVolumeMutex(volumeID string) {
 
 // stageNewVolume creates and stages a new volume with the given parameters.
 // This is a helper method used by both NodeStageVolume and NodePublishVolume (for re-staging).
+// Both the mounter and capacity lookup are resolved via NodeServer fields so
+// tests can inject fakes that do not touch the real mount service or k8s API.
 func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volContext map[string]string, readOnly bool) (*Volume, error) {
-	mounter, err := newMounter(volumeID, readOnly, ns.Driver, volContext)
+	mounter, err := ns.mounterFactory(volumeID, readOnly, ns.Driver, volContext)
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +407,7 @@ func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volCont
 	}
 
 	// Apply quota if available
-	if capacity, err := k8s.GetVolumeCapacity(volumeID); err == nil {
+	if capacity, err := ns.capacityFn(volumeID); err == nil {
 		if err := volume.Quota(capacity); err != nil {
 			glog.Warningf("failed to apply quota for volume %s: %v", volumeID, err)
 			// Clean up the staged mount since we're returning an error
