@@ -21,9 +21,15 @@ import (
 type fakeMountState struct {
 	mu sync.Mutex
 
-	// healthy controls what isHealthyFn returns. Flip to false to
-	// simulate the FUSE daemon dying.
+	// healthy controls the default return value of isHealthyFn. Flip to
+	// false to simulate the FUSE daemon dying.
 	healthy atomic.Bool
+
+	// pathHealth overrides per-path health. A path present in the map
+	// uses its explicit value regardless of the healthy flag; absent
+	// paths fall back to healthy.Load(). Lets tests simulate a single
+	// unhealthy publish bind mount without taking down staging too.
+	pathHealth sync.Map // map[string]bool
 
 	stageCalls       int
 	unstageCalls     int
@@ -37,6 +43,20 @@ func newFakeMountState() *fakeMountState {
 	s := &fakeMountState{}
 	s.healthy.Store(true)
 	return s
+}
+
+// isHealthy returns the effective health of the given path. If the path
+// has been explicitly registered via setPathHealth, that value wins;
+// otherwise the global healthy flag is used.
+func (s *fakeMountState) isHealthy(path string) bool {
+	if v, ok := s.pathHealth.Load(path); ok {
+		return v.(bool)
+	}
+	return s.healthy.Load()
+}
+
+func (s *fakeMountState) setPathHealth(path string, healthy bool) {
+	s.pathHealth.Store(path, healthy)
 }
 
 // newMounter returns a Mounter that records Stage calls in this state.
@@ -83,7 +103,7 @@ func newNodeServerWithFakes(t *testing.T, state *fakeMountState) *NodeServer {
 			return 0, errors.New("no capacity in tests")
 		},
 		isHealthyFn: func(path string) bool {
-			return state.healthy.Load()
+			return state.isHealthy(path)
 		},
 		cleanupStagingFn: func(path string) error {
 			state.mu.Lock()
@@ -166,6 +186,7 @@ func TestHealthMonitorRecoversStaleMount(t *testing.T) {
 
 	// --- Trigger one health check cycle ---
 	ns.checkAndRecoverVolumes()
+	ns.recoveryWg.Wait()
 
 	// --- Verify recovery actions ---
 	state.mu.Lock()
@@ -228,6 +249,7 @@ func TestHealthMonitorSkipsHealthyVolumes(t *testing.T) {
 
 	// Healthy throughout — one recovery sweep should be a no-op.
 	ns.checkAndRecoverVolumes()
+	ns.recoveryWg.Wait()
 
 	state.mu.Lock()
 	defer state.mu.Unlock()
@@ -261,6 +283,7 @@ func TestHealthMonitorSkipsVolumesWithoutContext(t *testing.T) {
 
 	state.healthy.Store(false)
 	ns.checkAndRecoverVolumes()
+	ns.recoveryWg.Wait()
 
 	state.mu.Lock()
 	defer state.mu.Unlock()
@@ -269,5 +292,59 @@ func TestHealthMonitorSkipsVolumesWithoutContext(t *testing.T) {
 	}
 	if state.cleanupCalls != 0 {
 		t.Errorf("expected no cleanup calls, got %d", state.cleanupCalls)
+	}
+}
+
+// TestHealthMonitorRetriesFailedPublishes verifies the second-chance
+// publish retry path: if staging is healthy but a previously recovered
+// volume has a publish bind mount that never came back up, the next
+// sweep re-binds it without re-staging the whole volume.
+//
+// This covers the gemini-code-assist feedback that "retry on next
+// sweep" was not actually happening because the monitor only looked at
+// staging health.
+func TestHealthMonitorRetriesFailedPublishes(t *testing.T) {
+	state := newFakeMountState()
+	ns := newNodeServerWithFakes(t, state)
+
+	root := t.TempDir()
+	stagingPath := filepath.Join(root, "staging")
+	publishPath := filepath.Join(root, "pod", "mount")
+
+	vol, err := ns.stageNewVolume("vol-1", stagingPath, map[string]string{}, false)
+	if err != nil {
+		t.Fatalf("stageNewVolume: %v", err)
+	}
+	ns.volumes.Store("vol-1", vol)
+
+	// Publish once successfully so the path is tracked, but then mark
+	// it unhealthy — this mimics the state after a partial recovery
+	// where stageNewVolume succeeded but newVol.Publish failed for this
+	// target.
+	if err := vol.Publish(stagingPath, publishPath, false); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	vol.AddPublishPath(publishPath, false)
+
+	initialBind := state.bindMountCalls
+	state.setPathHealth(publishPath, false)
+
+	// Staging is healthy, publish is not → retryPublishPaths should run.
+	ns.checkAndRecoverVolumes()
+	ns.recoveryWg.Wait()
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	// No re-staging: still 1 stage call total.
+	if state.stageCalls != 1 {
+		t.Errorf("expected 1 stage call (retry should not re-stage), got %d", state.stageCalls)
+	}
+	if state.cleanupCalls != 0 {
+		t.Errorf("expected 0 staging cleanup calls, got %d", state.cleanupCalls)
+	}
+	// The publish path was re-bound: bindMountCalls went up by 1.
+	if state.bindMountCalls != initialBind+1 {
+		t.Errorf("expected %d bind mounts after retry, got %d", initialBind+1, state.bindMountCalls)
 	}
 }

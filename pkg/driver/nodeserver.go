@@ -44,6 +44,11 @@ type NodeServer struct {
 	stopCh   chan struct{}
 	stopOnce sync.Once
 
+	// recoveryWg tracks in-flight per-volume recovery goroutines spawned
+	// by checkAndRecoverVolumes. Tests can wait on it after driving a
+	// sweep to synchronize on the recovery work.
+	recoveryWg sync.WaitGroup
+
 	// Injectable factories / operations (overridden in tests).
 	mounterFactory   MounterFactory
 	capacityFn       CapacityFn

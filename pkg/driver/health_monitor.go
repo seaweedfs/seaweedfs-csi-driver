@@ -39,6 +39,12 @@ func (ns *NodeServer) runHealthCheckTick() {
 	ns.checkAndRecoverVolumes()
 }
 
+// checkAndRecoverVolumes inspects every staged volume and kicks off
+// recovery work for any that have a dead staging mount or a dropped
+// publish bind mount. Recovery is launched per-volume in its own goroutine
+// so that a slow unmount or FUSE start for one volume does not stall the
+// sweep for the others. The per-volume mutex taken inside recoverVolume /
+// retryPublishPaths still prevents concurrent recoveries for the same id.
 func (ns *NodeServer) checkAndRecoverVolumes() {
 	ns.volumes.Range(func(key, value interface{}) bool {
 		volumeID := key.(string)
@@ -48,12 +54,96 @@ func (ns *NodeServer) checkAndRecoverVolumes() {
 			return true
 		}
 
-		if ns.isHealthyFn(vol.StagedPath) {
+		if !ns.isHealthyFn(vol.StagedPath) {
+			glog.Warningf("health monitor: detected unhealthy staging mount for volume %s at %s", volumeID, vol.StagedPath)
+			ns.launchRecovery(func() { ns.recoverVolume(volumeID) }, volumeID, "full-recovery")
 			return true
 		}
 
-		glog.Warningf("health monitor: detected unhealthy mount for volume %s at %s", volumeID, vol.StagedPath)
-		ns.recoverVolume(volumeID)
+		// Staging is alive; check whether any publish bind mounts have
+		// been dropped (e.g. from a previous partial recovery) and need
+		// to be re-bound without tearing down the FUSE mount.
+		if ns.hasUnhealthyPublishPath(vol) {
+			glog.Warningf("health monitor: detected unhealthy publish mount for volume %s", volumeID)
+			ns.launchRecovery(func() { ns.retryPublishPaths(volumeID) }, volumeID, "publish-retry")
+		}
+		return true
+	})
+}
+
+// hasUnhealthyPublishPath returns true if any of the Volume's tracked
+// publish paths is not currently a live, readable mount point. It uses
+// the same isHealthyFn as staging so behavior stays consistent across
+// both mount levels.
+func (ns *NodeServer) hasUnhealthyPublishPath(vol *Volume) bool {
+	unhealthy := false
+	vol.publishPaths.Range(func(k, _ interface{}) bool {
+		if !ns.isHealthyFn(k.(string)) {
+			unhealthy = true
+			return false
+		}
+		return true
+	})
+	return unhealthy
+}
+
+// launchRecovery runs fn in a goroutine with panic recovery. Tests can
+// wait on ns.recoveryWg after driving a sweep to synchronize on
+// in-flight recovery work.
+func (ns *NodeServer) launchRecovery(fn func(), volumeID, kind string) {
+	ns.recoveryWg.Add(1)
+	go func() {
+		defer ns.recoveryWg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				glog.Errorf("health monitor: %s for volume %s panicked: %v\n%s", kind, volumeID, r, debug.Stack())
+			}
+		}()
+		fn()
+	}()
+}
+
+// retryPublishPaths re-binds publish paths whose bind mount has gone
+// missing while the underlying staging FUSE mount is still alive. This
+// is the second-chance path for publish failures that happened during a
+// previous recoverVolume sweep.
+func (ns *NodeServer) retryPublishPaths(volumeID string) {
+	volumeMutex := ns.getVolumeMutex(volumeID)
+	volumeMutex.Lock()
+	defer volumeMutex.Unlock()
+
+	val, ok := ns.volumes.Load(volumeID)
+	if !ok {
+		return
+	}
+	vol := val.(*Volume)
+
+	// If staging has died since the sweep, let the next tick's
+	// full-recovery path handle it instead of fighting the race here.
+	if !ns.isHealthyFn(vol.StagedPath) {
+		glog.Infof("health monitor: staging for volume %s became unhealthy before publish retry; deferring to full recovery", volumeID)
+		return
+	}
+
+	vol.publishPaths.Range(func(k, v interface{}) bool {
+		path := k.(string)
+		readOnly := v.(bool)
+		if ns.isHealthyFn(path) {
+			return true
+		}
+		glog.Warningf("health monitor: re-binding publish path %s for volume %s", path, volumeID)
+		// Clear any stale/corrupt mount first so Publish's checkMount
+		// does not short-circuit on a leftover mount.
+		if err := ns.unmountFn(path); err != nil {
+			if cleanupErr := mount.CleanupMountPoint(path, mountutil, true); cleanupErr != nil {
+				glog.Warningf("health monitor: force cleanup of publish path %s failed: %v", path, cleanupErr)
+			}
+		}
+		if err := vol.Publish(vol.StagedPath, path, readOnly); err != nil {
+			glog.Errorf("health monitor: failed to re-bind publish path %s for volume %s: %v", path, volumeID, err)
+			return true
+		}
+		glog.Infof("health monitor: successfully re-bound publish path %s for volume %s", path, volumeID)
 		return true
 	})
 }
@@ -125,8 +215,8 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 	}
 
 	// Step 4: Re-bind all publish paths. Track any failures so they remain
-	// registered on the new volume — a subsequent health tick will see them
-	// as unhealthy and retry recovery, instead of losing them forever.
+	// registered on the new volume — the next sweep will notice they are
+	// unhealthy via hasUnhealthyPublishPath and drive retryPublishPaths.
 	var failed []publishInfo
 	for _, p := range publishes {
 		glog.Infof("health monitor: re-publishing %s for volume %s", p.path, volumeID)
@@ -134,15 +224,15 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 			glog.Errorf("health monitor: failed to re-publish %s for volume %s: %v", p.path, volumeID, err)
 			failed = append(failed, p)
 		}
-		// Always re-register the path so it is retried on the next sweep
-		// if it failed, and so it is unmounted correctly on Unpublish.
+		// Always re-register the path so retryPublishPaths can see it
+		// on the next sweep and so Unpublish can tear it down correctly.
 		newVol.AddPublishPath(p.path, p.readOnly)
 	}
 
 	// Step 5: Replace the volume in the map
 	ns.volumes.Store(volumeID, newVol)
 	if len(failed) > 0 {
-		glog.Warningf("health monitor: volume %s recovered with %d publish path failure(s); will retry on next sweep", volumeID, len(failed))
+		glog.Warningf("health monitor: volume %s recovered with %d publish path failure(s); retryPublishPaths will retry on the next sweep", volumeID, len(failed))
 		return
 	}
 	glog.Infof("health monitor: volume %s successfully recovered", volumeID)
