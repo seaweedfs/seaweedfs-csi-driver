@@ -51,9 +51,26 @@ func (ns *NodeServer) runHealthCheckTick() {
 // is harmlessly retried on the next tick (if it was just slow). The
 // background goroutine is allowed to leak on timeout — it will exit
 // whenever the underlying filesystem call eventually returns.
+//
+// The inner goroutine has its own panic recovery so a crashing
+// isHealthyFn cannot take down the whole driver process.
 func (ns *NodeServer) checkHealth(path string) bool {
 	done := make(chan bool, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				glog.Errorf("health monitor: health check for %s panicked: %v\n%s", path, r, debug.Stack())
+				// Treat a panic as unhealthy and unblock the caller
+				// so it does not have to wait for the timeout. The
+				// channel is buffered (size 1) and no prior send has
+				// happened on this path, so this non-blocking send
+				// is always safe.
+				select {
+				case done <- false:
+				default:
+				}
+			}
+		}()
 		done <- ns.isHealthyFn(path)
 	}()
 	select {
