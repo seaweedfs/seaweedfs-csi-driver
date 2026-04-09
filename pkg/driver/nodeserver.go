@@ -23,6 +23,9 @@ type NodeServer struct {
 	// information about the managed volumes
 	volumes       sync.Map
 	volumeMutexes *KeyMutex
+
+	// stopCh signals the health monitor goroutine to stop
+	stopCh chan struct{}
 }
 
 var _ = csi.NodeServer(&NodeServer{})
@@ -67,6 +70,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		// This preserves the existing FUSE mount and avoids disrupting any published volumes
 		glog.Infof("volume %s has existing healthy mount at %s, rebuilding cache", volumeID, stagingTargetPath)
 		volume := ns.rebuildVolumeFromStaging(volumeID, stagingTargetPath)
+		volume.volContext = req.GetVolumeContext()
+		volume.readOnly = isVolumeReadOnly(req)
 		ns.volumes.Store(volumeID, volume)
 		glog.Infof("volume %s cache rebuilt from existing staging at %s", volumeID, stagingTargetPath)
 		return &csi.NodeStageVolumeResponse{}, nil
@@ -98,6 +103,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	volume.volContext = volContext
+	volume.readOnly = readOnly
 	ns.volumes.Store(volumeID, volume)
 	glog.Infof("volume %s successfully staged to %s", volumeID, stagingTargetPath)
 
@@ -142,7 +149,12 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		if isStagingPathHealthy(stagingTargetPath) {
 			// The staging path is healthy - rebuild volume cache from existing mount
 			glog.Infof("volume %s has healthy staging at %s, rebuilding cache", volumeID, stagingTargetPath)
-			volume = ns.rebuildVolumeFromStaging(volumeID, stagingTargetPath)
+			rebuiltVol := ns.rebuildVolumeFromStaging(volumeID, stagingTargetPath)
+			rebuiltVol.volContext = req.GetVolumeContext()
+			if cap := req.GetVolumeCapability(); cap != nil && cap.GetAccessMode() != nil {
+				rebuiltVol.readOnly = isReadOnlyAccessMode(cap.GetAccessMode().Mode)
+			}
+			volume = rebuiltVol
 			ns.volumes.Store(volumeID, volume)
 		} else {
 			// The staging path is not healthy - we need to re-stage the volume
@@ -165,6 +177,8 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 				return nil, status.Errorf(codes.Internal, "failed to re-stage volume: %v", err)
 			}
 
+			newVolume.volContext = volContext
+			newVolume.readOnly = readOnly
 			ns.volumes.Store(volumeID, newVolume)
 			volume = newVolume
 			glog.Infof("volume %s successfully re-staged to %s", volumeID, stagingTargetPath)
@@ -173,9 +187,11 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	// When pod uses a volume in read-only mode, k8s will automatically
 	// mount the volume as a read-only file system.
-	if err := volume.(*Volume).Publish(stagingTargetPath, targetPath, req.GetReadonly()); err != nil {
+	vol := volume.(*Volume)
+	if err := vol.Publish(stagingTargetPath, targetPath, req.GetReadonly()); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	vol.AddPublishPath(targetPath, req.GetReadonly())
 
 	glog.Infof("volume %s successfully published to %s", volumeID, targetPath)
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -235,9 +251,11 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return &csi.NodeUnpublishVolumeResponse{}, nil
 	}
 
-	if err := volume.(*Volume).Unpublish(targetPath); err != nil {
+	vol := volume.(*Volume)
+	if err := vol.Unpublish(targetPath); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	vol.RemovePublishPath(targetPath)
 
 	glog.Infof("volume %s successfully unpublished from %s", volumeID, targetPath)
 
@@ -350,7 +368,8 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 }
 
 func (ns *NodeServer) NodeCleanup() {
-	glog.Infof("node cleanup skipped; mount service retains mounts across restarts")
+	close(ns.stopCh)
+	glog.Infof("node cleanup: health monitor stopped, mount service retains mounts across restarts")
 }
 
 func (ns *NodeServer) getVolumeMutex(volumeID string) *sync.Mutex {

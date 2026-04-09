@@ -29,10 +29,13 @@ func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
 		}
 	}
 
-	return &NodeServer{
+	ns := &NodeServer{
 		Driver:        n,
 		volumeMutexes: NewKeyMutex(),
+		stopCh:        make(chan struct{}),
 	}
+	ns.startHealthMonitor(defaultHealthCheckInterval)
+	return ns
 }
 
 func GetCacheDir(cacheBase, volumeID string) string {
