@@ -8,7 +8,13 @@ import (
 	"k8s.io/mount-utils"
 )
 
-const defaultHealthCheckInterval = 30 * time.Second
+const (
+	defaultHealthCheckInterval = 30 * time.Second
+	// defaultHealthCheckTimeout bounds any single isHealthyFn call so a
+	// frozen FUSE daemon (os.ReadDir blocked in the kernel) cannot stall
+	// the health monitor goroutine indefinitely.
+	defaultHealthCheckTimeout = 5 * time.Second
+)
 
 func (ns *NodeServer) startHealthMonitor(interval time.Duration) {
 	go func() {
@@ -39,6 +45,26 @@ func (ns *NodeServer) runHealthCheckTick() {
 	ns.checkAndRecoverVolumes()
 }
 
+// checkHealth runs isHealthyFn with a timeout so a hung FUSE daemon
+// cannot stall the monitor sweep. On timeout the path is considered
+// unhealthy, which either triggers recovery (if it really is dead) or
+// is harmlessly retried on the next tick (if it was just slow). The
+// background goroutine is allowed to leak on timeout — it will exit
+// whenever the underlying filesystem call eventually returns.
+func (ns *NodeServer) checkHealth(path string) bool {
+	done := make(chan bool, 1)
+	go func() {
+		done <- ns.isHealthyFn(path)
+	}()
+	select {
+	case result := <-done:
+		return result
+	case <-time.After(defaultHealthCheckTimeout):
+		glog.Warningf("health monitor: health check for %s timed out after %v, treating as unhealthy", path, defaultHealthCheckTimeout)
+		return false
+	}
+}
+
 // checkAndRecoverVolumes inspects every staged volume and kicks off
 // recovery work for any that have a dead staging mount or a dropped
 // publish bind mount. Recovery is launched per-volume in its own goroutine
@@ -54,7 +80,7 @@ func (ns *NodeServer) checkAndRecoverVolumes() {
 			return true
 		}
 
-		if !ns.isHealthyFn(vol.StagedPath) {
+		if !ns.checkHealth(vol.StagedPath) {
 			glog.Warningf("health monitor: detected unhealthy staging mount for volume %s at %s", volumeID, vol.StagedPath)
 			ns.launchRecovery(func() { ns.recoverVolume(volumeID) }, volumeID, "full-recovery")
 			return true
@@ -78,7 +104,7 @@ func (ns *NodeServer) checkAndRecoverVolumes() {
 func (ns *NodeServer) hasUnhealthyPublishPath(vol *Volume) bool {
 	unhealthy := false
 	vol.publishPaths.Range(func(k, _ interface{}) bool {
-		if !ns.isHealthyFn(k.(string)) {
+		if !ns.checkHealth(k.(string)) {
 			unhealthy = true
 			return false
 		}
@@ -120,7 +146,7 @@ func (ns *NodeServer) retryPublishPaths(volumeID string) {
 
 	// If staging has died since the sweep, let the next tick's
 	// full-recovery path handle it instead of fighting the race here.
-	if !ns.isHealthyFn(vol.StagedPath) {
+	if !ns.checkHealth(vol.StagedPath) {
 		glog.Infof("health monitor: staging for volume %s became unhealthy before publish retry; deferring to full recovery", volumeID)
 		return
 	}
@@ -128,7 +154,7 @@ func (ns *NodeServer) retryPublishPaths(volumeID string) {
 	vol.publishPaths.Range(func(k, v interface{}) bool {
 		path := k.(string)
 		readOnly := v.(bool)
-		if ns.isHealthyFn(path) {
+		if ns.checkHealth(path) {
 			return true
 		}
 		glog.Warningf("health monitor: re-binding publish path %s for volume %s", path, volumeID)
@@ -162,7 +188,7 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 	vol := val.(*Volume)
 
 	// Re-check health after acquiring lock
-	if ns.isHealthyFn(vol.StagedPath) {
+	if ns.checkHealth(vol.StagedPath) {
 		glog.Infof("health monitor: volume %s is now healthy, skipping recovery", volumeID)
 		return
 	}
