@@ -395,6 +395,10 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 func (ns *NodeServer) NodeCleanup() {
 	ns.stopOnce.Do(func() {
 		close(ns.stopCh)
+		// Wait for any in-flight recovery goroutines to finish so the
+		// driver does not shut down mid-recovery, which could leave a
+		// volume in a half-staged state.
+		ns.recoveryWg.Wait()
 		glog.Infof("node cleanup: health monitor stopped, mount service retains mounts across restarts")
 	})
 }
