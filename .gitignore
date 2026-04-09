@@ -1,5 +1,6 @@
 .vscode
 *.iml
+.claude/
 
 # go
 __debug_bin
