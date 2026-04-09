@@ -39,8 +39,10 @@ type NodeServer struct {
 	volumes       sync.Map
 	volumeMutexes *KeyMutex
 
-	// stopCh signals the health monitor goroutine to stop
-	stopCh chan struct{}
+	// stopCh signals the health monitor goroutine to stop. Guarded by
+	// stopOnce so NodeCleanup is safe to call from multiple shutdown paths.
+	stopCh   chan struct{}
+	stopOnce sync.Once
 
 	// Injectable factories / operations (overridden in tests).
 	mounterFactory   MounterFactory
@@ -126,8 +128,6 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	volume.volContext = volContext
-	volume.readOnly = readOnly
 	ns.volumes.Store(volumeID, volume)
 	glog.Infof("volume %s successfully staged to %s", volumeID, stagingTargetPath)
 
@@ -174,9 +174,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 			glog.Infof("volume %s has healthy staging at %s, rebuilding cache", volumeID, stagingTargetPath)
 			rebuiltVol := ns.rebuildVolumeFromStaging(volumeID, stagingTargetPath)
 			rebuiltVol.volContext = req.GetVolumeContext()
-			if cap := req.GetVolumeCapability(); cap != nil && cap.GetAccessMode() != nil {
-				rebuiltVol.readOnly = isReadOnlyAccessMode(cap.GetAccessMode().Mode)
-			}
+			rebuiltVol.readOnly = isPublishVolumeReadOnly(req)
 			volume = rebuiltVol
 			ns.volumes.Store(volumeID, volume)
 		} else {
@@ -200,8 +198,6 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 				return nil, status.Errorf(codes.Internal, "failed to re-stage volume: %v", err)
 			}
 
-			newVolume.volContext = volContext
-			newVolume.readOnly = readOnly
 			ns.volumes.Store(volumeID, newVolume)
 			volume = newVolume
 			glog.Infof("volume %s successfully re-staged to %s", volumeID, stagingTargetPath)
@@ -392,8 +388,10 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 }
 
 func (ns *NodeServer) NodeCleanup() {
-	close(ns.stopCh)
-	glog.Infof("node cleanup: health monitor stopped, mount service retains mounts across restarts")
+	ns.stopOnce.Do(func() {
+		close(ns.stopCh)
+		glog.Infof("node cleanup: health monitor stopped, mount service retains mounts across restarts")
+	})
 }
 
 func (ns *NodeServer) getVolumeMutex(volumeID string) *sync.Mutex {
@@ -416,6 +414,8 @@ func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volCont
 
 	volume := NewVolume(volumeID, mounter, ns.Driver)
 	volume.bindMountFn = ns.bindMountFn
+	volume.volContext = volContext
+	volume.readOnly = readOnly
 	if err := volume.Stage(stagingTargetPath); err != nil {
 		return nil, err
 	}
