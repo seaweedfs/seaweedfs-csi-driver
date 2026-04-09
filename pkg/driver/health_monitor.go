@@ -35,7 +35,7 @@ func (ns *NodeServer) checkAndRecoverVolumes() {
 			return true
 		}
 
-		if isStagingPathHealthy(vol.StagedPath) {
+		if ns.isHealthyFn(vol.StagedPath) {
 			return true
 		}
 
@@ -59,7 +59,7 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 	vol := val.(*Volume)
 
 	// Re-check health after acquiring lock
-	if isStagingPathHealthy(vol.StagedPath) {
+	if ns.isHealthyFn(vol.StagedPath) {
 		glog.Infof("health monitor: volume %s is now healthy, skipping recovery", volumeID)
 		return
 	}
@@ -87,14 +87,14 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 	// Step 1: Unmount all stale bind (publish) mounts
 	for _, p := range publishes {
 		glog.Infof("health monitor: unmounting stale publish path %s for volume %s", p.path, volumeID)
-		if err := mountutil.Unmount(p.path); err != nil {
+		if err := ns.unmountFn(p.path); err != nil {
 			glog.Warningf("health monitor: unmount publish path %s failed: %v, trying force cleanup", p.path, err)
 			_ = mount.CleanupMountPoint(p.path, mountutil, true)
 		}
 	}
 
 	// Step 2: Clean up stale staging path
-	if err := cleanupStaleStagingPath(stagingPath); err != nil {
+	if err := ns.cleanupStagingFn(stagingPath); err != nil {
 		glog.Errorf("health monitor: failed to cleanup stale staging for volume %s: %v", volumeID, err)
 		return
 	}

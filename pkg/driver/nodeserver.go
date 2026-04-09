@@ -22,6 +22,14 @@ type MounterFactory func(volumeID string, readOnly bool, driver *SeaweedFsDriver
 // orchestrator. Tests can replace this to avoid real Kubernetes API calls.
 type CapacityFn func(volumeID string) (int64, error)
 
+// BindMountFn performs a bind mount of source onto target, optionally
+// read-only. Used by Volume.Publish and overridden in tests.
+type BindMountFn func(source, target string, readOnly bool) error
+
+// HealthCheckFn reports whether a staging path has a live, responsive FUSE
+// mount. Overridden in tests to simulate a crashed mount.
+type HealthCheckFn func(stagingPath string) bool
+
 type NodeServer struct {
 	csi.UnimplementedNodeServer
 
@@ -34,9 +42,13 @@ type NodeServer struct {
 	// stopCh signals the health monitor goroutine to stop
 	stopCh chan struct{}
 
-	// Injectable factories (overridden in tests).
-	mounterFactory MounterFactory
-	capacityFn     CapacityFn
+	// Injectable factories / operations (overridden in tests).
+	mounterFactory   MounterFactory
+	capacityFn       CapacityFn
+	isHealthyFn      HealthCheckFn
+	cleanupStagingFn func(stagingPath string) error
+	unmountFn        func(path string) error
+	bindMountFn      BindMountFn
 }
 
 var _ = csi.NodeServer(&NodeServer{})
@@ -217,6 +229,7 @@ func (ns *NodeServer) rebuildVolumeFromStaging(volumeID string, stagingPath stri
 		StagedPath:  stagingPath,
 		driver:      ns.Driver,
 		localSocket: mountmanager.LocalSocketPath(ns.Driver.volumeSocketDir, volumeID),
+		bindMountFn: ns.bindMountFn,
 		// mounter and unmounter are nil - this is intentional
 		// The FUSE process is already running, we just need to track the volume
 		// The mount service will have the mount tracked if it's still alive
@@ -402,6 +415,7 @@ func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volCont
 	}
 
 	volume := NewVolume(volumeID, mounter, ns.Driver)
+	volume.bindMountFn = ns.bindMountFn
 	if err := volume.Stage(stagingTargetPath); err != nil {
 		return nil, err
 	}
