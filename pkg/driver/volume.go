@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
@@ -23,6 +24,11 @@ type Volume struct {
 	// unix socket used to manage volume
 	localSocket string
 	driver      *SeaweedFsDriver
+
+	// Fields for health monitor recovery
+	publishPaths sync.Map          // targetPath (string) -> bool (readOnly)
+	volContext   map[string]string  // volume context stored for re-staging
+	readOnly     bool               // FUSE-level readOnly flag
 }
 
 func NewVolume(volumeID string, mounter Mounter, driver *SeaweedFsDriver) *Volume {
@@ -112,6 +118,14 @@ func (vol *Volume) Unpublish(targetPath string) error {
 	}
 
 	return nil
+}
+
+func (vol *Volume) AddPublishPath(path string, readOnly bool) {
+	vol.publishPaths.Store(path, readOnly)
+}
+
+func (vol *Volume) RemovePublishPath(path string) {
+	vol.publishPaths.Delete(path)
 }
 
 func (vol *Volume) Unstage(stagingTargetPath string) error {
