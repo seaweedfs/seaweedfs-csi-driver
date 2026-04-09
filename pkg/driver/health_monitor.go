@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"runtime/debug"
 	"time"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
@@ -17,13 +18,25 @@ func (ns *NodeServer) startHealthMonitor(interval time.Duration) {
 		for {
 			select {
 			case <-ticker.C:
-				ns.checkAndRecoverVolumes()
+				ns.runHealthCheckTick()
 			case <-ns.stopCh:
 				glog.Infof("health monitor stopped")
 				return
 			}
 		}
 	}()
+}
+
+// runHealthCheckTick runs one health check pass with panic recovery so
+// that an unexpected crash inside checkAndRecoverVolumes or recoverVolume
+// does not silently disable self-healing for the lifetime of the pod.
+func (ns *NodeServer) runHealthCheckTick() {
+	defer func() {
+		if r := recover(); r != nil {
+			glog.Errorf("health monitor: recovered from panic: %v\n%s", r, debug.Stack())
+		}
+	}()
+	ns.checkAndRecoverVolumes()
 }
 
 func (ns *NodeServer) checkAndRecoverVolumes() {
@@ -84,12 +97,16 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 
 	glog.Infof("health monitor: recovering volume %s (%d publish paths)", volumeID, len(publishes))
 
-	// Step 1: Unmount all stale bind (publish) mounts
+	// Step 1: Unmount all stale bind (publish) mounts. Surface forced
+	// cleanup errors — a leftover bind mount can fool Publish() into
+	// short-circuiting and silently claim success for a still-broken path.
 	for _, p := range publishes {
 		glog.Infof("health monitor: unmounting stale publish path %s for volume %s", p.path, volumeID)
 		if err := ns.unmountFn(p.path); err != nil {
 			glog.Warningf("health monitor: unmount publish path %s failed: %v, trying force cleanup", p.path, err)
-			_ = mount.CleanupMountPoint(p.path, mountutil, true)
+			if cleanupErr := mount.CleanupMountPoint(p.path, mountutil, true); cleanupErr != nil {
+				glog.Errorf("health monitor: force cleanup of publish path %s for volume %s also failed: %v", p.path, volumeID, cleanupErr)
+			}
 		}
 	}
 
@@ -99,28 +116,34 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 		return
 	}
 
-	// Step 3: Re-stage the volume with a fresh FUSE mount
+	// Step 3: Re-stage the volume with a fresh FUSE mount. stageNewVolume
+	// populates volContext/readOnly on the new Volume for us.
 	newVol, err := ns.stageNewVolume(volumeID, stagingPath, vol.volContext, vol.readOnly)
 	if err != nil {
 		glog.Errorf("health monitor: failed to re-stage volume %s: %v", volumeID, err)
 		return
 	}
 
-	// Step 4: Preserve recovery metadata on the new volume
-	newVol.volContext = vol.volContext
-	newVol.readOnly = vol.readOnly
-
-	// Step 5: Re-bind all publish paths
+	// Step 4: Re-bind all publish paths. Track any failures so they remain
+	// registered on the new volume — a subsequent health tick will see them
+	// as unhealthy and retry recovery, instead of losing them forever.
+	var failed []publishInfo
 	for _, p := range publishes {
 		glog.Infof("health monitor: re-publishing %s for volume %s", p.path, volumeID)
 		if err := newVol.Publish(stagingPath, p.path, p.readOnly); err != nil {
 			glog.Errorf("health monitor: failed to re-publish %s for volume %s: %v", p.path, volumeID, err)
-		} else {
-			newVol.AddPublishPath(p.path, p.readOnly)
+			failed = append(failed, p)
 		}
+		// Always re-register the path so it is retried on the next sweep
+		// if it failed, and so it is unmounted correctly on Unpublish.
+		newVol.AddPublishPath(p.path, p.readOnly)
 	}
 
-	// Step 6: Replace the volume in the map
+	// Step 5: Replace the volume in the map
 	ns.volumes.Store(volumeID, newVol)
+	if len(failed) > 0 {
+		glog.Warningf("health monitor: volume %s recovered with %d publish path failure(s); will retry on next sweep", volumeID, len(failed))
+		return
+	}
 	glog.Infof("health monitor: volume %s successfully recovered", volumeID)
 }
