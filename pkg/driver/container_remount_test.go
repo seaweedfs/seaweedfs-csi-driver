@@ -138,7 +138,7 @@ func TestIsStaleMount(t *testing.T) {
 	}
 }
 
-func TestFindContainerMountByDevice(t *testing.T) {
+func TestFindContainerMountsByDevice(t *testing.T) {
 	// This test uses our own PID's mountinfo. We look for a device
 	// that we know exists (root mount) and one that doesn't.
 	entries, err := parseMountInfo(os.Getpid())
@@ -147,22 +147,22 @@ func TestFindContainerMountByDevice(t *testing.T) {
 	}
 
 	// No FUSE mounts should be found with a bogus device.
-	mp, err := findContainerMountByDevice(os.Getpid(), "999:999")
+	mps, err := findContainerMountsByDevice(os.Getpid(), "999:999")
 	if err != nil {
-		t.Fatalf("findContainerMountByDevice: %v", err)
+		t.Fatalf("findContainerMountsByDevice: %v", err)
 	}
-	if mp != "" {
-		t.Errorf("expected no match for bogus device, got %q", mp)
+	if len(mps) != 0 {
+		t.Errorf("expected no match for bogus device, got %v", mps)
 	}
 
 	// If there are any FUSE mounts in our mountinfo, test that we can find them.
 	for _, e := range entries {
 		if isFuseFS(e.fstype) {
-			mp, err := findContainerMountByDevice(os.Getpid(), e.device)
+			mps, err := findContainerMountsByDevice(os.Getpid(), e.device)
 			if err != nil {
-				t.Fatalf("findContainerMountByDevice: %v", err)
+				t.Fatalf("findContainerMountsByDevice: %v", err)
 			}
-			if mp == "" {
+			if len(mps) == 0 {
 				t.Errorf("expected to find mount for device %s, got empty", e.device)
 			}
 			break

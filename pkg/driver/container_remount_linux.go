@@ -32,7 +32,7 @@ import (
 // oldDevice is the "major:minor" string of the dead FUSE mount that was
 // at stagingPath before recovery. It is used to identify the
 // corresponding stale mount entry inside each container's mountinfo.
-func remountInContainers(publishPath, stagingPath, oldDevice string) {
+func remountInContainers(publishPath, stagingPath, oldDevice string, readOnly bool) {
 	podUID := extractPodUID(publishPath)
 	if podUID == "" {
 		glog.V(4).Infof("container remount: could not extract pod UID from %s", publishPath)
@@ -50,25 +50,32 @@ func remountInContainers(publishPath, stagingPath, oldDevice string) {
 	}
 
 	for _, pid := range pids {
-		containerMountPath, err := findContainerMountByDevice(pid, oldDevice)
-		if err != nil || containerMountPath == "" {
+		mountPaths, err := findContainerMountsByDevice(pid, oldDevice)
+		if err != nil || len(mountPaths) == 0 {
 			continue
 		}
 
-		glog.Infof("container remount: fixing stale mount %s in container PID %d (pod %s)", containerMountPath, pid, podUID)
-		if err := remountViaSetns(pid, containerMountPath, stagingPath); err != nil {
-			glog.Warningf("container remount: failed to remount %s in PID %d: %v", containerMountPath, pid, err)
-		} else {
-			glog.Infof("container remount: successfully remounted %s in PID %d", containerMountPath, pid)
+		for _, containerMountPath := range mountPaths {
+			glog.Infof("container remount: fixing stale mount %s in container PID %d (pod %s)", containerMountPath, pid, podUID)
+			if err := remountViaSetns(pid, containerMountPath, stagingPath, readOnly); err != nil {
+				glog.Warningf("container remount: failed to remount %s in PID %d: %v", containerMountPath, pid, err)
+			} else {
+				glog.Infof("container remount: successfully remounted %s in PID %d", containerMountPath, pid)
+			}
 		}
 	}
 }
 
 // remountStaleFuseInContainers is a scan-based variant used by
 // retryPublishPaths where the old device is unknown. It enters each
-// affected container, finds FUSE mounts that are stale (ENOTCONN), and
+// affected container, finds FUSE mounts that are stale (ENOTCONN)
+// AND whose device matches the staging path's current device, and
 // replaces them with a fresh bind from stagingPath.
-func remountStaleFuseInContainers(publishPath, stagingPath string) {
+//
+// Only mounts with the same device as stagingPath are touched. This
+// prevents accidentally overwriting other SeaweedFS volumes mounted
+// in the same pod.
+func remountStaleFuseInContainers(publishPath, stagingPath string, readOnly bool) {
 	podUID := extractPodUID(publishPath)
 	if podUID == "" {
 		return
@@ -76,6 +83,14 @@ func remountStaleFuseInContainers(publishPath, stagingPath string) {
 
 	pids, err := findContainerPIDsForPod(podUID)
 	if err != nil || len(pids) == 0 {
+		return
+	}
+
+	// Get the device of the current (recovered) staging mount so we
+	// only touch container mounts that belong to this volume.
+	stagingDevice, err := getMountDevice(stagingPath)
+	if err != nil {
+		glog.V(4).Infof("container remount: cannot determine staging device for %s: %v", stagingPath, err)
 		return
 	}
 
@@ -88,6 +103,18 @@ func remountStaleFuseInContainers(publishPath, stagingPath string) {
 			if !isFuseFS(e.fstype) {
 				continue
 			}
+			// Only touch mounts whose device matches the recovered
+			// staging path. In retryPublishPaths the staging is alive,
+			// so in the normal case the container's mount (if healthy)
+			// already has the same device and isStaleMount returns
+			// false. If the staging was previously re-created with a
+			// new device (from a prior recoverVolume), the container
+			// mount has a different (dead) device.
+			if e.device == stagingDevice {
+				// Same device as the live staging -- container mount
+				// is already healthy.
+				continue
+			}
 			// Check accessibility via /proc/<pid>/root/<mountpoint>.
 			checkPath := fmt.Sprintf("/proc/%d/root%s", pid, e.mountpoint)
 			_, statErr := os.Stat(checkPath)
@@ -96,7 +123,7 @@ func remountStaleFuseInContainers(publishPath, stagingPath string) {
 			}
 
 			glog.Infof("container remount: fixing stale mount %s in container PID %d (pod %s)", e.mountpoint, pid, podUID)
-			if err := remountViaSetns(pid, e.mountpoint, stagingPath); err != nil {
+			if err := remountViaSetns(pid, e.mountpoint, stagingPath, readOnly); err != nil {
 				glog.Warningf("container remount: failed to remount %s in PID %d: %v", e.mountpoint, pid, err)
 			} else {
 				glog.Infof("container remount: successfully remounted %s in PID %d", e.mountpoint, pid)
@@ -130,6 +157,9 @@ func findContainerPIDsForPod(podUID string) ([]int, error) {
 		return nil, fmt.Errorf("read /proc: %w", err)
 	}
 
+	// Cache our own mount namespace inode to skip processes that share it.
+	selfNS, _ := os.Readlink("/proc/self/ns/mnt")
+
 	// Collect one PID per mount namespace to avoid redundant remounts.
 	seenNS := make(map[string]bool)
 	var pids []int
@@ -159,8 +189,7 @@ func findContainerPIDsForPod(podUID string) ([]int, error) {
 		}
 
 		// Skip processes that share the CSI driver's own mount namespace.
-		selfNS, err := os.Readlink("/proc/self/ns/mnt")
-		if err == nil && nsLink == selfNS {
+		if selfNS != "" && nsLink == selfNS {
 			continue
 		}
 
@@ -227,8 +256,6 @@ func parseMountInfo(pid int) ([]mountInfoEntry, error) {
 func getMountDevice(mountPath string) (string, error) {
 	entries, err := parseMountInfo(os.Getpid())
 	if err != nil {
-		// If /proc/self/mountinfo is not parseable (e.g., in some
-		// container setups), try PID 0 pseudo-entry.
 		return "", fmt.Errorf("parse self mountinfo: %w", err)
 	}
 
@@ -246,25 +273,27 @@ func getMountDevice(mountPath string) (string, error) {
 	return best.device, nil
 }
 
-// findContainerMountByDevice finds a mount inside a container's mount
-// namespace whose device matches oldDevice and whose fstype is FUSE.
-// Returns the container-side mount path (e.g., "/frontendrelease").
-func findContainerMountByDevice(pid int, oldDevice string) (string, error) {
+// findContainerMountsByDevice finds all mounts inside a container's
+// mount namespace whose device matches oldDevice and whose fstype is
+// FUSE. A single PVC can appear at multiple mount points in the same
+// container (e.g. subPath mounts), so all matches are returned.
+func findContainerMountsByDevice(pid int, oldDevice string) ([]string, error) {
 	entries, err := parseMountInfo(pid)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
+	var mountpoints []string
 	for _, e := range entries {
 		if e.device == oldDevice && isFuseFS(e.fstype) {
-			return e.mountpoint, nil
+			mountpoints = append(mountpoints, e.mountpoint)
 		}
 	}
-	return "", nil
+	return mountpoints, nil
 }
 
 // isFuseFS returns true if the fstype indicates a FUSE filesystem mount.
-// "fusectl" is excluded — it is the FUSE control filesystem, not a user mount.
+// "fusectl" is excluded -- it is the FUSE control filesystem, not a user mount.
 func isFuseFS(fstype string) bool {
 	return strings.HasPrefix(fstype, "fuse") && fstype != "fusectl"
 }
@@ -287,7 +316,10 @@ func isStaleMount(err error) bool {
 // the recovered staging path. The staging path is accessible from
 // inside the container's mount namespace because it resides on the
 // host filesystem under the kubelet directory tree.
-func remountViaSetns(containerPID int, containerMountPath, stagingPath string) error {
+//
+// If readOnly is true, a second remount is performed with MS_RDONLY to
+// preserve the original read-only semantics of the volume mount.
+func remountViaSetns(containerPID int, containerMountPath, stagingPath string, readOnly bool) error {
 	// Pin this goroutine to the current OS thread for the duration of
 	// the namespace switch. No other goroutine will be scheduled on
 	// this thread, preventing accidental cross-namespace operations.
@@ -348,6 +380,14 @@ func remountViaSetns(containerPID int, containerMountPath, stagingPath string) e
 	// host filesystem root for kubelet paths.
 	if err := unix.Mount(stagingPath, containerMountPath, "", unix.MS_BIND, ""); err != nil {
 		return fmt.Errorf("bind mount %s -> %s in container PID %d: %w", stagingPath, containerMountPath, containerPID, err)
+	}
+
+	// A bind mount created with MS_BIND ignores MS_RDONLY in the same
+	// call. To make it read-only a second remount is required.
+	if readOnly {
+		if err := unix.Mount("", containerMountPath, "", unix.MS_BIND|unix.MS_REMOUNT|unix.MS_RDONLY, ""); err != nil {
+			glog.Warningf("container remount: failed to set read-only on %s in PID %d: %v", containerMountPath, containerPID, err)
+		}
 	}
 
 	return nil
