@@ -237,6 +237,55 @@ jobs:
           
           echo "✅ Functional test passed!"
 
+      - name: Test mount service restart recovery
+        run: |
+          # This test verifies that after the mount service (FUSE daemon)
+          # restarts, the CSI driver's health monitor recovers the mount
+          # AND fixes stale mounts inside the pod container via setns.
+
+          # Write a sentinel file before the restart.
+          kubectl exec test-pod -- sh -c 'echo "before-restart" > /data/sentinel.txt'
+          kubectl exec test-pod -- cat /data/sentinel.txt | grep "before-restart"
+          echo "Pre-restart sentinel written."
+
+          # Restart the mount service DaemonSet pod. This kills all
+          # weed mount FUSE processes, leaving stale mounts.
+          MOUNT_POD=$(kubectl get pod -l app=seaweedfs-mount -o name)
+          echo "Deleting mount service pod: $MOUNT_POD"
+          kubectl delete $MOUNT_POD --grace-period=0 --force 2>/dev/null || true
+
+          # Wait for the replacement mount service pod to be ready.
+          echo "Waiting for mount service pod to come back..."
+          sleep 5
+          kubectl wait --for=condition=ready pod -l app=seaweedfs-mount --timeout=120s
+
+          # Give the health monitor time to detect the stale mount and
+          # recover (default interval is 30s).
+          echo "Waiting for health monitor recovery (up to 90s)..."
+          ATTEMPTS=18
+          for i in $(seq 1 $ATTEMPTS); do
+            if kubectl exec test-pod -- cat /data/sentinel.txt 2>/dev/null | grep -q "before-restart"; then
+              echo "✅ Mount recovered after ~$((i * 5))s — pod can still read data!"
+              break
+            fi
+            if [ "$i" = "$ATTEMPTS" ]; then
+              echo "❌ Mount not recovered after $((ATTEMPTS * 5))s"
+              echo "--- CSI node logs ---"
+              kubectl logs -l app=seaweedfs-node --tail=100
+              echo "--- Mount service logs ---"
+              kubectl logs -l app=seaweedfs-mount --tail=100
+              echo "--- Pod describe ---"
+              kubectl describe pod test-pod
+              exit 1
+            fi
+            sleep 5
+          done
+
+          # Verify writes still work after recovery.
+          kubectl exec test-pod -- sh -c 'echo "after-restart" > /data/post_restart.txt'
+          kubectl exec test-pod -- cat /data/post_restart.txt | grep "after-restart"
+          echo "✅ Mount service restart recovery test passed!"
+
       - name: Cleanup
         if: always()
         run: |

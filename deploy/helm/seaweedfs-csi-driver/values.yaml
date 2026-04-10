@@ -128,6 +128,11 @@ dataLocality: "none"
 node:
   # Deploy node daemonset
   enabled: true
+  # Enable hostPID to allow the CSI driver to enter container mount
+  # namespaces and fix stale FUSE mounts after recovery. Without this,
+  # pods require mountPropagation: HostToContainer on their volume
+  # mounts for automatic recovery to reach inside containers.
+  hostPID: true
   # Mount service connection settings for the CSI node driver.
   # When empty (default), these inherit from mountService.* values above.
   # Only set these to override the mountService defaults.

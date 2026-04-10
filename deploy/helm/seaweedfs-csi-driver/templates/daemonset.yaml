@@ -28,6 +28,9 @@ spec:
     spec:
       priorityClassName: system-node-critical
       serviceAccountName: {{ template "seaweedfs-csi-driver.name" . }}-node-sa
+      {{- if .Values.node.hostPID }}
+      hostPID: true
+      {{- end }}
       #hostNetwork: true
       #dnsPolicy: ClusterFirstWithHostNet
       {{- with .Values.node.affinity }}
