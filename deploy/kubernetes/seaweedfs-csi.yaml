@@ -277,6 +277,7 @@ spec:
     spec:
       priorityClassName: system-node-critical
       serviceAccountName: seaweedfs-node-sa
+      hostPID: true
       #hostNetwork: true
       #dnsPolicy: ClusterFirstWithHostNet
       containers:

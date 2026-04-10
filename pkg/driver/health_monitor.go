@@ -217,6 +217,10 @@ func (ns *NodeServer) retryPublishPaths(volumeID string) {
 			return true
 		}
 		glog.Infof("health monitor: successfully re-bound publish path %s for volume %s", path, volumeID)
+
+		// Fix any stale mounts inside the pod containers (same
+		// rationale as recoverVolume step 6).
+		remountStaleFuseInContainers(path, vol.StagedPath)
 		return true
 	})
 }
@@ -246,6 +250,12 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 	}
 
 	stagingPath := vol.StagedPath
+
+	// Capture the old FUSE mount's device identifier before cleanup.
+	// After recovery the staging path will have a new device, so this
+	// is the only chance to learn which device the containers' stale
+	// bind mounts still reference.
+	oldDevice, _ := getMountDevice(stagingPath)
 
 	// Collect publish paths before recovery
 	type publishInfo struct {
@@ -308,5 +318,19 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 		glog.Warningf("health monitor: volume %s recovered with %d publish path failure(s); retryPublishPaths will retry on the next sweep", volumeID, len(failed))
 		return
 	}
+
+	// Step 6: Fix stale mounts inside pod containers. The host-level
+	// recovery above re-created the bind mount at each publish path,
+	// but containers that were created before the FUSE restart still
+	// hold the old dead mount (rprivate propagation blocks host-side
+	// changes from reaching them). Enter each container's mount
+	// namespace and replace the stale mount with a fresh bind from the
+	// recovered staging path.
+	if oldDevice != "" {
+		for _, p := range publishes {
+			remountInContainers(p.path, stagingPath, oldDevice)
+		}
+	}
+
 	glog.Infof("health monitor: volume %s successfully recovered", volumeID)
 }
