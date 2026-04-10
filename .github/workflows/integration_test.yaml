@@ -251,6 +251,11 @@ jobs:
           kubectl exec test-pod -- cat /data/sentinel.txt | grep "before-restart"
           echo "Pre-restart sentinel written."
 
+          # Snapshot CSI node log length so we can capture only new lines later.
+          CSI_NODE_POD=$(kubectl get pod -l app=seaweedfs-node -o jsonpath='{.items[0].metadata.name}')
+          LOG_BASELINE=$(kubectl logs "$CSI_NODE_POD" -c csi-seaweedfs-plugin 2>/dev/null | wc -l)
+          echo "CSI node log baseline: $LOG_BASELINE lines"
+
           # Restart the mount service DaemonSet pod. This kills all
           # weed mount FUSE processes, leaving stale mounts.
           MOUNT_POD=$(kubectl get pod -l app=seaweedfs-mount -o name)
@@ -263,9 +268,9 @@ jobs:
           kubectl wait --for=condition=ready pod -l app=seaweedfs-mount --timeout=120s
 
           # Give the health monitor time to detect the stale mount and
-          # recover (default interval is 30s).
-          echo "Waiting for health monitor recovery (up to 90s)..."
-          ATTEMPTS=18
+          # recover (default interval is 30s, plus time for re-staging).
+          echo "Waiting for health monitor recovery (up to 120s)..."
+          ATTEMPTS=24
           for i in $(seq 1 $ATTEMPTS); do
             if kubectl exec test-pod -- cat /data/sentinel.txt 2>/dev/null | grep -q "before-restart"; then
               echo "PASS: Mount recovered after ~$((i * 5))s -- pod can still read data"
@@ -273,12 +278,14 @@ jobs:
             fi
             if [ "$i" = "$ATTEMPTS" ]; then
               echo "FAIL: Mount not recovered after $((ATTEMPTS * 5))s"
-              echo "--- CSI node logs ---"
-              kubectl logs -l app=seaweedfs-node --tail=100
+              echo "--- CSI node logs (new lines since restart) ---"
+              kubectl logs "$CSI_NODE_POD" -c csi-seaweedfs-plugin 2>/dev/null | tail -n +"$((LOG_BASELINE + 1))"
               echo "--- Mount service logs ---"
-              kubectl logs -l app=seaweedfs-mount --tail=100
+              kubectl logs -l app=seaweedfs-mount --tail=200
               echo "--- Pod describe ---"
               kubectl describe pod test-pod
+              echo "--- Pod mount check from host ---"
+              kubectl exec "$CSI_NODE_POD" -c csi-seaweedfs-plugin -- cat /proc/self/mountinfo 2>/dev/null | grep -i fuse || echo "(no fuse mounts visible)"
               exit 1
             fi
             sleep 5
@@ -301,7 +308,7 @@ jobs:
           echo "=== CSI Controller Logs ==="
           kubectl logs -l app=seaweedfs-controller --tail=200 || true
           echo "=== CSI Node Logs ==="
-          kubectl logs -l app=seaweedfs-node --tail=200 || true
+          kubectl logs -l app=seaweedfs-node -c csi-seaweedfs-plugin --tail=500 || true
           echo "=== Mount Service Logs ==="
           kubectl logs -l app=seaweedfs-mount --tail=200 || true
           echo "=== SeaweedFS Logs ==="
