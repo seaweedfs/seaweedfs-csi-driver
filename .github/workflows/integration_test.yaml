@@ -276,16 +276,21 @@ jobs:
               echo "PASS: Mount recovered after ~$((i * 5))s -- pod can still read data"
               break
             fi
+            # Print periodic diagnostics every 15s to trace what the health monitor is doing.
+            if [ $((i % 3)) = 0 ]; then
+              echo "--- poll $i: CSI node new log lines ---"
+              kubectl logs "$CSI_NODE_POD" -c csi-seaweedfs-plugin 2>/dev/null | tail -n +"$((LOG_BASELINE + 1))" | tail -20
+              echo "--- poll $i: fuse mounts in CSI node ---"
+              kubectl exec "$CSI_NODE_POD" -c csi-seaweedfs-plugin -- cat /proc/self/mountinfo 2>/dev/null | grep fuse || echo "(none)"
+            fi
             if [ "$i" = "$ATTEMPTS" ]; then
               echo "FAIL: Mount not recovered after $((ATTEMPTS * 5))s"
-              echo "--- CSI node logs (new lines since restart) ---"
+              echo "--- CSI node full logs (new lines since restart) ---"
               kubectl logs "$CSI_NODE_POD" -c csi-seaweedfs-plugin 2>/dev/null | tail -n +"$((LOG_BASELINE + 1))"
               echo "--- Mount service logs ---"
               kubectl logs -l app=seaweedfs-mount --tail=200
               echo "--- Pod describe ---"
               kubectl describe pod test-pod
-              echo "--- Pod mount check from host ---"
-              kubectl exec "$CSI_NODE_POD" -c csi-seaweedfs-plugin -- cat /proc/self/mountinfo 2>/dev/null | grep -i fuse || echo "(no fuse mounts visible)"
               exit 1
             fi
             sleep 5
