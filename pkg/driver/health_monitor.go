@@ -220,7 +220,7 @@ func (ns *NodeServer) retryPublishPaths(volumeID string) {
 
 		// Fix any stale mounts inside the pod containers (same
 		// rationale as recoverVolume step 6).
-		remountStaleFuseInContainers(path, vol.StagedPath)
+		remountStaleFuseInContainers(path, vol.StagedPath, readOnly)
 		return true
 	})
 }
@@ -328,7 +328,7 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 	// recovered staging path.
 	if oldDevice != "" {
 		for _, p := range publishes {
-			remountInContainers(p.path, stagingPath, oldDevice)
+			remountInContainers(p.path, stagingPath, oldDevice, p.readOnly)
 		}
 	}
 

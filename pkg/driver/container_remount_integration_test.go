@@ -104,7 +104,7 @@ func TestIntegrationRemountViaSetns(t *testing.T) {
 	}
 
 	// --- Act: use remountViaSetns to replace the mount ---
-	if err := remountViaSetns(childPID, childMountpoint, replacementDir); err != nil {
+	if err := remountViaSetns(childPID, childMountpoint, replacementDir, false); err != nil {
 		t.Fatalf("remountViaSetns: %v", err)
 	}
 
@@ -150,19 +150,30 @@ func TestIntegrationRemountViaSetnsRestoresNamespaceOnFailure(t *testing.T) {
 	}()
 
 	deadline := time.Now().Add(5 * time.Second)
+	ready := false
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(readyFile); err == nil {
+			ready = true
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	if !ready {
+		t.Fatal("child did not become ready")
+	}
 
-	pidBytes, _ := os.ReadFile(pidFile)
-	childPID, _ := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
+	pidBytes, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatalf("read child PID: %v", err)
+	}
+	childPID, err := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
+	if err != nil {
+		t.Fatalf("parse child PID %q: %v", string(pidBytes), err)
+	}
 
 	// Try to remount a path that doesn't exist in the child namespace.
-	err := remountViaSetns(childPID, "/nonexistent/path/that/does/not/exist", srcDir)
-	if err == nil {
+	remountErr := remountViaSetns(childPID, "/nonexistent/path/that/does/not/exist", srcDir, false)
+	if remountErr == nil {
 		t.Fatal("expected error for nonexistent target, got nil")
 	}
 
@@ -236,6 +247,7 @@ func TestIntegrationRemountInContainersNoOp(t *testing.T) {
 		"/var/lib/kubelet/pods/fake-uid/volumes/kubernetes.io~csi/pv/mount",
 		"/tmp/nonexistent-staging",
 		"0:999",
+		false,
 	)
 }
 
@@ -247,5 +259,6 @@ func TestIntegrationRemountStaleFuseInContainersNoOp(t *testing.T) {
 	remountStaleFuseInContainers(
 		"/var/lib/kubelet/pods/fake-uid/volumes/kubernetes.io~csi/pv/mount",
 		"/tmp/nonexistent-staging",
+		false,
 	)
 }
