@@ -235,7 +235,7 @@ jobs:
           # Test file listing
           kubectl exec test-pod -- ls -la /data/
           
-          echo "✅ Functional test passed!"
+          echo "PASS: Functional test passed"
 
       - name: Test mount service restart recovery
         run: |
@@ -265,11 +265,11 @@ jobs:
           ATTEMPTS=18
           for i in $(seq 1 $ATTEMPTS); do
             if kubectl exec test-pod -- cat /data/sentinel.txt 2>/dev/null | grep -q "before-restart"; then
-              echo "✅ Mount recovered after ~$((i * 5))s — pod can still read data!"
+              echo "PASS: Mount recovered after ~$((i * 5))s -- pod can still read data"
               break
             fi
             if [ "$i" = "$ATTEMPTS" ]; then
-              echo "❌ Mount not recovered after $((ATTEMPTS * 5))s"
+              echo "FAIL: Mount not recovered after $((ATTEMPTS * 5))s"
               echo "--- CSI node logs ---"
               kubectl logs -l app=seaweedfs-node --tail=100
               echo "--- Mount service logs ---"
@@ -284,7 +284,7 @@ jobs:
           # Verify writes still work after recovery.
           kubectl exec test-pod -- sh -c 'echo "after-restart" > /data/post_restart.txt'
           kubectl exec test-pod -- cat /data/post_restart.txt | grep "after-restart"
-          echo "✅ Mount service restart recovery test passed!"
+          echo "PASS: Mount service restart recovery test passed"
 
       - name: Cleanup
         if: always()

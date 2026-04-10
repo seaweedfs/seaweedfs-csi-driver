@@ -284,17 +284,24 @@ func isStaleMount(err error) bool {
 
 // remountViaSetns enters a container's mount namespace using setns(2),
 // unmounts the stale FUSE mount, and creates a fresh bind mount from
-// the recovered staging path.
-//
-// The staging path is opened as an FD before switching namespaces. After
-// setns, /proc/self/fd/<n> still resolves to the staging directory
-// because the FD retains its dentry reference across namespace changes.
+// the recovered staging path. The staging path is accessible from
+// inside the container's mount namespace because it resides on the
+// host filesystem under the kubelet directory tree.
 func remountViaSetns(containerPID int, containerMountPath, stagingPath string) error {
 	// Pin this goroutine to the current OS thread for the duration of
 	// the namespace switch. No other goroutine will be scheduled on
 	// this thread, preventing accidental cross-namespace operations.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+
+	// Give this thread its own filesystem context (cwd, root, umask).
+	// Go threads share their fs_struct by default, and the kernel
+	// rejects setns(CLONE_NEWNS) when the calling thread shares its
+	// fs_struct with other threads. unshare(CLONE_FS) breaks that
+	// sharing so setns can proceed.
+	if err := unix.Unshare(unix.CLONE_FS); err != nil {
+		return fmt.Errorf("unshare CLONE_FS: %w", err)
+	}
 
 	// Save our current mount namespace so we can restore it.
 	origNS, err := os.Open("/proc/self/ns/mnt")
@@ -311,16 +318,6 @@ func remountViaSetns(containerPID int, containerMountPath, stagingPath string) e
 	}
 	defer containerNS.Close()
 
-	// Open an FD to the staging path BEFORE switching namespaces. This
-	// FD will remain valid after setns because file descriptors are
-	// per-process, not per-namespace. The kernel resolves
-	// /proc/self/fd/<n> via the FD's dentry, not the mount table.
-	stagingFD, err := unix.Open(stagingPath, unix.O_RDONLY|unix.O_DIRECTORY, 0)
-	if err != nil {
-		return fmt.Errorf("open staging path %s: %w", stagingPath, err)
-	}
-	defer unix.Close(stagingFD)
-
 	// Enter the container's mount namespace.
 	if err := unix.Setns(int(containerNS.Fd()), unix.CLONE_NEWNS); err != nil {
 		return fmt.Errorf("setns to container PID %d: %w", containerPID, err)
@@ -329,7 +326,7 @@ func remountViaSetns(containerPID int, containerMountPath, stagingPath string) e
 	// ALWAYS restore our namespace before returning, even on error.
 	defer func() {
 		if restoreErr := unix.Setns(int(origNS.Fd()), unix.CLONE_NEWNS); restoreErr != nil {
-			// This is a critical error - the goroutine is stuck in the
+			// This is a critical error -- the goroutine is stuck in the
 			// wrong namespace. LockOSThread prevents it from affecting
 			// other goroutines, and the deferred UnlockOSThread will
 			// retire the thread. Log loudly.
@@ -344,11 +341,13 @@ func remountViaSetns(containerPID int, containerMountPath, stagingPath string) e
 		glog.V(4).Infof("container remount: umount %s in PID %d: %v (may already be unmounted)", containerMountPath, containerPID, umountErr)
 	}
 
-	// Bind-mount the staging path (via our pre-switch FD) into the
-	// container at the same mount point.
-	source := fmt.Sprintf("/proc/self/fd/%d", stagingFD)
-	if err := unix.Mount(source, containerMountPath, "", unix.MS_BIND, ""); err != nil {
-		return fmt.Errorf("bind mount %s -> %s in container PID %d: %w", source, containerMountPath, containerPID, err)
+	// Bind-mount the staging path into the container. The staging path
+	// resides on the host filesystem under /var/lib/kubelet/plugins/
+	// which is accessible from inside the container's mount namespace
+	// because both the CSI driver and pod containers share the same
+	// host filesystem root for kubelet paths.
+	if err := unix.Mount(stagingPath, containerMountPath, "", unix.MS_BIND, ""); err != nil {
+		return fmt.Errorf("bind mount %s -> %s in container PID %d: %w", stagingPath, containerMountPath, containerPID, err)
 	}
 
 	return nil

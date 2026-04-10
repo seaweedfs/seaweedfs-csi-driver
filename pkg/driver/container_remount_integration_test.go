@@ -67,8 +67,6 @@ func TestIntegrationRemountViaSetns(t *testing.T) {
 	child.SysProcAttr = &syscall.SysProcAttr{
 		Pdeathsig: syscall.SIGKILL,
 	}
-	child.Stdout = os.Stdout
-	child.Stderr = os.Stderr
 	if err := child.Start(); err != nil {
 		t.Fatalf("start child: %v", err)
 	}
