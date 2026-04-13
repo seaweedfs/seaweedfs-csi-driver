@@ -154,6 +154,8 @@ func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket s
 		"chunkSizeLimitMB":   "",
 		"volumeServerAccess": "",
 		"readRetryTime":      "",
+		"allowOthers":        "",
+		"defaultPermissions": "",
 	}
 
 	dataLocality := m.driver.DataLocality
