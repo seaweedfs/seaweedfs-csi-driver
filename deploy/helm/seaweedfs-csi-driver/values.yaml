@@ -11,6 +11,31 @@ tlsSecret: ""
 #concurrentWriters: 128
 #concurrentReaders: 128
 
+# Security configuration for SeaweedFS security.toml
+# Mounts security.toml to /etc/seaweedfs/security.toml in seaweedfs-mount
+# and csi-seaweedfs-plugin containers, enabling JWT / gRPC / HTTP security.
+security:
+  enabled: false
+  # Reference an existing Secret containing security.toml (key must be "security.toml")
+  existingSecret: ""
+  # Reference an existing ConfigMap containing security.toml (key must be "security.toml")
+  existingConfigMap: ""
+  # If neither existingSecret nor existingConfigMap is set, the chart can create one for you.
+  # Set create: true and provide the content below.
+  create: false
+  # "secret" or "configmap" — type of resource to create when create=true
+  type: secret
+  # Inline security.toml content used when create=true. Example:
+  #   content: |
+  #     [jwt.signing.read]
+  #     key = "your-jwt-read-key"
+  #     [grpc]
+  #     ca = "/usr/local/share/ca-certificates/ca.crt"
+  #     [grpc.client]
+  #     cert = "/usr/local/share/ca-certificates/tls.crt"
+  #     key  = "/usr/local/share/ca-certificates/tls.key"
+  content: ""
+
 imagePullPolicy: "IfNotPresent"
 
 #imagePullSecrets:

@@ -80,6 +80,7 @@ spec:
               mountPath: /var/run/secrets/app/tls
               readOnly: true
            {{- end }}
+           {{- include "seaweedfs-csi-driver.security-volumemount" . | nindent 12 }}
           resources: {{ toYaml .Values.controller.resources | nindent 12 }}
 
         # provisioner
@@ -242,3 +243,4 @@ spec:
           secret:
             secretName: {{ .Values.tlsSecret }}
         {{- end }}
+        {{- include "seaweedfs-csi-driver.security-volume" . | nindent 8 }}

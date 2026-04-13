@@ -125,6 +125,7 @@ spec:
               mountPath: /var/run/secrets/app/tls
               readOnly: true
             {{- end }}
+            {{- include "seaweedfs-csi-driver.security-volumemount" . | nindent 12 }}
             - name: cache
               mountPath: /var/cache/seaweedfs
             {{- if and $mountEndpoint $mountSocketDir $mountHostPath }}
@@ -242,6 +243,7 @@ spec:
           secret:
             secretName: {{ .Values.tlsSecret }}
         {{- end }}
+        {{- include "seaweedfs-csi-driver.security-volume" . | nindent 8 }}
         {{- if and $mountEndpoint $mountSocketDir $mountHostPath }}
         - name: mount-socket-dir
           hostPath:
