@@ -283,13 +283,25 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 		}
 	}
 
-	// Step 2: Clean up stale staging path
+	// Step 2: Tear down the FUSE mount via the mount manager so its
+	// internal state is cleared before we re-stage. cleanupStagingFn
+	// only runs a host-level mountutil.Unmount + RemoveAll, which
+	// leaves the manager believing the volume is still mounted; the
+	// follow-up Mount call would then no-op and the recovery would
+	// silently bind onto a dead path. See seaweedfs/seaweedfs-csi-driver#261.
+	if vol.unmounter != nil {
+		if err := vol.unmounter.Unmount(); err != nil {
+			glog.Warningf("health monitor: unmount via mount manager failed for volume %s: %v (continuing with host cleanup)", volumeID, err)
+		}
+	}
+
+	// Step 3: Clean up stale staging path
 	if err := ns.cleanupStagingFn(stagingPath); err != nil {
 		glog.Errorf("health monitor: failed to cleanup stale staging for volume %s: %v", volumeID, err)
 		return
 	}
 
-	// Step 3: Re-stage the volume with a fresh FUSE mount. stageNewVolume
+	// Step 4: Re-stage the volume with a fresh FUSE mount. stageNewVolume
 	// populates volContext/readOnly on the new Volume for us.
 	newVol, err := ns.stageNewVolume(volumeID, stagingPath, vol.volContext, vol.readOnly)
 	if err != nil {
@@ -297,7 +309,7 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 		return
 	}
 
-	// Step 4: Re-bind all publish paths. Track any failures so they remain
+	// Step 5: Re-bind all publish paths. Track any failures so they remain
 	// registered on the new volume — the next sweep will notice they are
 	// unhealthy via hasUnhealthyPublishPath and drive retryPublishPaths.
 	var failed []publishInfo
@@ -312,14 +324,14 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 		newVol.AddPublishPath(p.path, p.readOnly)
 	}
 
-	// Step 5: Replace the volume in the map
+	// Step 6: Replace the volume in the map
 	ns.volumes.Store(volumeID, newVol)
 	if len(failed) > 0 {
 		glog.Warningf("health monitor: volume %s recovered with %d publish path failure(s); retryPublishPaths will retry on the next sweep", volumeID, len(failed))
 		return
 	}
 
-	// Step 6: Fix stale mounts inside pod containers. The host-level
+	// Step 7: Fix stale mounts inside pod containers. The host-level
 	// recovery above re-created the bind mount at each publish path,
 	// but containers that were created before the FUSE restart still
 	// hold the old dead mount (rprivate propagation blocks host-side

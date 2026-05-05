@@ -59,11 +59,25 @@ func (m *Manager) Mount(req *MountRequest) (*MountResponse, error) {
 	defer lock.Unlock()
 
 	if entry := m.getMount(req.VolumeID); entry != nil {
-		if entry.targetPath == req.TargetPath {
-			glog.Infof("volume %s already mounted at %s", req.VolumeID, req.TargetPath)
-			return &MountResponse{LocalSocket: entry.localSocket}, nil
+		// If the previous weed mount process has died, the entry is
+		// stale and the FUSE mount is dead. Tear down the stale entry
+		// so we can start a fresh process; otherwise we would falsely
+		// report "already mounted" and a CSI-driver recovery would
+		// silently bind-mount onto a dead path. See seaweedfs/seaweedfs-csi-driver#261.
+		select {
+		case <-entry.process.exited:
+			glog.Warningf("volume %s previous weed mount process has exited; replacing stale entry with a fresh mount", req.VolumeID)
+			// Wait for wait()'s post-exit cleanup (FUSE unmount) to finish
+			// so ensureTargetClean below sees a quiescent path.
+			<-entry.process.done
+			m.removeMount(req.VolumeID)
+		default:
+			if entry.targetPath == req.TargetPath {
+				glog.Infof("volume %s already mounted at %s", req.VolumeID, req.TargetPath)
+				return &MountResponse{LocalSocket: entry.localSocket}, nil
+			}
+			return nil, fmt.Errorf("volume %s already mounted at %s", req.VolumeID, entry.targetPath)
 		}
-		return nil, fmt.Errorf("volume %s already mounted at %s", req.VolumeID, entry.targetPath)
 	}
 
 	entry, err := m.startMount(req)
@@ -75,8 +89,31 @@ func (m *Manager) Mount(req *MountRequest) (*MountResponse, error) {
 	m.mounts[req.VolumeID] = entry
 	m.mu.Unlock()
 
+	// Proactively clear the entry once the weed mount process exits,
+	// even if Unmount is never called. Without this, a process that
+	// crashes on its own (e.g. backend errors) leaves a stale entry
+	// that fools later Mount calls into reporting success without
+	// starting a new process.
+	go m.watchProcessExit(req.VolumeID, entry)
+
 	glog.Infof("started weed mount process for volume %s at %s", req.VolumeID, req.TargetPath)
 	return &MountResponse{LocalSocket: entry.localSocket}, nil
+}
+
+// watchProcessExit removes the entry for volumeID once its weed mount
+// process has finished exiting. It is safe to run concurrently with
+// Unmount: if Unmount has already removed the entry (or replaced it
+// with a fresh mount), the identity check ensures we leave the new
+// entry alone.
+func (m *Manager) watchProcessExit(volumeID string, entry *mountEntry) {
+	<-entry.process.done
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if existing, ok := m.mounts[volumeID]; ok && existing == entry {
+		delete(m.mounts, volumeID)
+		m.locks.delete(volumeID)
+		glog.Infof("removed mount entry for volume %s after weed mount process exited (target: %s)", volumeID, entry.targetPath)
+	}
 }
 
 // Unmount terminates the weed mount process associated with the provided request.
@@ -226,7 +263,13 @@ type mountEntry struct {
 type weedMountProcess struct {
 	cmd    *exec.Cmd
 	target string
-	done   chan struct{}
+	// exited is closed as soon as cmd.Wait() returns, so callers can
+	// detect that the weed mount process is gone without waiting for
+	// the post-exit FUSE unmount step.
+	exited chan struct{}
+	// done is closed after wait() finishes its full cleanup (including
+	// the kubeMounter.Unmount of the target).
+	done chan struct{}
 }
 
 func startWeedMountProcess(command string, args []string, target string, volumeID string) (*weedMountProcess, error) {
@@ -255,6 +298,7 @@ func startWeedMountProcess(command string, args []string, target string, volumeI
 	process := &weedMountProcess{
 		cmd:    cmd,
 		target: target,
+		exited: make(chan struct{}),
 		done:   make(chan struct{}),
 	}
 
@@ -276,6 +320,10 @@ func (p *weedMountProcess) wait() {
 	} else {
 		glog.Infof("weed mount exit (pid: %d, target: %s)", p.cmd.Process.Pid, p.target)
 	}
+
+	// Signal exit immediately so Manager.Mount can detect a dead
+	// process without waiting for the post-exit unmount step.
+	close(p.exited)
 
 	// Brief delay to allow FUSE cleanup and pending I/O to complete before unmounting
 	time.Sleep(100 * time.Millisecond)

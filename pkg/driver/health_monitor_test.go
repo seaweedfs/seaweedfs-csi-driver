@@ -208,6 +208,14 @@ func TestHealthMonitorRecoversStaleMount(t *testing.T) {
 	if state.bindMountCalls != 4 {
 		t.Errorf("expected 4 total bind mounts (2 initial + 2 recovery), got %d", state.bindMountCalls)
 	}
+	// Recovery must tear down the previous FUSE mount via the volume's
+	// unmounter so the mount manager clears its in-memory state. Without
+	// this, the manager would falsely report "already mounted" on the
+	// follow-up Mount call and the recovery would silently bind onto a
+	// dead path. Regression test for seaweedfs/seaweedfs-csi-driver#261.
+	if state.unstageCalls != 1 {
+		t.Errorf("expected 1 unstage (mount-manager teardown) during recovery, got %d", state.unstageCalls)
+	}
 
 	// --- Verify the replacement volume is tracked correctly ---
 	got, ok := ns.volumes.Load("vol-1")
