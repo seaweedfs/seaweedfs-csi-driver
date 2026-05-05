@@ -15,7 +15,3 @@ func (km *keyMutex) get(key string) *sync.Mutex {
 	m, _ := km.mutexes.LoadOrStore(key, &sync.Mutex{})
 	return m.(*sync.Mutex)
 }
-
-func (km *keyMutex) delete(key string) {
-	km.mutexes.Delete(key)
-}
