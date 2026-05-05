@@ -2,6 +2,7 @@ package driver
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -65,34 +66,69 @@ func isStagingPathHealthy(stagingPath string) bool {
 
 // cleanupStaleStagingPath cleans up a stale or corrupted staging mount point.
 // It attempts to unmount and remove the directory.
+//
+// Safety invariant: this function MUST NOT call os.RemoveAll on a path that
+// is still a live mount point. If the staging path is still a working FUSE
+// mount, RemoveAll would walk into the mount and recursively unlink user
+// data through it. Callers (health monitor recovery, NodeStage/NodePublish
+// re-stage) must treat a refusal as a hard failure rather than re-staging
+// over an undeleted mount.
 func cleanupStaleStagingPath(stagingPath string) error {
 	glog.Infof("cleaning up stale staging path %s", stagingPath)
 
-	// Try to unmount first (handles corrupted mounts)
-	if err := mountutil.Unmount(stagingPath); err != nil {
-		glog.V(4).Infof("unmount staging path %s (may already be unmounted): %v", stagingPath, err)
+	// Surface unmount errors. A failed unmount almost always means the
+	// FUSE mount is still alive (EBUSY because pods or bind mounts still
+	// pin it), and silently dropping the error is what lets the
+	// post-unmount RemoveAll below recurse into a live mount.
+	unmountErr := mountutil.Unmount(stagingPath)
+	if unmountErr != nil {
+		glog.Warningf("unmount staging path %s failed: %v", stagingPath, unmountErr)
 	}
 
-	// Check if directory still exists and remove it
-	// Use RemoveAll to handle cases where directory is not empty after imperfect unmount
-	if _, err := os.Stat(stagingPath); err == nil {
-		if err := os.RemoveAll(stagingPath); err != nil {
-			glog.Warningf("failed to remove staging path %s: %v", stagingPath, err)
-			return err
+	_, statErr := os.Stat(stagingPath)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
+			glog.Infof("successfully cleaned up staging path %s", stagingPath)
+			return nil
 		}
-	} else if !os.IsNotExist(err) {
-		// If stat fails with a different error (like corrupted mount), try force cleanup
-		if mount.IsCorruptedMnt(err) {
-			// Force unmount for corrupted mounts
+		if mount.IsCorruptedMnt(statErr) {
+			// FUSE daemon is dead (ENOTCONN); the kernel will reject
+			// reads/writes through this mount, so CleanupMountPoint
+			// cannot leak deletes through a live FUSE.
 			if cleanupErr := mount.CleanupMountPoint(stagingPath, mountutil, true); cleanupErr != nil {
 				glog.Warningf("failed to cleanup corrupted mount point %s: %v", stagingPath, cleanupErr)
 				return cleanupErr
 			}
-		} else {
-			// stat failed with an unexpected error, return it
-			glog.Warningf("stat on staging path %s failed during cleanup: %v", stagingPath, err)
-			return err
+			glog.Infof("successfully cleaned up corrupted staging path %s", stagingPath)
+			return nil
 		}
+		glog.Warningf("stat on staging path %s failed during cleanup: %v", stagingPath, statErr)
+		return statErr
+	}
+
+	// Re-check whether the path is still a mount point AFTER unmount.
+	// If it is, the unmount failed (or completed only as a lazy detach
+	// while the kernel still routes I/O to the FUSE daemon) and
+	// RemoveAll would walk a live FUSE mount.
+	isMnt, mntErr := mountutil.IsMountPoint(stagingPath)
+	if mntErr != nil {
+		if mount.IsCorruptedMnt(mntErr) {
+			if cleanupErr := mount.CleanupMountPoint(stagingPath, mountutil, true); cleanupErr != nil {
+				glog.Warningf("failed to cleanup corrupted mount point %s: %v", stagingPath, cleanupErr)
+				return cleanupErr
+			}
+			glog.Infof("successfully cleaned up corrupted staging path %s", stagingPath)
+			return nil
+		}
+		return fmt.Errorf("check mount point %s after unmount: %w", stagingPath, mntErr)
+	}
+	if isMnt {
+		return fmt.Errorf("refuse to remove staging path %s: still a mount point after unmount (unmount err: %v); not deleting through a live FUSE", stagingPath, unmountErr)
+	}
+
+	if err := os.RemoveAll(stagingPath); err != nil {
+		glog.Warningf("failed to remove staging path %s: %v", stagingPath, err)
+		return err
 	}
 
 	glog.Infof("successfully cleaned up staging path %s", stagingPath)
