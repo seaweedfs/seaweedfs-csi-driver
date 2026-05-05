@@ -111,7 +111,8 @@ func (m *Manager) watchProcessExit(volumeID string, entry *mountEntry) {
 	defer m.mu.Unlock()
 	if existing, ok := m.mounts[volumeID]; ok && existing == entry {
 		delete(m.mounts, volumeID)
-		m.locks.delete(volumeID)
+		// See removeMount: do not delete the per-volume lock — a
+		// concurrent Mount/Unmount may still be holding it.
 		glog.Infof("removed mount entry for volume %s after weed mount process exited (target: %s)", volumeID, entry.targetPath)
 	}
 }
@@ -166,7 +167,13 @@ func (m *Manager) removeMount(volumeID string) *mountEntry {
 	defer m.mu.Unlock()
 	entry := m.mounts[volumeID]
 	delete(m.mounts, volumeID)
-	m.locks.delete(volumeID)
+	// Intentionally do NOT delete the per-volume lock here. If a caller
+	// is still holding the lock from m.locks.get(volumeID), deleting it
+	// would let a concurrent caller receive a brand-new lock from the
+	// next m.locks.get() and enter the critical section in parallel —
+	// splitting Mount/Unmount serialization for the same volume. The
+	// lock map grows by one entry per ever-mounted volume, which is
+	// negligible for the manager's lifetime.
 	return entry
 }
 
