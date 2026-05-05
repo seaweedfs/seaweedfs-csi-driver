@@ -64,6 +64,19 @@ func isStagingPathHealthy(stagingPath string) bool {
 	return true
 }
 
+// cleanupCorruptedStagingPath force-cleans a staging path whose FUSE
+// daemon is already dead (ENOTCONN / IsCorruptedMnt). Safe because the
+// kernel will reject reads/writes through a corrupted mount, so cleanup
+// cannot propagate deletes through a live FUSE.
+func cleanupCorruptedStagingPath(stagingPath string) error {
+	if err := mount.CleanupMountPoint(stagingPath, mountutil, true); err != nil {
+		glog.Warningf("failed to cleanup corrupted mount point %s: %v", stagingPath, err)
+		return err
+	}
+	glog.Infof("successfully cleaned up corrupted staging path %s", stagingPath)
+	return nil
+}
+
 // cleanupStaleStagingPath cleans up a stale or corrupted staging mount point.
 // It attempts to unmount and remove the directory.
 //
@@ -85,22 +98,17 @@ func cleanupStaleStagingPath(stagingPath string) error {
 		glog.Warningf("unmount staging path %s failed: %v", stagingPath, unmountErr)
 	}
 
-	_, statErr := os.Stat(stagingPath)
+	// Use Lstat so a leftover dangling symlink at stagingPath is still
+	// discoverable (and removable) instead of being mis-classified by
+	// stat-following ENOENT.
+	_, statErr := os.Lstat(stagingPath)
 	if statErr != nil {
 		if os.IsNotExist(statErr) {
 			glog.Infof("successfully cleaned up staging path %s", stagingPath)
 			return nil
 		}
 		if mount.IsCorruptedMnt(statErr) {
-			// FUSE daemon is dead (ENOTCONN); the kernel will reject
-			// reads/writes through this mount, so CleanupMountPoint
-			// cannot leak deletes through a live FUSE.
-			if cleanupErr := mount.CleanupMountPoint(stagingPath, mountutil, true); cleanupErr != nil {
-				glog.Warningf("failed to cleanup corrupted mount point %s: %v", stagingPath, cleanupErr)
-				return cleanupErr
-			}
-			glog.Infof("successfully cleaned up corrupted staging path %s", stagingPath)
-			return nil
+			return cleanupCorruptedStagingPath(stagingPath)
 		}
 		glog.Warningf("stat on staging path %s failed during cleanup: %v", stagingPath, statErr)
 		return statErr
@@ -113,12 +121,7 @@ func cleanupStaleStagingPath(stagingPath string) error {
 	isMnt, mntErr := mountutil.IsMountPoint(stagingPath)
 	if mntErr != nil {
 		if mount.IsCorruptedMnt(mntErr) {
-			if cleanupErr := mount.CleanupMountPoint(stagingPath, mountutil, true); cleanupErr != nil {
-				glog.Warningf("failed to cleanup corrupted mount point %s: %v", stagingPath, cleanupErr)
-				return cleanupErr
-			}
-			glog.Infof("successfully cleaned up corrupted staging path %s", stagingPath)
-			return nil
+			return cleanupCorruptedStagingPath(stagingPath)
 		}
 		return fmt.Errorf("check mount point %s after unmount: %w", stagingPath, mntErr)
 	}
