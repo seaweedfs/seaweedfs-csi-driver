@@ -37,6 +37,11 @@ type fakeMountState struct {
 	unmountCalls     int
 	bindMountCalls   int
 	bindMountTargets []string
+
+	// unstageErr, when non-nil, is returned from stateUnmounter.Unmount.
+	// Lets tests exercise the recovery path's response to a manager
+	// teardown failure.
+	unstageErr error
 }
 
 func newFakeMountState() *fakeMountState {
@@ -82,8 +87,9 @@ type stateUnmounter struct{ state *fakeMountState }
 func (u *stateUnmounter) Unmount() error {
 	u.state.mu.Lock()
 	u.state.unstageCalls++
+	err := u.state.unstageErr
 	u.state.mu.Unlock()
-	return nil
+	return err
 }
 
 // newNodeServerWithFakes wires a NodeServer to a fakeMountState, bypassing
@@ -238,6 +244,56 @@ func TestHealthMonitorRecoversStaleMount(t *testing.T) {
 	})
 	if !seen[publishA] || !seen[publishB] {
 		t.Errorf("expected publish paths %q and %q tracked, got %v", publishA, publishB, seen)
+	}
+}
+
+// TestHealthMonitorAbortsOnUnmounterError verifies the recovery path
+// bails out when the volume's unmounter (which talks to the mount
+// manager) returns an error. Continuing into cleanup/re-stage with the
+// manager still holding a stale entry would either fall back into the
+// "already mounted" no-op or, with PR #262 not yet in place, risk a
+// host-level RemoveAll on a still-live FUSE mount.
+func TestHealthMonitorAbortsOnUnmounterError(t *testing.T) {
+	state := newFakeMountState()
+	ns := newNodeServerWithFakes(t, state)
+
+	stagingPath := filepath.Join(t.TempDir(), "staging")
+	volCtx := map[string]string{"collection": "c"}
+
+	vol, err := ns.stageNewVolume("vol-1", stagingPath, volCtx, false)
+	if err != nil {
+		t.Fatalf("stageNewVolume: %v", err)
+	}
+	vol.volContext = volCtx
+	ns.volumes.Store("vol-1", vol)
+
+	state.mu.Lock()
+	state.unstageErr = errors.New("simulated manager unmount failure")
+	state.mu.Unlock()
+	state.healthy.Store(false)
+
+	ns.checkAndRecoverVolumes()
+	ns.recoveryWg.Wait()
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.unstageCalls != 1 {
+		t.Errorf("expected the unmounter to be invoked exactly once, got %d", state.unstageCalls)
+	}
+	// Recovery must abort: no host cleanup, no re-stage, no re-bind.
+	if state.cleanupCalls != 0 {
+		t.Errorf("expected no staging cleanup after manager-unmount failure, got %d", state.cleanupCalls)
+	}
+	if state.stageCalls != 1 {
+		t.Errorf("expected no re-stage after manager-unmount failure, got %d", state.stageCalls)
+	}
+	// Original volume must remain in the map so the next sweep can retry.
+	got, ok := ns.volumes.Load("vol-1")
+	if !ok {
+		t.Fatal("volume removed from map after aborted recovery")
+	}
+	if got.(*Volume) != vol {
+		t.Error("expected original volume preserved after aborted recovery")
 	}
 }
 

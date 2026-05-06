@@ -291,7 +291,15 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 	// silently bind onto a dead path. See seaweedfs/seaweedfs-csi-driver#261.
 	if vol.unmounter != nil {
 		if err := vol.unmounter.Unmount(); err != nil {
-			glog.Warningf("health monitor: unmount via mount manager failed for volume %s: %v (continuing with host cleanup)", volumeID, err)
+			// Abort recovery: if the manager refuses to release the
+			// volume, its in-memory entry is likely still stale and
+			// the follow-up Mount would hit the same "already
+			// mounted" no-op we are trying to escape. Worse, running
+			// host-level RemoveAll on a path the manager still
+			// considers mounted risks deleting user data through a
+			// live FUSE (#262). Let the next sweep retry instead.
+			glog.Errorf("health monitor: unmount via mount manager failed for volume %s, aborting recovery: %v", volumeID, err)
+			return
 		}
 	}
 
