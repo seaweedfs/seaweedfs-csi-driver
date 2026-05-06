@@ -342,6 +342,84 @@ jobs:
             echo "PASS: Mount service restart recovery test passed"
           fi
 
+      - name: Test weed mount crash recovery (issue #261)
+        run: |
+          # Reproduce the scenario from
+          # https://github.com/seaweedfs/seaweedfs-csi-driver/issues/261:
+          # weed mount processes exit on their own (e.g. after a filer
+          # outage they cannot ride out). Their wait() handler runs
+          # kubeMounter.Unmount on the staging path, so by the time the
+          # CSI driver's health monitor sweep notices, getMountDevice
+          # returns empty for the stale staging path. The recovery
+          # must (a) re-stage cleanly and (b) replace the stale FUSE
+          # mount inside the pod's container — otherwise the pod is
+          # left with "transport endpoint is not connected".
+
+          # Pre-crash sentinel.
+          kubectl exec test-pod -- sh -c 'echo "before-crash" > /data/crash_sentinel.txt'
+          kubectl exec test-pod -- cat /data/crash_sentinel.txt | grep "before-crash"
+          echo "Pre-crash sentinel written."
+
+          # Snapshot CSI node log length so we capture only new lines later.
+          CSI_NODE_POD=$(kubectl get pod -l app=seaweedfs-node -o jsonpath='{.items[0].metadata.name}')
+          LOG_BASELINE=$(kubectl logs "$CSI_NODE_POD" -c csi-seaweedfs-plugin 2>/dev/null | wc -l)
+          echo "CSI node log baseline: $LOG_BASELINE lines"
+
+          # Kill the weed mount child process(es) inside the mount service
+          # pod, but not the mount service itself. This is what kvaster
+          # observed in production: a transient filer outage causes weed
+          # mount to give up and exit, while the mount service stays up.
+          MOUNT_POD=$(kubectl get pod -l app=seaweedfs-mount -o jsonpath='{.items[0].metadata.name}')
+          echo "Killing weed mount processes inside $MOUNT_POD..."
+          kubectl exec "$MOUNT_POD" -- sh -c 'pids=$(pgrep -f "weed .*mount" || true); if [ -n "$pids" ]; then echo "killing pids: $pids"; kill -9 $pids; else echo "no weed mount pids found"; fi'
+
+          # The mount service's wait() handler runs kubeMounter.Unmount
+          # 100ms after the process exits, so the staging path will be
+          # unmounted host-side within ~1s. Then the next CSI health
+          # monitor sweep (default 30s interval) must recover the volume.
+          echo "Waiting for health monitor to detect and recover..."
+          ATTEMPTS=30
+          PASSED=0
+          for i in $(seq 1 $ATTEMPTS); do
+            # Probe the pod's view of the volume. If the stale FUSE
+            # mount is still in place we get ENOTCONN ("transport
+            # endpoint is not connected"); a successful read means the
+            # container-side mount has been replaced.
+            if kubectl exec test-pod -- cat /data/crash_sentinel.txt 2>/dev/null | grep -q "before-crash"; then
+              echo "PASS: pod can read sentinel after ~$((i * 5))s — recovery succeeded with no stale FUSE in the container"
+              PASSED=1
+              break
+            fi
+            # Periodic diagnostics every 15s.
+            if [ $((i % 3)) = 0 ]; then
+              echo "--- poll $i: pod view of /data ---"
+              kubectl exec test-pod -- ls /data/ 2>&1 | head -5 || true
+              echo "--- poll $i: CSI node new log lines ---"
+              kubectl logs "$CSI_NODE_POD" -c csi-seaweedfs-plugin 2>/dev/null | tail -n +"$((LOG_BASELINE + 1))" | tail -30
+              echo "--- poll $i: fuse mounts in CSI node namespace ---"
+              kubectl exec "$CSI_NODE_POD" -c csi-seaweedfs-plugin -- cat /proc/self/mountinfo 2>/dev/null | grep fuse || echo "(no fuse mounts)"
+            fi
+            sleep 5
+          done
+
+          if [ "$PASSED" -ne 1 ]; then
+            echo "FAIL: pod could not read sentinel within $((ATTEMPTS * 5))s after weed mount crash"
+            echo "--- CSI node full logs (new lines since crash) ---"
+            kubectl logs "$CSI_NODE_POD" -c csi-seaweedfs-plugin 2>/dev/null | tail -n +"$((LOG_BASELINE + 1))"
+            echo "--- Mount service logs ---"
+            kubectl logs -l app=seaweedfs-mount --tail=200
+            echo "--- Pod describe ---"
+            kubectl describe pod test-pod
+            exit 1
+          fi
+
+          # Verify writes still work after recovery — confirms the
+          # container-side mount really points at a live FUSE, not at
+          # an empty bare directory left behind by an aborted recovery.
+          kubectl exec test-pod -- sh -c 'echo "after-crash" > /data/post_crash.txt'
+          kubectl exec test-pod -- cat /data/post_crash.txt | grep "after-crash"
+          echo "PASS: weed mount crash recovery test passed"
+
       - name: Cleanup
         if: always()
         run: |
