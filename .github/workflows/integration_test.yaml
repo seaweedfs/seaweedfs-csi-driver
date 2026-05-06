@@ -292,27 +292,62 @@ jobs:
           # pod, but not the mount service itself. This is what kvaster
           # observed in production: a transient filer outage causes weed
           # mount to give up and exit, while the mount service stays up.
+          # Fail loudly if there is nothing to kill — otherwise the test
+          # would silently degrade into a no-op that always passes.
           MOUNT_POD=$(kubectl get pod -l app=seaweedfs-mount -o jsonpath='{.items[0].metadata.name}')
           echo "Killing weed mount processes inside $MOUNT_POD..."
-          kubectl exec "$MOUNT_POD" -- sh -c 'pids=$(pgrep -f "weed .*mount" || true); if [ -n "$pids" ]; then echo "killing pids: $pids"; kill -9 $pids; else echo "no weed mount pids found"; fi'
+          KILL_OUTPUT=$(kubectl exec "$MOUNT_POD" -- sh -c 'pids=$(pgrep -f "weed .*mount" || true); if [ -n "$pids" ]; then echo "killing pids: $pids"; kill -9 $pids && echo "killed"; else echo "no weed mount pids found"; fi' 2>&1)
+          echo "$KILL_OUTPUT"
+          if ! echo "$KILL_OUTPUT" | grep -q "^killed$"; then
+            echo "FAIL: no weed mount processes were running, cannot exercise recovery"
+            echo "--- mount service ps ---"
+            kubectl exec "$MOUNT_POD" -- ps -ef || true
+            exit 1
+          fi
 
           # The mount service's wait() handler runs kubeMounter.Unmount
           # 100ms after the process exits, so the staging path will be
           # unmounted host-side within ~1s. Then the next CSI health
           # monitor sweep (default 30s interval) must recover the volume.
+          #
+          # We do NOT treat "first read succeeded" as a pass on its own:
+          # that would also pass on a build where the kill no-op'd or
+          # the kernel cached a stale read for a few seconds before any
+          # recovery happened. Require evidence of recovery — either
+          # the read failed at least once with ENOTCONN/EIO, OR the CSI
+          # node logged a recovery action — before counting a later
+          # successful read as a pass.
           echo "Waiting for health monitor to detect and recover..."
           ATTEMPTS=30
           PASSED=0
+          EVER_BROKEN=0
+          RECOVERY_LOGGED=0
           for i in $(seq 1 $ATTEMPTS); do
-            # Probe the pod's view of the volume. If the stale FUSE
-            # mount is still in place we get ENOTCONN ("transport
-            # endpoint is not connected"); a successful read means the
-            # container-side mount has been replaced.
-            if kubectl exec test-pod -- cat /data/crash_sentinel.txt 2>/dev/null | grep -q "before-crash"; then
-              echo "PASS: pod can read sentinel after ~$((i * 5))s — recovery succeeded with no stale FUSE in the container"
-              PASSED=1
-              break
+            # Look for recovery activity in the CSI node logs.
+            if [ "$RECOVERY_LOGGED" -eq 0 ]; then
+              if kubectl logs "$CSI_NODE_POD" -c csi-seaweedfs-plugin 2>/dev/null | tail -n +"$((LOG_BASELINE + 1))" | grep -qE "health monitor: detected unhealthy|health monitor: recovering volume"; then
+                RECOVERY_LOGGED=1
+                echo "Recovery activity observed in CSI node logs at ~$((i * 5))s"
+              fi
             fi
+
+            READ_OUT=$(kubectl exec test-pod -- cat /data/crash_sentinel.txt 2>&1 || true)
+            case "$READ_OUT" in
+              *"Transport endpoint is not connected"*|*"Input/output error"*)
+                if [ "$EVER_BROKEN" -eq 0 ]; then
+                  echo "Confirmed pod sees stale FUSE at ~$((i * 5))s: $(echo "$READ_OUT" | head -1)"
+                  EVER_BROKEN=1
+                fi
+                ;;
+              *"before-crash"*)
+                if [ "$EVER_BROKEN" -eq 1 ] || [ "$RECOVERY_LOGGED" -eq 1 ]; then
+                  echo "PASS: pod read works again after ~$((i * 5))s (broken_observed=$EVER_BROKEN, recovery_logged=$RECOVERY_LOGGED)"
+                  PASSED=1
+                  break
+                fi
+                ;;
+            esac
+
             # Periodic diagnostics every 15s.
             if [ $((i % 3)) = 0 ]; then
               echo "--- poll $i: pod view of /data ---"
@@ -326,7 +361,11 @@ jobs:
           done
 
           if [ "$PASSED" -ne 1 ]; then
-            echo "FAIL: pod could not read sentinel within $((ATTEMPTS * 5))s after weed mount crash"
+            if [ "$EVER_BROKEN" -eq 0 ] && [ "$RECOVERY_LOGGED" -eq 0 ]; then
+              echo "FAIL: weed mount was killed but neither breakage nor recovery activity was observed within $((ATTEMPTS * 5))s — recovery may not have triggered"
+            else
+              echo "FAIL: recovery did not converge within $((ATTEMPTS * 5))s (broken_observed=$EVER_BROKEN, recovery_logged=$RECOVERY_LOGGED)"
+            fi
             echo "--- CSI node full logs (new lines since crash) ---"
             kubectl logs "$CSI_NODE_POD" -c csi-seaweedfs-plugin 2>/dev/null | tail -n +"$((LOG_BASELINE + 1))"
             echo "--- Mount service logs ---"
