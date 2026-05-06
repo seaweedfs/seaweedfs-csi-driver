@@ -82,13 +82,20 @@ func TestWatchProcessExitLeavesReplacedEntry(t *testing.T) {
 	// the old one) before kicking off the watcher for the old entry.
 	m.mounts["vol-1"] = newEntry
 
-	go m.watchProcessExit("vol-1", oldEntry)
+	watcherDone := make(chan struct{})
+	go func() {
+		m.watchProcessExit("vol-1", oldEntry)
+		close(watcherDone)
+	}()
 
 	close(oldProcess.exited)
 	close(oldProcess.done)
 
-	// Give the watcher a moment to run.
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-watcherDone:
+	case <-time.After(1 * time.Second):
+		t.Fatal("watcher did not finish")
+	}
 
 	if got := m.getMount("vol-1"); got != newEntry {
 		t.Fatalf("expected new entry preserved, got %v", got)
