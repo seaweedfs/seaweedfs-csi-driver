@@ -270,20 +270,14 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 
 	glog.Infof("health monitor: recovering volume %s (%d publish paths)", volumeID, len(publishes))
 
-	// Step 1: Unmount all stale bind (publish) mounts. Surface forced
-	// cleanup errors — a leftover bind mount can fool Publish() into
-	// short-circuiting and silently claim success for a still-broken path.
-	for _, p := range publishes {
-		glog.Infof("health monitor: unmounting stale publish path %s for volume %s", p.path, volumeID)
-		if err := ns.unmountFn(p.path); err != nil {
-			glog.Warningf("health monitor: unmount publish path %s failed: %v, trying force cleanup", p.path, err)
-			if cleanupErr := mount.CleanupMountPoint(p.path, mountutil, true); cleanupErr != nil {
-				glog.Errorf("health monitor: force cleanup of publish path %s for volume %s also failed: %v", p.path, volumeID, cleanupErr)
-			}
-		}
-	}
+	// Re-stage first, before touching the publish bind mounts. If any of
+	// the re-stage steps fail the publish bind mounts remain in place
+	// (still broken, but no worse than before recovery), so kubelet does
+	// not see a node where the pod's volume mount has simply disappeared
+	// while recovery flails. The next sweep can retry. Only after a fresh
+	// staging is in place do we tear down and rebuild the publish binds.
 
-	// Step 2: Tear down the FUSE mount via the mount manager so its
+	// Step 1: Tear down the FUSE mount via the mount manager so its
 	// internal state is cleared before we re-stage. cleanupStagingFn
 	// only runs a host-level mountutil.Unmount + RemoveAll, which
 	// leaves the manager believing the volume is still mounted; the
@@ -303,18 +297,33 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 		}
 	}
 
-	// Step 3: Clean up stale staging path
+	// Step 2: Clean up stale staging path
 	if err := ns.cleanupStagingFn(stagingPath); err != nil {
 		glog.Errorf("health monitor: failed to cleanup stale staging for volume %s: %v", volumeID, err)
 		return
 	}
 
-	// Step 4: Re-stage the volume with a fresh FUSE mount. stageNewVolume
+	// Step 3: Re-stage the volume with a fresh FUSE mount. stageNewVolume
 	// populates volContext/readOnly on the new Volume for us.
 	newVol, err := ns.stageNewVolume(volumeID, stagingPath, vol.volContext, vol.readOnly)
 	if err != nil {
 		glog.Errorf("health monitor: failed to re-stage volume %s: %v", volumeID, err)
 		return
+	}
+
+	// Step 4: Tear down each stale publish bind mount so the follow-up
+	// Publish() does not short-circuit on the leftover mount. We do this
+	// only now that re-staging has succeeded — running it earlier would
+	// leave kubelet seeing the publish paths empty if any of the
+	// re-stage steps above failed.
+	for _, p := range publishes {
+		glog.Infof("health monitor: unmounting stale publish path %s for volume %s", p.path, volumeID)
+		if err := ns.unmountFn(p.path); err != nil {
+			glog.Warningf("health monitor: unmount publish path %s failed: %v, trying force cleanup", p.path, err)
+			if cleanupErr := mount.CleanupMountPoint(p.path, mountutil, true); cleanupErr != nil {
+				glog.Errorf("health monitor: force cleanup of publish path %s for volume %s also failed: %v", p.path, volumeID, cleanupErr)
+			}
+		}
 	}
 
 	// Step 5: Re-bind all publish paths. Track failures and successes
@@ -350,9 +359,18 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 	// publish whose host side is healthy but whose containers still see
 	// the old mount would never be picked up by retryPublishPaths on
 	// later sweeps.
-	if oldDevice != "" {
-		for _, p := range recovered {
+	//
+	// If we were unable to capture the old device (e.g. the weed mount
+	// process exited and its wait() goroutine had already unmounted the
+	// staging path before recoverVolume ran), fall back to the scan-based
+	// remount that detects ENOTCONN/EIO mounts inside the pod and
+	// replaces them. Otherwise pods would be left with a "transport
+	// endpoint is not connected" mount even after a successful recovery.
+	for _, p := range recovered {
+		if oldDevice != "" {
 			remountInContainers(p.path, stagingPath, oldDevice, p.readOnly)
+		} else {
+			remountStaleFuseInContainers(p.path, stagingPath, p.readOnly)
 		}
 	}
 
