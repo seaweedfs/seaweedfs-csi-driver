@@ -298,6 +298,17 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 		}
 	}
 
+	// Refuse to enter cleanupStagingFn (which RemoveAlls the staging path)
+	// while it is still a mount point — RemoveAll on a live FUSE would
+	// delete remote data via gRPC. The FUSE can still be alive here when
+	// vol.unmounter was nil (rebuilt volume) or when wait()'s
+	// kubeMounter.Unmount silently failed.
+	if notMnt, err := mountutil.IsLikelyNotMountPoint(stagingPath); err == nil && !notMnt {
+		glog.Errorf("health monitor: refusing to clean up staging path %s for volume %s — still a mount point; aborting recovery to avoid data deletion", stagingPath, volumeID)
+		return
+	}
+
+
 	if err := ns.cleanupStagingFn(stagingPath); err != nil {
 		glog.Errorf("health monitor: failed to cleanup stale staging for volume %s: %v", volumeID, err)
 		return
