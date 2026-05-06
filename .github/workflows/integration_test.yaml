@@ -54,10 +54,22 @@ jobs:
           # Build CSI driver image
           docker build -t seaweedfs-csi-driver:test -f cmd/seaweedfs-csi-driver/Dockerfile .
           kind load docker-image seaweedfs-csi-driver:test --name csi-test
-          
-          # Build mount service image  
+
+          # Build mount service image
           docker build -t seaweedfs-mount:test -f cmd/seaweedfs-mount/Dockerfile .
           kind load docker-image seaweedfs-mount:test --name csi-test
+
+          # Pre-pull and load the SeaweedFS image into kind. Pulling from
+          # Docker Hub at deploy time intermittently hits anonymous-pull
+          # rate limits, leaving the pod in ImagePullBackOff and timing out
+          # the rollout. Retry the docker pull a few times to ride through
+          # transient registry hiccups.
+          for i in 1 2 3; do
+            docker pull chrislusf/seaweedfs:latest && break
+            echo "docker pull attempt $i failed, retrying..."
+            sleep 10
+          done
+          kind load docker-image chrislusf/seaweedfs:latest --name csi-test
 
       - name: Deploy SeaweedFS
         run: |
@@ -106,6 +118,10 @@ jobs:
                 containers:
                   - name: seaweedfs
                     image: chrislusf/seaweedfs:latest
+                    # Use the image preloaded into kind by the workflow so we
+                    # do not re-pull from Docker Hub (anonymous rate limits
+                    # have caused ImagePullBackOff in CI).
+                    imagePullPolicy: IfNotPresent
                     args:
                       - server
                       - -dir=/data
