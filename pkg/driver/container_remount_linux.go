@@ -335,19 +335,31 @@ func remountViaSetns(containerPID int, containerMountPath, stagingPath string, r
 		return fmt.Errorf("unshare CLONE_FS: %w", err)
 	}
 
-	// Open the staging path in OUR mount namespace BEFORE setns. The
-	// staging path lives at /var/lib/kubelet/plugins/... which exists
-	// in the CSI driver pod (hostPath mount) but NOT inside the user
-	// container's filesystem (e.g. busybox), so referring to it by
-	// path after setns fails with ENOENT. /proc/self/fd/N stays valid
-	// across the namespace switch — /proc is mounted in the container
-	// too — and resolves to the same inode we opened here.
-	sourceFd, err := unix.Open(stagingPath, unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	// Build a detached clone of the source mount tree BEFORE setns so
+	// we can carry it into the container's namespace as an fd. Why not
+	// a plain unix.Mount(stagingPath, ...) after setns?
+	//
+	//   1. The staging path /var/lib/kubelet/plugins/... lives only in
+	//      the CSI driver pod's mount namespace (hostPath mount). The
+	//      user container's image (e.g. busybox) has no such directory,
+	//      so the kernel's path lookup fails with ENOENT after setns.
+	//   2. /proc/self/fd/N is also a non-starter: the kernel reads the
+	//      magic symlink and re-walks the original path string in the
+	//      *current* mount namespace, hitting the same ENOENT (or, in
+	//      the unit-test setup, EINVAL).
+	//
+	// open_tree(OPEN_TREE_CLONE) gives us an fd that holds a detached
+	// copy of the source's mount tree, anchored to its dentry. We can
+	// then move_mount() it into the container's namespace by fd, and
+	// the kernel never has to walk a path that the container can't see.
+	// Available since Linux 5.2; kind images and ubuntu-latest GHA
+	// runners both ship newer kernels.
+	sourceFd, err := unix.OpenTree(unix.AT_FDCWD, stagingPath,
+		uint(unix.OPEN_TREE_CLONE|unix.OPEN_TREE_CLOEXEC|unix.AT_NO_AUTOMOUNT))
 	if err != nil {
-		return fmt.Errorf("open source %s: %w", stagingPath, err)
+		return fmt.Errorf("open_tree %s: %w", stagingPath, err)
 	}
 	defer unix.Close(sourceFd)
-	sourcePath := fmt.Sprintf("/proc/self/fd/%d", sourceFd)
 
 	// Save our current mount namespace so we can restore it.
 	origNS, err := os.Open("/proc/self/ns/mnt")
@@ -387,13 +399,13 @@ func remountViaSetns(containerPID int, containerMountPath, stagingPath string, r
 		glog.V(4).Infof("container remount: umount %s in PID %d: %v (may already be unmounted)", containerMountPath, containerPID, umountErr)
 	}
 
-	// Bind-mount the staging path into the container by referring to
-	// the pre-setns FD via /proc/self/fd/N. The kernel resolves the
-	// magic link to the inode we opened in the CSI driver's mount
-	// namespace, so the bind succeeds even though the container's
-	// filesystem has no /var/lib/kubelet directory of its own.
-	if err := unix.Mount(sourcePath, containerMountPath, "", unix.MS_BIND, ""); err != nil {
-		return fmt.Errorf("bind mount %s (-> %s) -> %s in container PID %d: %w", sourcePath, stagingPath, containerMountPath, containerPID, err)
+	// Move the detached mount tree (from open_tree above) onto the
+	// container's mount path. The kernel attaches the fd's mount
+	// directly without walking a source path, so this works even
+	// though /var/lib/kubelet/... is not visible inside the container.
+	if err := unix.MoveMount(sourceFd, "", unix.AT_FDCWD, containerMountPath,
+		unix.MOVE_MOUNT_F_EMPTY_PATH); err != nil {
+		return fmt.Errorf("move_mount detached source -> %s in container PID %d (source path was %s): %w", containerMountPath, containerPID, stagingPath, err)
 	}
 
 	// A bind mount created with MS_BIND ignores MS_RDONLY in the same
