@@ -168,11 +168,16 @@ jobs:
 
       - name: Deploy CSI Driver
         run: |
-          # Deploy CSI driver with test images and correct filer address
-          # The seaweedfs-csi.yaml deploys to 'default' namespace
+          # Deploy CSI driver with test images and correct filer address.
+          # The seaweedfs-csi.yaml is rendered from the helm chart and pins
+          # the released image tag (e.g. chrislusf/seaweedfs-csi-driver:v1.4.5),
+          # so we rewrite *any* chrislusf/seaweedfs-csi-driver:* and
+          # chrislusf/seaweedfs-mount:* reference to the test images we
+          # kind-loaded in the previous step. This guarantees CI is exercising
+          # the code in this PR, not whatever the helm chart happens to pin.
           cat deploy/kubernetes/seaweedfs-csi.yaml | \
-            sed 's|chrislusf/seaweedfs-csi-driver:latest|seaweedfs-csi-driver:test|g' | \
-            sed 's|chrislusf/seaweedfs-mount:latest|seaweedfs-mount:test|g' | \
+            sed -E 's|chrislusf/seaweedfs-csi-driver:[^[:space:]]+|seaweedfs-csi-driver:test|g' | \
+            sed -E 's|chrislusf/seaweedfs-mount:[^[:space:]]+|seaweedfs-mount:test|g' | \
             sed 's|SEAWEEDFS_FILER:8888|seaweedfs.seaweedfs.svc.cluster.local:8888|g' | \
             kubectl apply -f -
           
