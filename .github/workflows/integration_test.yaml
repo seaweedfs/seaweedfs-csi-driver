@@ -137,8 +137,12 @@ jobs:
                     emptyDir: {}
           EOF
           
-          # Wait for SeaweedFS pod to be ready (readiness probe checks filer port 8888)
+          # Wait for SeaweedFS pod to be ready (readiness probe checks filer port 8888).
+          # Use rollout status first so the pod actually exists before kubectl wait
+          # queries it — otherwise kubectl wait races kubectl apply and exits with
+          # "no matching resources found".
           echo "Waiting for SeaweedFS to be ready..."
+          kubectl rollout status deployment/seaweedfs -n seaweedfs --timeout=180s
           kubectl wait --for=condition=ready pod -l app=seaweedfs -n seaweedfs --timeout=180s
           kubectl get pods -n seaweedfs
           
