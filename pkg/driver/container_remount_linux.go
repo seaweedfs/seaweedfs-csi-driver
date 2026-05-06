@@ -335,6 +335,20 @@ func remountViaSetns(containerPID int, containerMountPath, stagingPath string, r
 		return fmt.Errorf("unshare CLONE_FS: %w", err)
 	}
 
+	// Open the staging path in OUR mount namespace BEFORE setns. The
+	// staging path lives at /var/lib/kubelet/plugins/... which exists
+	// in the CSI driver pod (hostPath mount) but NOT inside the user
+	// container's filesystem (e.g. busybox), so referring to it by
+	// path after setns fails with ENOENT. /proc/self/fd/N stays valid
+	// across the namespace switch — /proc is mounted in the container
+	// too — and resolves to the same inode we opened here.
+	sourceFd, err := unix.Open(stagingPath, unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("open source %s: %w", stagingPath, err)
+	}
+	defer unix.Close(sourceFd)
+	sourcePath := fmt.Sprintf("/proc/self/fd/%d", sourceFd)
+
 	// Save our current mount namespace so we can restore it.
 	origNS, err := os.Open("/proc/self/ns/mnt")
 	if err != nil {
@@ -373,13 +387,13 @@ func remountViaSetns(containerPID int, containerMountPath, stagingPath string, r
 		glog.V(4).Infof("container remount: umount %s in PID %d: %v (may already be unmounted)", containerMountPath, containerPID, umountErr)
 	}
 
-	// Bind-mount the staging path into the container. The staging path
-	// resides on the host filesystem under /var/lib/kubelet/plugins/
-	// which is accessible from inside the container's mount namespace
-	// because both the CSI driver and pod containers share the same
-	// host filesystem root for kubelet paths.
-	if err := unix.Mount(stagingPath, containerMountPath, "", unix.MS_BIND, ""); err != nil {
-		return fmt.Errorf("bind mount %s -> %s in container PID %d: %w", stagingPath, containerMountPath, containerPID, err)
+	// Bind-mount the staging path into the container by referring to
+	// the pre-setns FD via /proc/self/fd/N. The kernel resolves the
+	// magic link to the inode we opened in the CSI driver's mount
+	// namespace, so the bind succeeds even though the container's
+	// filesystem has no /var/lib/kubelet directory of its own.
+	if err := unix.Mount(sourcePath, containerMountPath, "", unix.MS_BIND, ""); err != nil {
+		return fmt.Errorf("bind mount %s (-> %s) -> %s in container PID %d: %w", sourcePath, stagingPath, containerMountPath, containerPID, err)
 	}
 
 	// A bind mount created with MS_BIND ignores MS_RDONLY in the same
