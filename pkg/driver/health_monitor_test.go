@@ -38,10 +38,7 @@ type fakeMountState struct {
 	bindMountCalls   int
 	bindMountTargets []string
 
-	// unstageErr, when non-nil, is returned from stateUnmounter.Unmount.
-	// Lets tests exercise the recovery path's response to a manager
-	// teardown failure.
-	unstageErr error
+	unstageErr error // when non-nil, returned from stateUnmounter.Unmount
 }
 
 func newFakeMountState() *fakeMountState {
@@ -214,11 +211,6 @@ func TestHealthMonitorRecoversStaleMount(t *testing.T) {
 	if state.bindMountCalls != 4 {
 		t.Errorf("expected 4 total bind mounts (2 initial + 2 recovery), got %d", state.bindMountCalls)
 	}
-	// Recovery must tear down the previous FUSE mount via the volume's
-	// unmounter so the mount manager clears its in-memory state. Without
-	// this, the manager would falsely report "already mounted" on the
-	// follow-up Mount call and the recovery would silently bind onto a
-	// dead path. Regression test for seaweedfs/seaweedfs-csi-driver#261.
 	if state.unstageCalls != 1 {
 		t.Errorf("expected 1 unstage (mount-manager teardown) during recovery, got %d", state.unstageCalls)
 	}
@@ -247,12 +239,8 @@ func TestHealthMonitorRecoversStaleMount(t *testing.T) {
 	}
 }
 
-// TestHealthMonitorAbortsOnUnmounterError verifies the recovery path
-// bails out when the volume's unmounter (which talks to the mount
-// manager) returns an error. Continuing into cleanup/re-stage with the
-// manager still holding a stale entry would either fall back into the
-// "already mounted" no-op or, with PR #262 not yet in place, risk a
-// host-level RemoveAll on a still-live FUSE mount.
+// Recovery must abort if the manager-side unmounter fails: continuing
+// would either no-op as "already mounted" or RemoveAll a still-live FUSE.
 func TestHealthMonitorAbortsOnUnmounterError(t *testing.T) {
 	state := newFakeMountState()
 	ns := newNodeServerWithFakes(t, state)
@@ -280,14 +268,12 @@ func TestHealthMonitorAbortsOnUnmounterError(t *testing.T) {
 	if state.unstageCalls != 1 {
 		t.Errorf("expected the unmounter to be invoked exactly once, got %d", state.unstageCalls)
 	}
-	// Recovery must abort: no host cleanup, no re-stage, no re-bind.
 	if state.cleanupCalls != 0 {
 		t.Errorf("expected no staging cleanup after manager-unmount failure, got %d", state.cleanupCalls)
 	}
 	if state.stageCalls != 1 {
 		t.Errorf("expected no re-stage after manager-unmount failure, got %d", state.stageCalls)
 	}
-	// Original volume must remain in the map so the next sweep can retry.
 	got, ok := ns.volumes.Load("vol-1")
 	if !ok {
 		t.Fatal("volume removed from map after aborted recovery")
@@ -297,19 +283,9 @@ func TestHealthMonitorAbortsOnUnmounterError(t *testing.T) {
 	}
 }
 
-// TestHealthMonitorPreservesPublishesOnReStageFailure pins the
-// recovery ordering required by #261's stress findings: publish bind
-// mounts must NOT be torn down until re-staging has succeeded.
-//
-// Before this PR, recoverVolume unmounted every publish path first,
-// then attempted the re-stage. If any of (unmount manager, cleanup,
-// stageNewVolume) failed, the recovery returned with the publish
-// binds gone and no replacement — kubelet then saw bare empty
-// publish paths ("no mounts in the pods" in kvaster's report).
-//
-// Now publish-bind teardown happens only after stageNewVolume
-// succeeds, so a failed re-stage leaves the (broken) binds in place
-// for the next sweep to retry.
+// Publish-bind teardown must happen only after re-stage succeeds; a
+// failed re-stage must leave the existing (broken) binds in place so
+// kubelet does not see bare empty publish paths.
 func TestHealthMonitorPreservesPublishesOnReStageFailure(t *testing.T) {
 	state := newFakeMountState()
 	ns := newNodeServerWithFakes(t, state)
@@ -333,9 +309,7 @@ func TestHealthMonitorPreservesPublishesOnReStageFailure(t *testing.T) {
 	bindMountsBefore := state.bindMountCalls
 	unmountsBefore := state.unmountCalls
 
-	// Make stageNewVolume fail during recovery. The first mounter
-	// factory call already happened above; flip the flag now so the
-	// recovery's call returns an error.
+	// Make the recovery's stageNewVolume call fail (initial stage above already happened).
 	wantErr := errors.New("simulated re-stage failure")
 	ns.mounterFactory = func(volumeID string, readOnly bool, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
 		return nil, wantErr
@@ -349,25 +323,18 @@ func TestHealthMonitorPreservesPublishesOnReStageFailure(t *testing.T) {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 
-	// Manager-unmount + cleanup must have run (we must always tear
-	// down the dead FUSE so the next sweep can retry against fresh
-	// state) — these are the steps before re-stage in the new order.
 	if state.unstageCalls != 1 {
 		t.Errorf("expected 1 manager unmount during failed recovery, got %d", state.unstageCalls)
 	}
 	if state.cleanupCalls != 1 {
 		t.Errorf("expected 1 staging cleanup during failed recovery, got %d", state.cleanupCalls)
 	}
-	// Publish bind teardown must NOT have run — that's the bug fix.
 	if state.unmountCalls != unmountsBefore {
-		t.Errorf("publish bind mounts must not be unmounted when re-stage fails (regression of #261), got %d unmounts (expected %d)", state.unmountCalls, unmountsBefore)
+		t.Errorf("publish bind mounts must not be unmounted when re-stage fails, got %d unmounts (expected %d)", state.unmountCalls, unmountsBefore)
 	}
-	// No new bind mounts either: re-publish never ran.
 	if state.bindMountCalls != bindMountsBefore {
 		t.Errorf("expected no new bind mounts when re-stage fails, got %d (was %d)", state.bindMountCalls, bindMountsBefore)
 	}
-	// The volume map still references the original Volume so the
-	// next sweep can retry from a known state.
 	got, ok := ns.volumes.Load("vol-1")
 	if !ok {
 		t.Fatal("volume removed from map after failed recovery")

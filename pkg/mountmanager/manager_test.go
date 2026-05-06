@@ -5,12 +5,6 @@ import (
 	"time"
 )
 
-// TestWatchProcessExitRemovesStaleEntry verifies that the manager's
-// background watcher clears a mount entry from its map when the weed
-// mount process exits on its own. Without this, a future Mount call for
-// the same volume would falsely receive an "already mounted" no-op
-// because the manager's state never noticed the dead process.
-// Regression test for seaweedfs/seaweedfs-csi-driver#261.
 func TestWatchProcessExitRemovesStaleEntry(t *testing.T) {
 	m := NewManager(Config{})
 
@@ -30,16 +24,13 @@ func TestWatchProcessExitRemovesStaleEntry(t *testing.T) {
 
 	go m.watchProcessExit("vol-1", entry)
 
-	// Sanity: entry is still tracked while the process is alive.
 	if got := m.getMount("vol-1"); got != entry {
 		t.Fatalf("expected entry tracked before process exit, got %v", got)
 	}
 
-	// Simulate the weed mount process dying.
 	close(process.exited)
 	close(process.done)
 
-	// The watcher should remove the entry; poll briefly to give it time.
 	deadline := time.Now().Add(1 * time.Second)
 	for time.Now().Before(deadline) {
 		if m.getMount("vol-1") == nil {
@@ -50,11 +41,8 @@ func TestWatchProcessExitRemovesStaleEntry(t *testing.T) {
 	t.Fatal("watcher did not remove stale entry after weed mount process exited")
 }
 
-// TestWatchProcessExitLeavesReplacedEntry verifies that if a fresh
-// mount has replaced the original entry by the time the watcher fires,
-// the watcher does not delete the new entry. The identity check in
-// watchProcessExit guards against the watcher and a concurrent
-// Unmount/re-Mount racing on the same volumeID slot.
+// Identity check in watchProcessExit must leave a fresh replacement
+// entry alone when a previous process's watcher fires.
 func TestWatchProcessExitLeavesReplacedEntry(t *testing.T) {
 	m := NewManager(Config{})
 
@@ -78,8 +66,6 @@ func TestWatchProcessExitLeavesReplacedEntry(t *testing.T) {
 		process:  newProcess,
 	}
 
-	// Put the new entry in the map (as if a fresh mount had replaced
-	// the old one) before kicking off the watcher for the old entry.
 	m.mounts["vol-1"] = newEntry
 
 	watcherDone := make(chan struct{})

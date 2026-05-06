@@ -204,17 +204,14 @@ func (ns *NodeServer) retryPublishPaths(volumeID string) {
 			return true
 		}
 		glog.Warningf("health monitor: re-binding publish path %s for volume %s", path, volumeID)
-		// Clear any stale/corrupt mount first so Publish's checkMount
-		// does not short-circuit on a leftover mount. Volume.Publish
-		// returns success on a pre-existing mount at the target — if
-		// we cannot tear it down, calling Publish would falsely claim
-		// to have re-bound onto the dead FUSE. Defer to the next
-		// sweep instead.
+		// Volume.Publish no-ops on any pre-existing mount at the target,
+		// so we must clear the stale bind first or it will silently claim
+		// to have re-bound onto the dead FUSE.
 		unmountedOK := true
 		if err := ns.unmountFn(path); err != nil {
 			glog.Warningf("health monitor: unmount of publish path %s for volume %s failed: %v, trying force cleanup", path, volumeID, err)
 			if cleanupErr := mount.CleanupMountPoint(path, mountutil, true); cleanupErr != nil {
-				glog.Errorf("health monitor: force cleanup of publish path %s for volume %s also failed: %v; skipping re-publish to avoid Publish() falsely satisfying the stale mount", path, volumeID, cleanupErr)
+				glog.Errorf("health monitor: force cleanup of publish path %s for volume %s also failed: %v; skipping re-publish", path, volumeID, cleanupErr)
 				unmountedOK = false
 			}
 		}
@@ -226,9 +223,6 @@ func (ns *NodeServer) retryPublishPaths(volumeID string) {
 			return true
 		}
 		glog.Infof("health monitor: successfully re-bound publish path %s for volume %s", path, volumeID)
-
-		// Fix any stale mounts inside the pod containers (same
-		// rationale as recoverVolume step 7).
 		remountStaleFuseInContainers(path, vol.StagedPath, readOnly)
 		return true
 	})
@@ -277,15 +271,8 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 		return true
 	})
 
-	// If the staging mount is already gone (e.g. the weed mount
-	// process exited and its wait() goroutine ran kubeMounter.Unmount
-	// before this sweep), fall back to a publish path's bind mount
-	// for the device. The publish bind targets the same FUSE device
-	// as staging, so any one is sufficient to identify the stale
-	// mount inside containers. Using a device-keyed remount keeps
-	// the rest of the function from having to scan for "any stale
-	// FUSE in the pod", which would risk replacing a different
-	// volume's mount when a pod uses several CSI volumes.
+	// Fall back to a publish bind's device so we never hit a scan-based
+	// remount that could match another volume's stale FUSE in the same pod.
 	if oldDevice == "" {
 		for _, p := range publishes {
 			if d, err := getMountDevice(p.path); err == nil && d != "" {
@@ -297,58 +284,35 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 
 	glog.Infof("health monitor: recovering volume %s (%d publish paths)", volumeID, len(publishes))
 
-	// Re-stage first, before touching the publish bind mounts. If any of
-	// the re-stage steps fail the publish bind mounts remain in place
-	// (still broken, but no worse than before recovery), so kubelet does
-	// not see a node where the pod's volume mount has simply disappeared
-	// while recovery flails. The next sweep can retry. Only after a fresh
-	// staging is in place do we tear down and rebuild the publish binds.
+	// Re-stage first; only then tear down and rebuild publish binds.
+	// If any re-stage step fails the publish binds stay in place
+	// (still broken, but no worse than before) so kubelet does not see
+	// the publish path as a bare empty directory.
 
-	// Step 1: Tear down the FUSE mount via the mount manager so its
-	// internal state is cleared before we re-stage. cleanupStagingFn
-	// only runs a host-level mountutil.Unmount + RemoveAll, which
-	// leaves the manager believing the volume is still mounted; the
-	// follow-up Mount call would then no-op and the recovery would
-	// silently bind onto a dead path. See seaweedfs/seaweedfs-csi-driver#261.
+	// Manager-side unmount clears its in-memory state; without it a
+	// later Mount() no-ops as "already mounted" against the dead FUSE.
 	if vol.unmounter != nil {
 		if err := vol.unmounter.Unmount(); err != nil {
-			// Abort recovery: if the manager refuses to release the
-			// volume, its in-memory entry is likely still stale and
-			// the follow-up Mount would hit the same "already
-			// mounted" no-op we are trying to escape. Worse, running
-			// host-level RemoveAll on a path the manager still
-			// considers mounted risks deleting user data through a
-			// live FUSE (#262). Let the next sweep retry instead.
 			glog.Errorf("health monitor: unmount via mount manager failed for volume %s, aborting recovery: %v", volumeID, err)
 			return
 		}
 	}
 
-	// Step 2: Clean up stale staging path
 	if err := ns.cleanupStagingFn(stagingPath); err != nil {
 		glog.Errorf("health monitor: failed to cleanup stale staging for volume %s: %v", volumeID, err)
 		return
 	}
 
-	// Step 3: Re-stage the volume with a fresh FUSE mount. stageNewVolume
-	// populates volContext/readOnly on the new Volume for us.
 	newVol, err := ns.stageNewVolume(volumeID, stagingPath, vol.volContext, vol.readOnly)
 	if err != nil {
 		glog.Errorf("health monitor: failed to re-stage volume %s: %v", volumeID, err)
 		return
 	}
 
-	// Step 4: Tear down each stale publish bind mount so the follow-up
-	// Publish() does not short-circuit on the leftover mount. We do this
-	// only now that re-staging has succeeded — running it earlier would
-	// leave kubelet seeing the publish paths empty if any of the
-	// re-stage steps above failed.
-	//
-	// Track which publishes were *actually* unmounted. Volume.Publish
-	// short-circuits on any pre-existing mount at the target — without
-	// this guard a stale bind we could not tear down would silently
-	// satisfy Publish and the recovery would falsely report success
-	// against the dead FUSE.
+	// Volume.Publish no-ops on any pre-existing mount at the target, so a
+	// stale bind we could not tear down would silently satisfy Publish
+	// against the dead FUSE. Track per-publish unmount success and skip
+	// Publish for paths whose bind we failed to clear.
 	unmounted := make(map[string]bool, len(publishes))
 	for _, p := range publishes {
 		glog.Infof("health monitor: unmounting stale publish path %s for volume %s", p.path, volumeID)
@@ -359,24 +323,18 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 			glog.Warningf("health monitor: unmount publish path %s failed: %v, trying force cleanup", p.path, err)
 		}
 		if cleanupErr := mount.CleanupMountPoint(p.path, mountutil, true); cleanupErr != nil {
-			glog.Errorf("health monitor: force cleanup of publish path %s for volume %s also failed: %v; skipping re-publish to avoid Publish() falsely satisfying the stale mount", p.path, volumeID, cleanupErr)
+			glog.Errorf("health monitor: force cleanup of publish path %s for volume %s also failed: %v; skipping re-publish", p.path, volumeID, cleanupErr)
 			continue
 		}
 		unmounted[p.path] = true
 	}
 
-	// Step 5: Re-bind all publish paths. Track failures and successes
-	// separately so we can still fix container-side mounts for the
-	// publishes that did recover even if some others failed.
 	var failed, recovered []publishInfo
 	for _, p := range publishes {
-		// Always re-register the path so retryPublishPaths can see it
-		// on the next sweep and so Unpublish can tear it down correctly.
+		// Re-register on the new volume regardless so Unpublish can find it
+		// and retryPublishPaths can pick up failures on later sweeps.
 		newVol.AddPublishPath(p.path, p.readOnly)
 		if !unmounted[p.path] {
-			// The stale bind is still in place; re-binding now would
-			// be a Publish() no-op against the dead FUSE. Defer to
-			// the next sweep's retryPublishPaths.
 			failed = append(failed, p)
 			continue
 		}
@@ -389,41 +347,23 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 		}
 	}
 
-	// Step 6: Replace the volume in the map
 	ns.volumes.Store(volumeID, newVol)
 
-	// Step 7: Fix stale mounts inside pod containers for the publishes
-	// that succeeded. The host-level recovery above re-created the bind
-	// mount at each publish path, but containers that were created
-	// before the FUSE restart still hold the old dead mount (rprivate
-	// propagation blocks host-side changes from reaching them). Enter
-	// each container's mount namespace and replace the stale mount with
-	// a fresh bind from the recovered staging path.
+	// Containers created before the FUSE restart still hold the old dead
+	// mount (rprivate propagation blocks host-side changes from reaching
+	// them), so enter each container's mount namespace and replace it.
+	// Run for the recovered set even when len(failed) > 0:
+	// hasUnhealthyPublishPath only checks the host bind, so a publish
+	// whose host side is healthy but whose containers still see the old
+	// mount would never be picked up by retryPublishPaths on later sweeps.
 	//
-	// Run this for the recovered set even when len(failed) > 0:
-	// hasUnhealthyPublishPath only checks the host bind mount, so a
-	// publish whose host side is healthy but whose containers still see
-	// the old mount would never be picked up by retryPublishPaths on
-	// later sweeps.
-	//
-	// Only the device-keyed remount is used here so we never touch a
-	// FUSE mount that belongs to a different volume in the same pod.
-	// oldDevice is set from the staging path or, if the staging mount
-	// was already gone, from a publish path's bind mount (both target
-	// the same FUSE device).
-	//
-	// If we still have no oldDevice — both staging and every publish
-	// bind have already been unmounted at OS level before recovery ran
-	// — we cannot safely identify the stale entry without risking a
-	// cross-volume remount. There is also no automatic retry path that
-	// will fix this on a later sweep: hasUnhealthyPublishPath only
-	// inspects the host bind mount, which is now healthy, so the next
-	// sweep will see nothing to do. The pod's containers will keep
-	// returning "transport endpoint is not connected" until the pod is
-	// restarted (or the kubelet recreates the pod, e.g. via a liveness
-	// probe). Log loudly so an operator notices.
+	// Only device-keyed remount is used so we never touch a FUSE mount
+	// belonging to a different volume in the same pod. If oldDevice is
+	// still empty (both staging and every publish bind unmounted at OS
+	// level before recovery ran), the pod must be restarted manually —
+	// the next sweep won't pick this up because the host bind looks healthy.
 	if oldDevice == "" {
-		glog.Errorf("health monitor: container-side remount for volume %s could not run — no device captured for the old FUSE mount; affected pods will need to be restarted manually because hasUnhealthyPublishPath only sees the (now healthy) host bind", volumeID)
+		glog.Errorf("health monitor: container-side remount for volume %s could not run — no device captured for the old FUSE mount; affected pods will need to be restarted manually", volumeID)
 	} else {
 		for _, p := range recovered {
 			remountInContainers(p.path, stagingPath, oldDevice, p.readOnly)

@@ -59,16 +59,12 @@ func (m *Manager) Mount(req *MountRequest) (*MountResponse, error) {
 	defer lock.Unlock()
 
 	if entry := m.getMount(req.VolumeID); entry != nil {
-		// If the previous weed mount process has died, the entry is
-		// stale and the FUSE mount is dead. Tear down the stale entry
-		// so we can start a fresh process; otherwise we would falsely
-		// report "already mounted" and a CSI-driver recovery would
-		// silently bind-mount onto a dead path. See seaweedfs/seaweedfs-csi-driver#261.
+		// If the previous weed mount process has died the FUSE is dead;
+		// reporting "already mounted" would let recovery silently bind
+		// onto a dead path.
 		select {
 		case <-entry.process.exited:
 			glog.Warningf("volume %s previous weed mount process has exited; replacing stale entry with a fresh mount", req.VolumeID)
-			// Wait for wait()'s post-exit cleanup (FUSE unmount) to finish
-			// so ensureTargetClean below sees a quiescent path.
 			<-entry.process.done
 			m.removeMount(req.VolumeID)
 		default:
@@ -89,30 +85,24 @@ func (m *Manager) Mount(req *MountRequest) (*MountResponse, error) {
 	m.mounts[req.VolumeID] = entry
 	m.mu.Unlock()
 
-	// Proactively clear the entry once the weed mount process exits,
-	// even if Unmount is never called. Without this, a process that
-	// crashes on its own (e.g. backend errors) leaves a stale entry
-	// that fools later Mount calls into reporting success without
-	// starting a new process.
+	// Clear the entry if the weed mount process exits on its own (e.g.
+	// backend errors), so a later Mount() doesn't no-op against a dead
+	// daemon.
 	go m.watchProcessExit(req.VolumeID, entry)
 
 	glog.Infof("started weed mount process for volume %s at %s", req.VolumeID, req.TargetPath)
 	return &MountResponse{LocalSocket: entry.localSocket}, nil
 }
 
-// watchProcessExit removes the entry for volumeID once its weed mount
-// process has finished exiting. It is safe to run concurrently with
-// Unmount: if Unmount has already removed the entry (or replaced it
-// with a fresh mount), the identity check ensures we leave the new
-// entry alone.
+// watchProcessExit clears the manager's entry for volumeID once its
+// weed mount process has fully exited. Identity check guards against
+// removing a fresh replacement entry.
 func (m *Manager) watchProcessExit(volumeID string, entry *mountEntry) {
 	<-entry.process.done
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if existing, ok := m.mounts[volumeID]; ok && existing == entry {
 		delete(m.mounts, volumeID)
-		// See removeMount: do not delete the per-volume lock — a
-		// concurrent Mount/Unmount may still be holding it.
 		glog.Infof("removed mount entry for volume %s after weed mount process exited (target: %s)", volumeID, entry.targetPath)
 	}
 }
@@ -167,13 +157,8 @@ func (m *Manager) removeMount(volumeID string) *mountEntry {
 	defer m.mu.Unlock()
 	entry := m.mounts[volumeID]
 	delete(m.mounts, volumeID)
-	// Intentionally do NOT delete the per-volume lock here. If a caller
-	// is still holding the lock from m.locks.get(volumeID), deleting it
-	// would let a concurrent caller receive a brand-new lock from the
-	// next m.locks.get() and enter the critical section in parallel —
-	// splitting Mount/Unmount serialization for the same volume. The
-	// lock map grows by one entry per ever-mounted volume, which is
-	// negligible for the manager's lifetime.
+	// Per-volume lock is intentionally NOT removed: a concurrent caller
+	// holding it would split serialization with a freshly-minted lock.
 	return entry
 }
 
@@ -270,13 +255,8 @@ type mountEntry struct {
 type weedMountProcess struct {
 	cmd    *exec.Cmd
 	target string
-	// exited is closed as soon as cmd.Wait() returns, so callers can
-	// detect that the weed mount process is gone without waiting for
-	// the post-exit FUSE unmount step.
-	exited chan struct{}
-	// done is closed after wait() finishes its full cleanup (including
-	// the kubeMounter.Unmount of the target).
-	done chan struct{}
+	exited chan struct{} // closed when cmd.Wait() returns
+	done   chan struct{} // closed when wait() finishes (after FUSE unmount)
 }
 
 func startWeedMountProcess(command string, args []string, target string, volumeID string) (*weedMountProcess, error) {
@@ -328,8 +308,6 @@ func (p *weedMountProcess) wait() {
 		glog.Infof("weed mount exit (pid: %d, target: %s)", p.cmd.Process.Pid, p.target)
 	}
 
-	// Signal exit immediately so Manager.Mount can detect a dead
-	// process without waiting for the post-exit unmount step.
 	close(p.exited)
 
 	// Brief delay to allow FUSE cleanup and pending I/O to complete before unmounting
