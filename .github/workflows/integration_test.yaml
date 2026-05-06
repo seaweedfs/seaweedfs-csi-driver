@@ -296,7 +296,13 @@ jobs:
           # would silently degrade into a no-op that always passes.
           MOUNT_POD=$(kubectl get pod -l app=seaweedfs-mount -o jsonpath='{.items[0].metadata.name}')
           echo "Killing weed mount processes inside $MOUNT_POD..."
-          KILL_OUTPUT=$(kubectl exec "$MOUNT_POD" -- sh -c 'pids=$(pgrep -f "weed .*mount" || true); if [ -n "$pids" ]; then echo "killing pids: $pids"; kill -9 $pids && echo "killed"; else echo "no weed mount pids found"; fi' 2>&1)
+          # Match by exact process name "weed" (the weed mount children), not
+          # via pgrep -f, which would match our own shell — its argv contains
+          # the search pattern, so kill -9 $pids would also kill the shell
+          # running this command and terminate kubectl exec with code 137.
+          # The mount service itself runs as "seaweedfs-mount" so it is not a
+          # target; "weed" only appears for the FUSE child processes.
+          KILL_OUTPUT=$(kubectl exec "$MOUNT_POD" -- sh -c 'pids=$(pgrep -x weed || true); if [ -n "$pids" ]; then echo "killing pids: $pids"; kill -9 $pids && echo "killed"; else echo "no weed mount pids found"; fi' 2>&1)
           echo "$KILL_OUTPUT"
           if ! echo "$KILL_OUTPUT" | grep -q "^killed$"; then
             echo "FAIL: no weed mount processes were running, cannot exercise recovery"
