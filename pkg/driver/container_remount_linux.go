@@ -335,25 +335,11 @@ func remountViaSetns(containerPID int, containerMountPath, stagingPath string, r
 		return fmt.Errorf("unshare CLONE_FS: %w", err)
 	}
 
-	// Build a detached clone of the source mount tree BEFORE setns so
-	// we can carry it into the container's namespace as an fd. Why not
-	// a plain unix.Mount(stagingPath, ...) after setns?
-	//
-	//   1. The staging path /var/lib/kubelet/plugins/... lives only in
-	//      the CSI driver pod's mount namespace (hostPath mount). The
-	//      user container's image (e.g. busybox) has no such directory,
-	//      so the kernel's path lookup fails with ENOENT after setns.
-	//   2. /proc/self/fd/N is also a non-starter: the kernel reads the
-	//      magic symlink and re-walks the original path string in the
-	//      *current* mount namespace, hitting the same ENOENT (or, in
-	//      the unit-test setup, EINVAL).
-	//
-	// open_tree(OPEN_TREE_CLONE) gives us an fd that holds a detached
-	// copy of the source's mount tree, anchored to its dentry. We can
-	// then move_mount() it into the container's namespace by fd, and
-	// the kernel never has to walk a path that the container can't see.
-	// Available since Linux 5.2; kind images and ubuntu-latest GHA
-	// runners both ship newer kernels.
+	// open_tree the source BEFORE setns so we have an fd we can
+	// move_mount into the container's namespace. A path-based bind
+	// after setns fails with ENOENT — the staging path lives only in
+	// the driver pod's namespace, and /proc/self/fd/N re-walks the
+	// original path string in the current namespace. Requires Linux 5.2+.
 	sourceFd, err := unix.OpenTree(unix.AT_FDCWD, stagingPath,
 		uint(unix.OPEN_TREE_CLONE|unix.OPEN_TREE_CLOEXEC|unix.AT_NO_AUTOMOUNT))
 	if err != nil {
@@ -399,10 +385,6 @@ func remountViaSetns(containerPID int, containerMountPath, stagingPath string, r
 		glog.V(4).Infof("container remount: umount %s in PID %d: %v (may already be unmounted)", containerMountPath, containerPID, umountErr)
 	}
 
-	// Move the detached mount tree (from open_tree above) onto the
-	// container's mount path. The kernel attaches the fd's mount
-	// directly without walking a source path, so this works even
-	// though /var/lib/kubelet/... is not visible inside the container.
 	if err := unix.MoveMount(sourceFd, "", unix.AT_FDCWD, containerMountPath,
 		unix.MOVE_MOUNT_F_EMPTY_PATH); err != nil {
 		return fmt.Errorf("move_mount detached source -> %s in container PID %d (source path was %s): %w", containerMountPath, containerPID, stagingPath, err)
