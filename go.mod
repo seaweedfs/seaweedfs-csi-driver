@@ -5,12 +5,12 @@ go 1.25.0
 require (
 	github.com/container-storage-interface/spec v1.11.0
 	golang.org/x/net v0.53.0
-	google.golang.org/grpc v1.79.3
+	google.golang.org/grpc v1.80.0
 	k8s.io/client-go v0.32.0
 )
 
 require (
-	github.com/seaweedfs/seaweedfs v0.0.0-20260504072830-1de741737db0
+	github.com/seaweedfs/seaweedfs v0.0.0-20260507021436-a1e5eb9dad5b
 	golang.org/x/sys v0.43.0
 	k8s.io/apimachinery v0.32.0
 	k8s.io/mount-utils v0.32.0
@@ -73,7 +73,7 @@ require (
 	golang.org/x/term v0.42.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260319201613-d00831a3d3e7 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/grpc/security/advancedtls v1.0.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
