@@ -175,6 +175,25 @@ func (ns *NodeServer) hasUnhealthyPublishPath(vol *Volume) bool {
 	return unhealthy
 }
 
+// tearDownStalePublishBind unmounts a publish bind, falling back to
+// mount.CleanupMountPoint if the regular unmount fails. Returns true
+// only if the path is no longer a mount point — callers must skip
+// re-publishing when false, since Volume.Publish short-circuits on
+// any pre-existing mount and would falsely claim success against the
+// dead FUSE.
+func (ns *NodeServer) tearDownStalePublishBind(path, volumeID string) bool {
+	if err := ns.unmountFn(path); err == nil {
+		return true
+	} else {
+		glog.Warningf("health monitor: unmount publish path %s for volume %s failed: %v, trying force cleanup", path, volumeID, err)
+	}
+	if cleanupErr := mount.CleanupMountPoint(path, mountutil, true); cleanupErr != nil {
+		glog.Errorf("health monitor: force cleanup of publish path %s for volume %s also failed: %v; skipping re-publish to avoid Publish() falsely satisfying the stale mount", path, volumeID, cleanupErr)
+		return false
+	}
+	return true
+}
+
 // retryPublishPaths re-binds publish paths whose bind mount has gone
 // missing while the underlying staging FUSE mount is still alive. This
 // is the second-chance path for publish failures that happened during a
@@ -207,15 +226,7 @@ func (ns *NodeServer) retryPublishPaths(volumeID string) {
 		// Volume.Publish short-circuits on any pre-existing mount; if we
 		// cannot tear the stale bind down, calling it would falsely
 		// claim success against the dead FUSE. Defer to the next sweep.
-		unmountedOK := true
-		if err := ns.unmountFn(path); err != nil {
-			glog.Warningf("health monitor: unmount of publish path %s for volume %s failed: %v, trying force cleanup", path, volumeID, err)
-			if cleanupErr := mount.CleanupMountPoint(path, mountutil, true); cleanupErr != nil {
-				glog.Errorf("health monitor: force cleanup of publish path %s for volume %s also failed: %v; skipping re-publish to avoid Publish() falsely satisfying the stale mount", path, volumeID, cleanupErr)
-				unmountedOK = false
-			}
-		}
-		if !unmountedOK {
+		if !ns.tearDownStalePublishBind(path, volumeID) {
 			return true
 		}
 		if err := vol.Publish(vol.StagedPath, path, readOnly); err != nil {
@@ -332,17 +343,7 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 	unmounted := make(map[string]bool, len(publishes))
 	for _, p := range publishes {
 		glog.Infof("health monitor: unmounting stale publish path %s for volume %s", p.path, volumeID)
-		if err := ns.unmountFn(p.path); err == nil {
-			unmounted[p.path] = true
-			continue
-		} else {
-			glog.Warningf("health monitor: unmount publish path %s failed: %v, trying force cleanup", p.path, err)
-		}
-		if cleanupErr := mount.CleanupMountPoint(p.path, mountutil, true); cleanupErr != nil {
-			glog.Errorf("health monitor: force cleanup of publish path %s for volume %s also failed: %v; skipping re-publish to avoid Publish() falsely satisfying the stale mount", p.path, volumeID, cleanupErr)
-			continue
-		}
-		unmounted[p.path] = true
+		unmounted[p.path] = ns.tearDownStalePublishBind(p.path, volumeID)
 	}
 
 	// Step 5: Re-bind publish paths. Track failures and successes
