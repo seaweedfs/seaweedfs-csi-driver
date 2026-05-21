@@ -104,7 +104,7 @@ func TestIntegrationRemountViaSetns(t *testing.T) {
 	}
 
 	// --- Act: use remountViaSetns to replace the mount ---
-	if err := remountViaSetns(childPID, childMountpoint, replacementDir, false); err != nil {
+	if err := remountViaSetns(childPID, childMountpoint, replacementDir, "", false); err != nil {
 		t.Fatalf("remountViaSetns: %v", err)
 	}
 
@@ -121,6 +121,91 @@ func TestIntegrationRemountViaSetns(t *testing.T) {
 	// We should still be able to read our own files normally.
 	if _, err := os.ReadDir(root); err != nil {
 		t.Errorf("failed to read test root after remount (namespace leak?): %v", err)
+	}
+}
+
+// TestIntegrationRemountViaSetnsSubPath verifies that when a non-empty
+// subPath is supplied, remountViaSetns binds from <staging>/<subPath>
+// rather than the staging root. This is the regression guard for
+// seaweedfs/seaweedfs-csi-driver#271, where a subPath volume mount
+// silently resolved to the share root after FUSE recovery.
+func TestIntegrationRemountViaSetnsSubPath(t *testing.T) {
+	skipIfNotRoot(t)
+
+	// staging/ has a "store" subdir; only the subdir should be visible at
+	// the container mountpoint after the remount.
+	root := t.TempDir()
+	stagingDir := filepath.Join(root, "staging")
+	storeDir := filepath.Join(stagingDir, "store")
+	childMountpoint := filepath.Join(root, "childmnt")
+
+	for _, d := range []string{storeDir, childMountpoint} {
+		if err := os.MkdirAll(d, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Marker at the staging root must NOT leak through; the subdir marker
+	// is what a correct subPath bind should expose.
+	if err := os.WriteFile(filepath.Join(stagingDir, "marker"), []byte("root"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storeDir, "marker"), []byte("instore"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	pidFile := filepath.Join(root, "child.pid")
+	readyFile := filepath.Join(root, "child.ready")
+	// The child starts with an empty mount over childMountpoint to stand
+	// in for the stale FUSE bind that recovery will replace.
+	child := exec.Command("unshare", "--mount", "--propagation", "private",
+		"sh", "-c", fmt.Sprintf(
+			`mount -t tmpfs none %s && echo $$ > %s && touch %s && sleep 60`,
+			childMountpoint, pidFile, readyFile,
+		))
+	child.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
+	if err := child.Start(); err != nil {
+		t.Fatalf("start child: %v", err)
+	}
+	defer func() {
+		child.Process.Kill()
+		child.Wait()
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	ready := false
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(readyFile); err == nil {
+			ready = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !ready {
+		t.Fatal("child did not become ready")
+	}
+
+	pidBytes, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatalf("read child PID: %v", err)
+	}
+	childPID, err := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
+	if err != nil {
+		t.Fatalf("parse child PID %q: %v", string(pidBytes), err)
+	}
+
+	// Act: remount with subPath "store".
+	if err := remountViaSetns(childPID, childMountpoint, stagingDir, "store", false); err != nil {
+		t.Fatalf("remountViaSetns: %v", err)
+	}
+
+	// Verify: the container mountpoint shows the subdir content, not the root.
+	markerPath := fmt.Sprintf("/proc/%d/root%s/marker", childPID, childMountpoint)
+	data, err := os.ReadFile(markerPath)
+	if err != nil {
+		t.Fatalf("read marker after subPath remount: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "instore" {
+		t.Errorf("expected 'instore' marker (subPath bind), got %q — subPath offset was dropped", got)
 	}
 }
 
@@ -172,7 +257,7 @@ func TestIntegrationRemountViaSetnsRestoresNamespaceOnFailure(t *testing.T) {
 	}
 
 	// Try to remount a path that doesn't exist in the child namespace.
-	remountErr := remountViaSetns(childPID, "/nonexistent/path/that/does/not/exist", srcDir, false)
+	remountErr := remountViaSetns(childPID, "/nonexistent/path/that/does/not/exist", srcDir, "", false)
 	if remountErr == nil {
 		t.Fatal("expected error for nonexistent target, got nil")
 	}
