@@ -138,6 +138,49 @@ func TestParseMountInfoReaderCapturesRoot(t *testing.T) {
 	}
 }
 
+// TestParseMountInfoReaderUnescapesOctal verifies that octal escapes in
+// the root and mountpoint fields (util-linux escapes space/tab/newline/
+// backslash) are decoded, so a subPath containing a space binds the right
+// subdirectory after recovery instead of failing or dropping the offset.
+func TestParseMountInfoReaderUnescapesOctal(t *testing.T) {
+	// subPath "my store" -> root "/my\040store"; mountpoint also has a space.
+	content := "200 50 0:55 /my\\040store /var/lib/kubelet/pods/uid/a\\040b rw,relatime - fuse.seaweedfs seaweedfs rw\n"
+	entries, err := parseMountInfoReader(strings.NewReader(content))
+	if err != nil {
+		t.Fatalf("parseMountInfoReader: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].root != "/my store" {
+		t.Errorf("root = %q, want %q", entries[0].root, "/my store")
+	}
+	if entries[0].mountpoint != "/var/lib/kubelet/pods/uid/a b" {
+		t.Errorf("mountpoint = %q, want %q", entries[0].mountpoint, "/var/lib/kubelet/pods/uid/a b")
+	}
+}
+
+func TestUnescapeMountField(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"/", "/"},
+		{"/store", "/store"},
+		{"/my\\040store", "/my store"},        // space
+		{"/a\\011b", "/a\tb"},                  // tab
+		{"/a\\012b", "/a\nb"},                  // newline
+		{"/a\\134b", "/a\\b"},                  // backslash
+		{"/a\\040b\\040c", "/a b c"},           // multiple
+		{"/trailing\\04", "/trailing\\04"},     // incomplete escape left verbatim
+		{"/not\\888escape", "/not\\888escape"}, // non-octal digits left verbatim
+	}
+	for _, tt := range tests {
+		if got := unescapeMountField(tt.in); got != tt.want {
+			t.Errorf("unescapeMountField(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestIsFuseFS(t *testing.T) {
 	tests := []struct {
 		fstype string

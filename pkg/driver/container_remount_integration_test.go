@@ -193,8 +193,9 @@ func TestIntegrationRemountViaSetnsSubPath(t *testing.T) {
 		t.Fatalf("parse child PID %q: %v", string(pidBytes), err)
 	}
 
-	// Act: remount with subPath "store".
-	if err := remountViaSetns(childPID, childMountpoint, stagingDir, "store", false); err != nil {
+	// Act: remount with subPath "/store" (mountinfo root shape, with the
+	// leading slash production passes from mountInfoEntry.root).
+	if err := remountViaSetns(childPID, childMountpoint, stagingDir, "/store", false); err != nil {
 		t.Fatalf("remountViaSetns: %v", err)
 	}
 
