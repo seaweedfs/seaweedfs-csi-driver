@@ -240,9 +240,11 @@ func parseMountInfoReader(r io.Reader) ([]mountInfoEntry, error) {
 			continue
 		}
 		// Format: id parent major:minor root mountpoint opts [optional...] - fstype source superopts
+		// root and mountpoint are octal-escaped by util-linux; decode them
+		// before use in filesystem operations.
 		device := fields[2]
-		root := fields[3]
-		mountpoint := fields[4]
+		root := unescapeMountField(fields[3])
+		mountpoint := unescapeMountField(fields[4])
 
 		// Find the "-" separator to get fstype
 		sepIdx := -1
@@ -266,6 +268,35 @@ func parseMountInfoReader(r io.Reader) ([]mountInfoEntry, error) {
 	}
 	return entries, scanner.Err()
 }
+
+// unescapeMountField decodes the octal escape sequences util-linux uses
+// for the root and mountpoint fields of /proc/<pid>/mountinfo. Space
+// (\040), tab (\011), newline (\012) and backslash (\134) are written as
+// three-digit octal so each field stays whitespace-free and splittable, so
+// any '\' in the field begins such a sequence. Unknown sequences are left
+// verbatim. Unlike strconv.Unquote this never errors and never trips over
+// an embedded quote, so a path that fails to decode cannot silently
+// collapse to "" — which for the root field would drop the subPath offset
+// and re-introduce the share-root bind this change exists to prevent.
+func unescapeMountField(s string) string {
+	if !strings.ContainsRune(s, '\\') {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+3 < len(s) &&
+			isOctalDigit(s[i+1]) && isOctalDigit(s[i+2]) && isOctalDigit(s[i+3]) {
+			b.WriteByte((s[i+1]-'0')<<6 | (s[i+2]-'0')<<3 | (s[i+3] - '0'))
+			i += 3
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+func isOctalDigit(c byte) bool { return c >= '0' && c <= '7' }
 
 // getMountDevice returns the "major:minor" device string for a mount
 // at the given path by parsing /proc/self/mountinfo.
