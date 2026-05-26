@@ -10,8 +10,8 @@ require (
 )
 
 require (
-	github.com/seaweedfs/seaweedfs v0.0.0-20260522001632-adfd731bb8dd
-	golang.org/x/sys v0.44.0
+	github.com/seaweedfs/seaweedfs v0.0.0-20260525233747-f72c5ec5d390
+	golang.org/x/sys v0.45.0
 	k8s.io/apimachinery v0.32.0
 	k8s.io/mount-utils v0.32.0
 )
@@ -67,7 +67,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/image v0.39.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/term v0.43.0 // indirect
