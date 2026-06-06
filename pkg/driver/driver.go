@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -179,7 +180,7 @@ func (d *SeaweedFsDriver) WithFilerClient(streamingMode bool, fn func(filer_pb.S
 		var err error
 		for x := 0; x < n; x++ {
 
-			err = pb.WithGrpcClient(streamingMode, d.signature, func(grpcConnection *grpc.ClientConn) error {
+			err = pb.WithGrpcClient(context.Background(), streamingMode, d.signature, func(grpcConnection *grpc.ClientConn) error {
 				client := filer_pb.NewSeaweedFilerClient(grpcConnection)
 				return fn(client)
 			}, d.filers[i].ToGrpcAddress(), false, d.grpcDialOption)
