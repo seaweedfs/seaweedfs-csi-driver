@@ -5,12 +5,12 @@ go 1.25.0
 require (
 	github.com/container-storage-interface/spec v1.11.0
 	golang.org/x/net v0.54.0
-	google.golang.org/grpc v1.80.0
+	google.golang.org/grpc v1.81.1
 	k8s.io/client-go v0.32.0
 )
 
 require (
-	github.com/seaweedfs/seaweedfs v0.0.0-20260530162906-5834c834e329
+	github.com/seaweedfs/seaweedfs v0.0.0-20260605223118-3688be82f588
 	golang.org/x/sys v0.45.0
 	k8s.io/apimachinery v0.32.0
 	k8s.io/mount-utils v0.32.0
