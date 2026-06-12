@@ -8,6 +8,7 @@ import (
 	"io"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -83,6 +84,9 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	}
 
 	capacity := req.GetCapacityRange().GetRequiredBytes()
+	if capacity > 0 {
+		params[volumeCapacityKey] = strconv.FormatInt(capacity, 10)
+	}
 
 	if err := filer_pb.Mkdir(ctx, cs.Driver, parentDir, volumeName, nil); err != nil {
 		return nil, fmt.Errorf("error creating volume: %v", err)

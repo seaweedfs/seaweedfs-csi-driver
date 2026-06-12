@@ -123,7 +123,7 @@ For safe update set `node.updateStrategy.type: OnDelete` for manual update. Step
 
 # Testing
 
-1. Create a persistant volume claim for 5GiB with name `seaweedfs-csi-pvc` with storage class `seaweedfs-storage`. The value, 5Gib does not have any significance as for SeaweedFS the whole filesystem is mounted into the container.
+1. Create a persistent volume claim for 5GiB with name `seaweedfs-csi-pvc` and storage class `seaweedfs-storage`. The requested size is applied as a quota to the SeaweedFS collection used by the mount.
 ```
 $ kubectl apply -f deploy/kubernetes/sample-seaweedfs-pvc.yaml
 ```
@@ -139,6 +139,30 @@ $ kubectl apply -f deploy/kubernetes/sample-busybox-pod.yaml
 ```
 $ kubectl exec my-csi-app -- df -h
 ```
+
+# Capacity limits
+
+For dynamically provisioned volumes, `resources.requests.storage` is enforced by
+the SeaweedFS FUSE mount and reported by `df`. Once the mount observes that the
+quota has been reached, further writes fail with `ENOSPC`. PVC expansion updates
+the mount quota.
+
+The quota is collection-based and enforced by each CSI-managed mount, rather
+than stored as an authoritative server-side limit. By default, every dynamic
+volume gets its own collection, so its quota is isolated. If multiple volumes
+are configured to use the same `collection`, their usage is shared and they do
+not have independent per-directory quotas. Writes through another SeaweedFS
+client that does not use the quota-configured mount are not restricted by this
+CSI quota.
+
+Because enforcement is mount-side, concurrent writers on different mounts can
+briefly exceed the configured capacity before collection usage is refreshed.
+
+For statically provisioned Kubernetes volumes, the driver reads
+`spec.capacity.storage` from the PersistentVolume matching
+`spec.csi.volumeHandle`. Other orchestrators receive `volumeCapacity` from
+dynamic `CreateVolume` calls; static integrations can provide the same value in
+bytes through the volume context.
 
 # Static and dynamic provisioning
 

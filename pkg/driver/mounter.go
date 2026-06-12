@@ -139,6 +139,7 @@ func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket s
 
 	argsMap := map[string]string{
 		"collection":         collection,
+		"collectionQuotaMB":  initialCollectionQuotaMB(volumeContext[volumeCapacityKey]),
 		"filer":              strings.Join(filers, ","),
 		"filer.path":         filerPath,
 		"cacheCapacityMB":    strconv.Itoa(m.driver.CacheCapacityMB),
@@ -182,10 +183,12 @@ func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket s
 	}
 
 	ignoredArgs := map[string]struct{}{
-		"dataLocality": {},
-		"path":         {},
-		"parentDir":    {},
-		"volumeName":   {},
+		"collectionQuotaMB": {},
+		"dataLocality":      {},
+		"path":              {},
+		"parentDir":         {},
+		"volumeName":        {},
+		volumeCapacityKey:   {},
 	}
 
 	for key, value := range volumeContext {
@@ -212,4 +215,18 @@ func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket s
 	}
 
 	return args, nil
+}
+
+func initialCollectionQuotaMB(capacityBytes string) string {
+	capacity, err := strconv.ParseInt(capacityBytes, 10, 64)
+	if err != nil || capacity <= 1 {
+		return ""
+	}
+
+	const bytesPerMiB = int64(1024 * 1024)
+	capacityMB := capacity / bytesPerMiB
+	if capacity%bytesPerMiB != 0 {
+		capacityMB++
+	}
+	return strconv.FormatInt(capacityMB, 10)
 }

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -20,12 +22,12 @@ func newInCluster() (*kubernetes.Clientset, error) {
 	// creates the clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		panic(err.Error())
+		return nil, fmt.Errorf("failed to create in-cluster client: %v", err)
 	}
 	return clientset, nil
 }
 
-func GetVolumeCapacity(volumeId string) (int64, error) {
+func GetVolumeCapacity(driverName, volumeId string) (int64, error) {
 	client, err := newInCluster()
 	if err != nil {
 		return 0, err
@@ -33,11 +35,53 @@ func GetVolumeCapacity(volumeId string) (int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if volume, err := client.CoreV1().PersistentVolumes().Get(ctx, volumeId, metav1.GetOptions{}); err != nil {
-		return 0, err
-	} else {
-		storage := volume.Spec.Capacity.Storage()
-		capacity, _ := storage.AsInt64()
-		return capacity, nil
+	return getVolumeCapacity(ctx, client, driverName, volumeId)
+}
+
+func getVolumeCapacity(ctx context.Context, client kubernetes.Interface, driverName, volumeId string) (int64, error) {
+	// Legacy dynamic volumes used the PV name as the CSI volume handle.
+	if len(validation.IsDNS1123Subdomain(volumeId)) == 0 {
+		if volume, err := client.CoreV1().PersistentVolumes().Get(ctx, volumeId, metav1.GetOptions{}); err == nil &&
+			volume.Spec.CSI != nil && volume.Spec.CSI.Driver == driverName {
+			return persistentVolumeCapacity(volume)
+		}
 	}
+
+	// Newer and statically provisioned volumes may use a filer path or another
+	// value that differs from the Kubernetes PV object name.
+	volumes, err := client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return 0, fmt.Errorf("list persistent volumes for CSI volume handle %q: %w", volumeId, err)
+	}
+
+	var matched *corev1.PersistentVolume
+	for i := range volumes.Items {
+		volume := &volumes.Items[i]
+		if volume.Spec.CSI == nil ||
+			volume.Spec.CSI.Driver != driverName ||
+			volume.Spec.CSI.VolumeHandle != volumeId {
+			continue
+		}
+		if matched != nil {
+			return 0, fmt.Errorf("multiple persistent volumes use CSI volume handle %q", volumeId)
+		}
+		matched = volume
+	}
+	if matched == nil {
+		return 0, fmt.Errorf("persistent volume with name or CSI volume handle %q not found", volumeId)
+	}
+
+	return persistentVolumeCapacity(matched)
+}
+
+func persistentVolumeCapacity(volume *corev1.PersistentVolume) (int64, error) {
+	storage := volume.Spec.Capacity.Storage()
+	if storage == nil {
+		return 0, fmt.Errorf("persistent volume %q has no storage capacity", volume.Name)
+	}
+	capacity, ok := storage.AsInt64()
+	if !ok {
+		return 0, fmt.Errorf("persistent volume %q storage capacity does not fit in int64", volume.Name)
+	}
+	return capacity, nil
 }

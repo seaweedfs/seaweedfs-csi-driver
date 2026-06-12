@@ -2,7 +2,9 @@ package driver
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -421,21 +423,30 @@ func (ns *NodeServer) removeVolumeMutex(volumeID string) {
 // Both the mounter and capacity lookup are resolved via NodeServer fields so
 // tests can inject fakes that do not touch the real mount service or k8s API.
 func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volContext map[string]string, readOnly bool) (*Volume, error) {
-	mounter, err := ns.mounterFactory(volumeID, readOnly, ns.Driver, volContext)
+	effectiveVolContext := cloneVolumeContext(volContext)
+	capacity, hasCapacity, err := ns.resolveVolumeCapacity(volumeID, volContext)
+	if err != nil {
+		return nil, err
+	}
+	if hasCapacity {
+		effectiveVolContext[volumeCapacityKey] = strconv.FormatInt(capacity, 10)
+	}
+
+	mounter, err := ns.mounterFactory(volumeID, readOnly, ns.Driver, effectiveVolContext)
 	if err != nil {
 		return nil, err
 	}
 
 	volume := NewVolume(volumeID, mounter, ns.Driver)
 	volume.bindMountFn = ns.bindMountFn
-	volume.volContext = volContext
+	volume.volContext = effectiveVolContext
 	volume.readOnly = readOnly
 	if err := volume.Stage(stagingTargetPath); err != nil {
 		return nil, err
 	}
 
-	// Apply quota if available
-	if capacity, err := ns.capacityFn(volumeID); err == nil {
+	// Apply quota if available.
+	if hasCapacity {
 		if err := volume.Quota(capacity); err != nil {
 			glog.Warningf("failed to apply quota for volume %s: %v", volumeID, err)
 			// Clean up the staged mount since we're returning an error
@@ -445,10 +456,36 @@ func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volCont
 			return nil, err
 		}
 	} else {
-		glog.V(4).Infof("orchestration system is not compatible with the k8s api, error is: %s", err)
+		glog.V(4).Infof("volume capacity is unavailable for %s", volumeID)
 	}
 
 	return volume, nil
+}
+
+func cloneVolumeContext(volContext map[string]string) map[string]string {
+	cloned := make(map[string]string, len(volContext)+1)
+	for key, value := range volContext {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func (ns *NodeServer) resolveVolumeCapacity(volumeID string, volContext map[string]string) (int64, bool, error) {
+	if ns.capacityFn != nil {
+		if capacity, err := ns.capacityFn(volumeID); err == nil {
+			return capacity, true, nil
+		}
+	}
+
+	value := volContext[volumeCapacityKey]
+	if value == "" {
+		return 0, false, nil
+	}
+	capacity, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || capacity < 0 {
+		return 0, false, fmt.Errorf("invalid %s value %q", volumeCapacityKey, value)
+	}
+	return capacity, true, nil
 }
 
 // isReadOnlyAccessMode checks if the given access mode is read-only.
