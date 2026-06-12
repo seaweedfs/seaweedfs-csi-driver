@@ -31,11 +31,13 @@ func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
 	}
 
 	ns := &NodeServer{
-		Driver:           n,
-		volumeMutexes:    NewKeyMutex(),
-		stopCh:           make(chan struct{}),
-		mounterFactory:   newMounter,
-		capacityFn:       k8s.GetVolumeCapacity,
+		Driver:         n,
+		volumeMutexes:  NewKeyMutex(),
+		stopCh:         make(chan struct{}),
+		mounterFactory: newMounter,
+		capacityFn: func(volumeID string) (int64, error) {
+			return k8s.GetVolumeCapacity(n.name, volumeID)
+		},
 		isHealthyFn:      isStagingPathHealthy,
 		cleanupStagingFn: cleanupStaleStagingPath,
 		unmountFn:        mountutil.Unmount,

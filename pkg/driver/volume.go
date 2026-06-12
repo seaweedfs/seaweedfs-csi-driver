@@ -14,6 +14,8 @@ import (
 	"k8s.io/mount-utils"
 )
 
+const volumeCapacityKey = "volumeCapacity"
+
 type Volume struct {
 	VolumeId   string
 	StagedPath string
@@ -27,8 +29,8 @@ type Volume struct {
 
 	// Fields for health monitor recovery
 	publishPaths sync.Map          // targetPath (string) -> bool (readOnly)
-	volContext   map[string]string  // volume context stored for re-staging
-	readOnly     bool               // FUSE-level readOnly flag
+	volContext   map[string]string // volume context stored for re-staging
+	readOnly     bool              // FUSE-level readOnly flag
 
 	// bindMountFn is used by Publish to perform the bind mount from the
 	// staging path to the pod-specific target path. Populated by the
