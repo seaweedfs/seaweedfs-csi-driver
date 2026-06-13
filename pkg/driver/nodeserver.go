@@ -424,7 +424,7 @@ func (ns *NodeServer) removeVolumeMutex(volumeID string) {
 // tests can inject fakes that do not touch the real mount service or k8s API.
 func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volContext map[string]string, readOnly bool) (*Volume, error) {
 	effectiveVolContext := cloneVolumeContext(volContext)
-	capacity, hasCapacity, err := ns.resolveVolumeCapacity(volumeID, volContext)
+	capacity, hasCapacity, err := ns.resolveVolumeCapacity(volumeID, effectiveVolContext)
 	if err != nil {
 		return nil, err
 	}
@@ -472,9 +472,11 @@ func cloneVolumeContext(volContext map[string]string) map[string]string {
 
 func (ns *NodeServer) resolveVolumeCapacity(volumeID string, volContext map[string]string) (int64, bool, error) {
 	if ns.capacityFn != nil {
-		if capacity, err := ns.capacityFn(volumeID); err == nil {
+		capacity, err := ns.capacityFn(volumeID)
+		if err == nil {
 			return capacity, true, nil
 		}
+		glog.V(4).Infof("could not resolve capacity for volume %s from orchestrator API, falling back to volume context: %v", volumeID, err)
 	}
 
 	value := volContext[volumeCapacityKey]
