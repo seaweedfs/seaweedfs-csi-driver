@@ -66,6 +66,25 @@ func TestGetVolumeCapacityScopesHandleToDriver(t *testing.T) {
 	}
 }
 
+func TestGetVolumeCapacityIgnoresNameCollisionOnFastPath(t *testing.T) {
+	// A PV named "data" exists but belongs to a different volume handle. The
+	// fast-path Get by basename ("data") must not match it; the handle lookup
+	// has to fall back to the List scan and find the correct volume.
+	decoy := newPersistentVolume("data", "/some/other/path", "1Gi")
+	client := fake.NewSimpleClientset(
+		decoy,
+		newPersistentVolume("real-pv", "/mnt/data", "7Gi"),
+	)
+
+	got, err := getVolumeCapacity(context.Background(), client, "seaweedfs-csi-driver", "/mnt/data")
+	if err != nil {
+		t.Fatalf("getVolumeCapacity: %v", err)
+	}
+	if want := int64(7 * 1024 * 1024 * 1024); got != want {
+		t.Fatalf("capacity = %d, want %d", got, want)
+	}
+}
+
 func newPersistentVolume(name, handle, capacity string) *corev1.PersistentVolume {
 	return &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
