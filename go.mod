@@ -1,6 +1,6 @@
 module github.com/seaweedfs/seaweedfs-csi-driver
 
-go 1.25.0
+go 1.25.5
 
 require (
 	github.com/container-storage-interface/spec v1.11.0
@@ -10,7 +10,7 @@ require (
 )
 
 require (
-	github.com/seaweedfs/seaweedfs v0.0.0-20260622072450-eb939761665c
+	github.com/seaweedfs/seaweedfs v0.0.0-20260625043821-3b9e196e5ff2
 	golang.org/x/sys v0.45.0
 	k8s.io/api v0.32.0
 	k8s.io/apimachinery v0.32.0
