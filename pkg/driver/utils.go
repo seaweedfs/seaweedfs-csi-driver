@@ -190,3 +190,34 @@ func CheckDataLocality(dataLocality *datalocality.DataLocality, dataCenter *stri
 	}
 	return nil
 }
+
+const FilerVolumeIDPrefix = "filer://"
+
+// EncodeVolumeID constructs a structured volume ID from filerAddress and volumePath.
+// If filerAddress is empty, it returns the volumePath directly.
+// Otherwise, it formats it as "filer://<filerAddress><volumePath>".
+func EncodeVolumeID(filerAddress, volumePath string) string {
+	if filerAddress == "" {
+		return volumePath
+	}
+	filerAddress = strings.TrimSuffix(filerAddress, "/")
+	if !strings.HasPrefix(volumePath, "/") {
+		volumePath = "/" + volumePath
+	}
+	return FilerVolumeIDPrefix + filerAddress + volumePath
+}
+
+// DecodeVolumeID parses a structured volume ID into filerAddress and volumePath.
+// If the volumeId starts with "filer://", it parses the filerAddress and volumePath dynamically.
+// Otherwise, it returns an empty filerAddress and the original volumeId as the volumePath.
+func DecodeVolumeID(volumeID string) (string, string) {
+	if strings.HasPrefix(volumeID, FilerVolumeIDPrefix) {
+		trimmed := strings.TrimPrefix(volumeID, FilerVolumeIDPrefix)
+		idx := strings.Index(trimmed, "/")
+		if idx != -1 {
+			return trimmed[:idx], trimmed[idx:]
+		}
+		return trimmed, "/"
+	}
+	return "", volumeID
+}

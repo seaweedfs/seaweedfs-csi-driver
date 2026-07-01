@@ -42,7 +42,7 @@ func TestDeleteVolumeWithFilerOverride(t *testing.T) {
 	cs := NewControllerServer(driver)
 
 	req := &csi.DeleteVolumeRequest{
-		VolumeId: "custom-filer:9999@/buckets/test-volume",
+		VolumeId: "filer://custom-filer:9999/buckets/test-volume",
 	}
 
 	_, err := cs.DeleteVolume(context.Background(), req)

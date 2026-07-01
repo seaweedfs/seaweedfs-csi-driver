@@ -101,10 +101,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	glog.V(4).Infof("volume created %s at %s", requestedVolumeId, volumePath)
 
-	volumeId := volumePath
-	if filerAddress != "" {
-		volumeId = fmt.Sprintf("%s@%s", filerAddress, volumePath)
-	}
+	volumeId := EncodeVolumeID(filerAddress, volumePath)
 
 	// Use full paths as VolumeID
 	// This keeps everything stateless
@@ -134,11 +131,7 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	glog.V(4).Infof("deleting volume %s", volumeId)
 
 	// Parse filer override if present in VolumeID
-	filerAddress := ""
-	if idx := strings.Index(volumeId, "@"); idx != -1 {
-		filerAddress = volumeId[:idx]
-		volumeId = volumeId[idx+1:]
-	}
+	filerAddress, volumeId := DecodeVolumeID(req.VolumeId)
 
 	clientDriver := cs.Driver
 	if filerAddress != "" {
@@ -209,11 +202,7 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 	}
 
 	// Parse filer override if present in VolumeID
-	filerAddress := ""
-	if idx := strings.Index(volumeId, "@"); idx != -1 {
-		filerAddress = volumeId[:idx]
-		volumeId = volumeId[idx+1:]
-	}
+	filerAddress, volumeId := DecodeVolumeID(req.VolumeId)
 
 	clientDriver := cs.Driver
 	if filerAddress != "" {

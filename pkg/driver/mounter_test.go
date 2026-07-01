@@ -2,7 +2,6 @@ package driver
 
 import (
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -44,17 +43,14 @@ func TestInitialCollectionQuotaMBDisablesOneByteSentinel(t *testing.T) {
 func TestBuildMountArgsWithFilerOverride(t *testing.T) {
 	mounter := &mountServiceMounter{
 		driver:   &SeaweedFsDriver{},
-		volumeID: "custom-filer:8888@/buckets/pvc-1234",
+		volumeID: "filer://custom-filer:8888/buckets/pvc-1234",
 		volContext: map[string]string{
 			"filer": "override-filer:8888",
 		},
 	}
 
 	// 1. Verify volumeID parsing
-	cleanVolumeID := mounter.volumeID
-	if idx := strings.Index(cleanVolumeID, "@"); idx != -1 {
-		cleanVolumeID = cleanVolumeID[idx+1:]
-	}
+	_, cleanVolumeID := DecodeVolumeID(mounter.volumeID)
 	if cleanVolumeID != "/buckets/pvc-1234" {
 		t.Fatalf("expected clean volume ID to be /buckets/pvc-1234, got %q", cleanVolumeID)
 	}

@@ -63,8 +63,8 @@ func (m *mountServiceMounter) Mount(target string) (Unmounter, error) {
 	}
 
 	// Parse filer override from volumeID first
-	if idx := strings.Index(m.volumeID, "@"); idx != -1 {
-		filers = []string{m.volumeID[:idx]}
+	if filerAddr, _ := DecodeVolumeID(m.volumeID); filerAddr != "" {
+		filers = []string{filerAddr}
 	}
 
 	// Then allow volume context to override it if set
@@ -111,10 +111,7 @@ func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket s
 	}
 
 	var filerPath string
-	cleanVolumeID := m.volumeID
-	if idx := strings.Index(cleanVolumeID, "@"); idx != -1 {
-		cleanVolumeID = cleanVolumeID[idx+1:]
-	}
+	_, cleanVolumeID := DecodeVolumeID(m.volumeID)
 
 	if path.IsAbs(cleanVolumeID) {
 		// path already resolved in controller and passed as volumeID
