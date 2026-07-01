@@ -212,5 +212,6 @@ func (d *SeaweedFsDriver) GetDataCenter() string {
 func (d *SeaweedFsDriver) CloneWithFiler(filer string) *SeaweedFsDriver {
 	clone := *d
 	clone.filers = pb.ServerAddresses(filer).ToAddresses()
+	clone.filerIndex = 0
 	return &clone
 }

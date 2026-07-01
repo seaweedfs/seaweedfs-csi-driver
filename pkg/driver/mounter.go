@@ -62,13 +62,11 @@ func (m *mountServiceMounter) Mount(target string) (Unmounter, error) {
 		filers[i] = string(address)
 	}
 
-	// Parse filer override from volumeID first
+	// Prefer the stateless filer encoded in VolumeID. Fall back to volume
+	// context only for legacy/static volumes that do not encode a filer.
 	if filerAddr, _ := DecodeVolumeID(m.volumeID); filerAddr != "" {
 		filers = []string{filerAddr}
-	}
-
-	// Then allow volume context to override it if set
-	if customFiler, ok := m.volContext["filer"]; ok && customFiler != "" {
+	} else if customFiler, ok := m.volContext["filer"]; ok && customFiler != "" {
 		filers = []string{customFiler}
 	}
 

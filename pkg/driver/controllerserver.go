@@ -132,6 +132,9 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 
 	// Parse filer override if present in VolumeID
 	filerAddress, volumeId := DecodeVolumeID(req.VolumeId)
+	if clean := path.Clean(volumeId); clean == "." || clean == "/" || clean == "/buckets" {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume ID %q", req.VolumeId)
+	}
 
 	clientDriver := cs.Driver
 	if filerAddress != "" {
@@ -203,6 +206,9 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 
 	// Parse filer override if present in VolumeID
 	filerAddress, volumeId := DecodeVolumeID(req.VolumeId)
+	if clean := path.Clean(volumeId); clean == "." || clean == "/" || clean == "/buckets" {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid volume ID %q", req.VolumeId)
+	}
 
 	clientDriver := cs.Driver
 	if filerAddress != "" {

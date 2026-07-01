@@ -55,3 +55,21 @@ func TestDeleteVolumeWithFilerOverride(t *testing.T) {
 		t.Fatalf("expected error to contain overridden filer address 'custom-filer', got: %v", err)
 	}
 }
+
+func TestDeleteVolumeWithInvalidVolumeId(t *testing.T) {
+	driver := NewSeaweedFsDriver("seaweedfs-csi", "global-filer:8888", "node-1", "unix://csi.sock", "", false)
+	cs := NewControllerServer(driver)
+
+	for _, invalidID := range []string{"filer://custom-filer:9999/", "filer://custom-filer:9999/buckets", "/", "/buckets"} {
+		req := &csi.DeleteVolumeRequest{
+			VolumeId: invalidID,
+		}
+		_, err := cs.DeleteVolume(context.Background(), req)
+		if err == nil {
+			t.Fatalf("expected error for invalid VolumeId %q, got nil", invalidID)
+		}
+		if !strings.Contains(err.Error(), "invalid volume ID") {
+			t.Fatalf("expected error message to contain 'invalid volume ID', got: %v", err)
+		}
+	}
+}
