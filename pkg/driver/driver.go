@@ -208,3 +208,9 @@ func (d *SeaweedFsDriver) AdjustedUrl(location *filer_pb.Location) string {
 func (d *SeaweedFsDriver) GetDataCenter() string {
 	return d.DataCenter
 }
+
+func (d *SeaweedFsDriver) CloneWithFiler(filer string) *SeaweedFsDriver {
+	clone := *d
+	clone.filers = pb.ServerAddresses(filer).ToAddresses()
+	return &clone
+}
