@@ -62,6 +62,16 @@ func (m *mountServiceMounter) Mount(target string) (Unmounter, error) {
 		filers[i] = string(address)
 	}
 
+	// Parse filer override from volumeID first
+	if idx := strings.Index(m.volumeID, "@"); idx != -1 {
+		filers = []string{m.volumeID[:idx]}
+	}
+
+	// Then allow volume context to override it if set
+	if customFiler, ok := m.volContext["filer"]; ok && customFiler != "" {
+		filers = []string{customFiler}
+	}
+
 	cacheDir := GetCacheDir(m.driver.CacheDir, m.volumeID)
 	localSocket := GetLocalSocket(m.driver.volumeSocketDir, m.volumeID)
 
@@ -101,9 +111,14 @@ func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket s
 	}
 
 	var filerPath string
-	if path.IsAbs(m.volumeID) {
+	cleanVolumeID := m.volumeID
+	if idx := strings.Index(cleanVolumeID, "@"); idx != -1 {
+		cleanVolumeID = cleanVolumeID[idx+1:]
+	}
+
+	if path.IsAbs(cleanVolumeID) {
 		// path already resolved in controller and passed as volumeID
-		filerPath = m.volumeID
+		filerPath = cleanVolumeID
 	} else {
 		// non-absolute-path volume ID, volume is either legacy or this is a static provision
 		contextPath := volumeContext["path"]

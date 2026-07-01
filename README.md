@@ -180,6 +180,7 @@ parameters:
   collection: mycollection
   replication: "011"
   diskType: "ssd"
+  filer: "seaweedfs-filer.tenant-namespace.svc:8888"
 ```
 
 There is another use case when we need to access one folder from different pods with ro/rw access.
