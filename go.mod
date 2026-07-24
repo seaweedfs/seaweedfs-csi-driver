@@ -4,13 +4,13 @@ go 1.25.8
 
 require (
 	github.com/container-storage-interface/spec v1.11.0
-	golang.org/x/net v0.56.0
-	google.golang.org/grpc v1.81.1
+	golang.org/x/net v0.57.0
+	google.golang.org/grpc v1.82.1
 	k8s.io/client-go v0.32.0
 )
 
 require (
-	github.com/seaweedfs/seaweedfs v0.0.0-20260719061107-eb6d8ebd5f68
+	github.com/seaweedfs/seaweedfs v0.0.0-20260724180818-19ce7c0b6fdb
 	golang.org/x/sys v0.47.0
 	k8s.io/api v0.32.0
 	k8s.io/apimachinery v0.32.0
@@ -52,10 +52,10 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
-	github.com/prometheus/client_golang v1.23.2 // indirect
+	github.com/prometheus/client_golang v1.24.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.67.5 // indirect
-	github.com/prometheus/procfs v0.20.1 // indirect
+	github.com/prometheus/common v0.70.0 // indirect
+	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/seaweedfs/goexif v1.0.3 // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
@@ -67,7 +67,7 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/viant/ptrie v1.0.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	go.yaml.in/yaml/v2 v2.4.3 // indirect
+	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/image v0.43.0 // indirect
@@ -75,7 +75,7 @@ require (
 	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260622175928-b703f567277d // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 	google.golang.org/grpc/security/advancedtls v1.0.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
