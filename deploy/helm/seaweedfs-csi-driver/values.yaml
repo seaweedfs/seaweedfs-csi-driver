@@ -125,7 +125,6 @@ mountService:
   # This allows manual, controlled updates to prevent automated disruption of active mounts.
   updateStrategy:
     type: OnDelete
-  nodeSelector: {}
   affinity: {}
   tolerations:
   resources: {}
