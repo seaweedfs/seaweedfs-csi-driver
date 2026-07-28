@@ -23,7 +23,7 @@ spec:
     spec:
       priorityClassName: {{ $priorityClass }}
       serviceAccountName: {{ $mountSA }}
-      {{- with .Values.mountService.nodeSelector }}
+      {{- with .Values.node.nodeSelector }}
       nodeSelector: {{ toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.mountService.affinity }}
