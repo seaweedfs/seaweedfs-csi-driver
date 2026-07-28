@@ -15,6 +15,9 @@ spec:
     spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
+      {{- with .Values.controller.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
       affinity:
         {{- if and .Values.controller.affinity .Values.controller.affinity.nodeAffinity }}
         nodeAffinity: {{ toYaml .Values.controller.affinity.nodeAffinity | nindent 10 }}
