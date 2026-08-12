@@ -53,13 +53,21 @@ func isStagingPathHealthy(stagingPath string) bool {
 		return false
 	}
 
-	// Try to read the directory to verify FUSE is responsive
-	_, err = os.ReadDir(stagingPath)
-	if err != nil {
-		glog.Warningf("staging path %s is not readable (FUSE may be dead): %v", stagingPath, err)
-		return false
-	}
-
+	// Deliberately not calling os.ReadDir(stagingPath) here. It used to be a
+	// "FUSE is responsive" probe, but ReadDir enumerates the *entire* root
+	// directory, and seaweedfs mount answers a readdir by fetching the whole
+	// listing from the filer before returning anything to the kernel — on a
+	// bucket with a large root this can legitimately take many minutes even
+	// though the mount is perfectly healthy. checkHealth's 5s timeout then
+	// marks it unhealthy and triggers a remount, which restarts that same
+	// slow listing from scratch: the mount can never finish enumerating and
+	// gets stuck in a permanent recovery loop.
+	//
+	// The os.Stat + IsMountPoint checks above already exercise a FUSE GETATTR
+	// round-trip on the root inode (cost independent of directory size) and
+	// already catch a dead/disconnected daemon via IsCorruptedMnt (ENOTCONN),
+	// which was the actual failure mode behind issue #261. That's sufficient
+	// liveness evidence without paying for a full directory scan.
 	glog.V(4).Infof("staging path %s is healthy", stagingPath)
 	return true
 }
