@@ -11,6 +11,9 @@ provisioner: {{ .Values.driverName }}
 allowVolumeExpansion: true
 volumeBindingMode: {{ .Values.storageClassVolumeBindingMode | default "Immediate" }}
 {{- with .Values.storageClassParameters }}
-parameters: {{ . | toYaml | nindent 2 }}
+parameters:
+  {{- range $key, $value := . }}
+  {{ $key }}: {{ $value | toString | quote }}
+  {{- end }}
 {{- end }}
 {{- end }}
