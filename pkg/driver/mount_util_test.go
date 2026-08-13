@@ -31,7 +31,12 @@ func TestIsStagingPathHealthy_DoesNotRequireListableDirectory(t *testing.T) {
 	if err := os.Chmod(stagingPath, 0o000); err != nil {
 		t.Fatalf("chmod: %v", err)
 	}
-	defer os.Chmod(stagingPath, 0o755) // t.TempDir cleanup needs it readable again
+	defer func() {
+		// t.TempDir cleanup needs it readable again
+		if err := os.Chmod(stagingPath, 0o755); err != nil {
+			t.Errorf("chmod cleanup: %v", err)
+		}
+	}()
 
 	if _, err := os.ReadDir(stagingPath); err == nil {
 		t.Fatalf("test setup invalid: ReadDir on a 0-permission dir should fail")
