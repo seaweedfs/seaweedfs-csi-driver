@@ -76,6 +76,34 @@ func TestNodeGetInfoFailsWhenNodeLabelsUnavailable(t *testing.T) {
 	}
 }
 
+func hasAccessibilityConstraints(t *testing.T, keys []string) bool {
+	t.Helper()
+	ids := &IdentityServer{Driver: &SeaweedFsDriver{TopologyKeys: keys}}
+
+	resp, err := ids.GetPluginCapabilities(context.Background(), &csi.GetPluginCapabilitiesRequest{})
+	if err != nil {
+		t.Fatalf("GetPluginCapabilities: %v", err)
+	}
+	for _, capability := range resp.GetCapabilities() {
+		if capability.GetService().GetType() == csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS {
+			return true
+		}
+	}
+	return false
+}
+
+func TestGetPluginCapabilitiesWithTopologyKeys(t *testing.T) {
+	if !hasAccessibilityConstraints(t, []string{"topology.kubernetes.io/zone"}) {
+		t.Error("expected VOLUME_ACCESSIBILITY_CONSTRAINTS to be advertised when topology keys are configured")
+	}
+}
+
+func TestGetPluginCapabilitiesWithoutTopologyKeys(t *testing.T) {
+	if hasAccessibilityConstraints(t, nil) {
+		t.Error("expected VOLUME_ACCESSIBILITY_CONSTRAINTS not to be advertised without topology keys")
+	}
+}
+
 func TestParseTopologyKeys(t *testing.T) {
 	tests := []struct {
 		keys string
