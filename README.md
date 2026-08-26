@@ -278,14 +278,14 @@ When the driver only runs on some nodes, report the labels of those nodes as acc
 
 Level               | Location
 ------------------- | --------
-Driver              | Helm: `values.yaml` -> `topologyKeys` <br> Or `DaemonSet` / `Deployment` -> Container `csi-seaweedfs-plugin` -> args `--topologyKeys=`
+Driver              | Helm: `values.yaml` -> `topologyKeys` <br> Or args `--topologyKeys=` on Container `csi-seaweedfs-plugin` (`DaemonSet`) and Container `seaweedfs-csi-plugin` (`Deployment`)
 
 ```yaml
 topologyKeys:
   - topology.kubernetes.io/zone
 ```
 
-Every key is looked up in the labels of the node the driver runs on; keys the node does not have are skipped. A StorageClass can then restrict where volumes are provisioned:
+Every key is looked up in the labels of the node the driver runs on; keys the node does not have are skipped. The CSI spec asks for a single key prefix across all topology keys, so prefer keys such as `topology.kubernetes.io/zone` and `topology.kubernetes.io/region` together. A StorageClass can then restrict where volumes are provisioned:
 
 ```yaml
 allowedTopologies:
