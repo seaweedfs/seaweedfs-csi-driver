@@ -38,6 +38,7 @@ func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
 		capacityFn: func(volumeID string) (int64, error) {
 			return k8s.GetVolumeCapacity(n.name, volumeID)
 		},
+		nodeLabelsFn:     k8s.GetNodeLabels,
 		isHealthyFn:      isStagingPathHealthy,
 		cleanupStagingFn: cleanupStaleStagingPath,
 		unmountFn:        mountutil.Unmount,
@@ -182,6 +183,17 @@ func (km *KeyMutex) GetMutex(key string) *sync.Mutex {
 
 func (km *KeyMutex) RemoveMutex(key string) {
 	km.mutexes.Delete(key)
+}
+
+// ParseTopologyKeys splits a comma-separated list of node label keys.
+func ParseTopologyKeys(keys string) []string {
+	var parsed []string
+	for _, key := range strings.Split(keys, ",") {
+		if key = strings.TrimSpace(key); key != "" {
+			parsed = append(parsed, key)
+		}
+	}
+	return parsed
 }
 
 func CheckDataLocality(dataLocality *datalocality.DataLocality, dataCenter *string) error {

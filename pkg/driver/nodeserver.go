@@ -32,6 +32,10 @@ type BindMountFn func(source, target string, readOnly bool) error
 // mount. Overridden in tests to simulate a crashed mount.
 type HealthCheckFn func(stagingPath string) bool
 
+// NodeLabelsFn returns the labels of the node the driver runs on. Tests can
+// replace this to avoid real Kubernetes API calls.
+type NodeLabelsFn func(nodeName string) (map[string]string, error)
+
 type NodeServer struct {
 	csi.UnimplementedNodeServer
 
@@ -63,6 +67,7 @@ type NodeServer struct {
 	cleanupStagingFn func(stagingPath string) error
 	unmountFn        func(path string) error
 	bindMountFn      BindMountFn
+	nodeLabelsFn     NodeLabelsFn
 }
 
 var _ = csi.NodeServer(&NodeServer{})
@@ -297,9 +302,46 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	glog.V(3).Infof("node get info, node id: %s", ns.Driver.nodeID)
 
-	return &csi.NodeGetInfoResponse{
+	resp := &csi.NodeGetInfoResponse{
 		NodeId: ns.Driver.nodeID,
-	}, nil
+	}
+
+	segments, err := ns.nodeTopologySegments()
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if len(segments) > 0 {
+		glog.Infof("node %s accessible topology: %v", ns.Driver.nodeID, segments)
+		resp.AccessibleTopology = &csi.Topology{Segments: segments}
+	}
+
+	return resp, nil
+}
+
+// nodeTopologySegments resolves the configured topology keys to the values
+// they have on this node, so the orchestrator only places volumes on nodes
+// where the driver actually runs.
+func (ns *NodeServer) nodeTopologySegments() (map[string]string, error) {
+	if len(ns.Driver.TopologyKeys) == 0 {
+		return nil, nil
+	}
+
+	labels, err := ns.nodeLabelsFn(ns.Driver.nodeID)
+	if err != nil {
+		return nil, err
+	}
+
+	segments := make(map[string]string, len(ns.Driver.TopologyKeys))
+	for _, key := range ns.Driver.TopologyKeys {
+		value, found := labels[key]
+		if !found {
+			glog.Warningf("node %s has no label %s, skipping it in accessible topology", ns.Driver.nodeID, key)
+			continue
+		}
+		segments[key] = value
+	}
+
+	return segments, nil
 }
 
 func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {

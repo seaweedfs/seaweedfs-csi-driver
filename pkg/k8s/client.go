@@ -92,3 +92,22 @@ func persistentVolumeCapacity(volume *corev1.PersistentVolume) (int64, error) {
 	}
 	return capacity, nil
 }
+
+func GetNodeLabels(nodeName string) (map[string]string, error) {
+	client, err := newInCluster()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	return getNodeLabels(ctx, client, nodeName)
+}
+
+func getNodeLabels(ctx context.Context, client kubernetes.Interface, nodeName string) (map[string]string, error) {
+	node, err := client.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get node %q: %w", nodeName, err)
+	}
+	return node.Labels, nil
+}

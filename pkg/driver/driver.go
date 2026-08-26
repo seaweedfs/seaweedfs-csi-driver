@@ -50,6 +50,7 @@ type SeaweedFsDriver struct {
 	signature         int32
 	DataCenter        string
 	DataLocality      datalocality.DataLocality
+	TopologyKeys      []string
 
 	RunNode       bool
 	RunController bool

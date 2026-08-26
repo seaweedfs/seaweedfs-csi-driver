@@ -85,6 +85,31 @@ func TestGetVolumeCapacityIgnoresNameCollisionOnFastPath(t *testing.T) {
 	}
 }
 
+func TestGetNodeLabels(t *testing.T) {
+	client := fake.NewSimpleClientset(&corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "node-1",
+			Labels: map[string]string{"topology.kubernetes.io/zone": "zone-a"},
+		},
+	})
+
+	labels, err := getNodeLabels(context.Background(), client, "node-1")
+	if err != nil {
+		t.Fatalf("getNodeLabels: %v", err)
+	}
+	if got := labels["topology.kubernetes.io/zone"]; got != "zone-a" {
+		t.Fatalf("zone label = %q, want %q", got, "zone-a")
+	}
+}
+
+func TestGetNodeLabelsUnknownNode(t *testing.T) {
+	client := fake.NewSimpleClientset()
+
+	if _, err := getNodeLabels(context.Background(), client, "node-1"); err == nil {
+		t.Fatal("expected an error for an unknown node")
+	}
+}
+
 func newPersistentVolume(name, handle, capacity string) *corev1.PersistentVolume {
 	return &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
