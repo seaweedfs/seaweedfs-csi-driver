@@ -98,9 +98,10 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// This keeps everything stateless
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      volumePath,
-			CapacityBytes: capacity,
-			VolumeContext: params,
+			VolumeId:           volumePath,
+			CapacityBytes:      capacity,
+			VolumeContext:      params,
+			AccessibleTopology: accessibleTopology(req.GetAccessibilityRequirements()),
 		},
 	}, nil
 }
@@ -249,6 +250,16 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 		CapacityBytes:         capacity,
 		NodeExpansionRequired: true,
 	}, nil
+}
+
+// accessibleTopology reports where a created volume can be used. The filer is
+// reachable from every node running the plugin, so the volume is accessible
+// from all requested segments instead of a single preferred one.
+func accessibleTopology(requirements *csi.TopologyRequirement) []*csi.Topology {
+	if topologies := requirements.GetRequisite(); len(topologies) > 0 {
+		return topologies
+	}
+	return requirements.GetPreferred()
 }
 
 func sanitizeVolumeIdS3(volumeId string) string {
