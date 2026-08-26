@@ -135,6 +135,7 @@ func TestParseTopologyKeys(t *testing.T) {
 		{" , ", nil},
 		{"topology.kubernetes.io/zone", []string{"topology.kubernetes.io/zone"}},
 		{" a , b ,,c ", []string{"a", "b", "c"}},
+		{"kubernetes.io/hostname,topology.kubernetes.io/zone", []string{"kubernetes.io/hostname", "topology.kubernetes.io/zone"}},
 	}
 	for _, test := range tests {
 		if got := ParseTopologyKeys(test.keys); !reflect.DeepEqual(got, test.want) {
