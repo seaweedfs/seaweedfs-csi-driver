@@ -63,6 +63,9 @@ spec:
             {{- if .Values.node.injectTopologyInfoFromNodeLabel.enabled }}
             - --dataCenter=$(DATACENTER)
             {{- end }}
+            {{- with .Values.topologyKeys }}
+            - --topologyKeys={{ join "," . }}
+            {{- end }}
             - --components=node
             {{- with .Values.concurrentWriters }}
             - --concurrentWriters={{ . }}

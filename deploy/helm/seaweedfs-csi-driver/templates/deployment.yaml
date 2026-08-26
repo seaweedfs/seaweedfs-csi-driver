@@ -53,6 +53,9 @@ spec:
             - --driverName=$(DRIVER_NAME)
             - --components=controller
             - --attacher={{ .Values.csiAttacher.enabled }}
+            {{- with .Values.topologyKeys }}
+            - --topologyKeys={{ join "," . }}
+            {{- end }}
           env:
             - name: CSI_ENDPOINT
               value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
@@ -95,6 +98,9 @@ spec:
             - --leader-election
             - --leader-election-namespace={{ .Release.Namespace }}
             - --http-endpoint=:9809
+            {{- if .Values.topologyKeys }}
+            - --feature-gates=Topology=true
+            {{- end }}
             #- --v=9
           env:
             - name: ADDRESS
