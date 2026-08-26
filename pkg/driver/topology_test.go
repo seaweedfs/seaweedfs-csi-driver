@@ -104,6 +104,28 @@ func TestGetPluginCapabilitiesWithoutTopologyKeys(t *testing.T) {
 	}
 }
 
+func TestAccessibleTopology(t *testing.T) {
+	zoneA := &csi.Topology{Segments: map[string]string{"topology.kubernetes.io/zone": "zone-a"}}
+	zoneB := &csi.Topology{Segments: map[string]string{"topology.kubernetes.io/zone": "zone-b"}}
+
+	if got := accessibleTopology(nil); got != nil {
+		t.Errorf("accessibleTopology(nil) = %v, want nil", got)
+	}
+
+	requisite := &csi.TopologyRequirement{
+		Requisite: []*csi.Topology{zoneA, zoneB},
+		Preferred: []*csi.Topology{zoneB},
+	}
+	if got := accessibleTopology(requisite); !reflect.DeepEqual(got, requisite.Requisite) {
+		t.Errorf("accessibleTopology = %v, want all requisite segments %v", got, requisite.Requisite)
+	}
+
+	preferredOnly := &csi.TopologyRequirement{Preferred: []*csi.Topology{zoneA}}
+	if got := accessibleTopology(preferredOnly); !reflect.DeepEqual(got, preferredOnly.Preferred) {
+		t.Errorf("accessibleTopology = %v, want %v", got, preferredOnly.Preferred)
+	}
+}
+
 func TestParseTopologyKeys(t *testing.T) {
 	tests := []struct {
 		keys string
