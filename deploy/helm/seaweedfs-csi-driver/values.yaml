@@ -137,6 +137,12 @@ mountService:
 
 driverName: seaweedfs-csi-driver
 
+# Node label keys reported as the accessible topology of each node, e.g.
+# ["topology.kubernetes.io/zone"]. When set, CSINode gets topologyKeys, so
+# StorageClass allowedTopologies is honoured and pods with SeaweedFS PVCs are
+# only scheduled on nodes running this driver.
+topologyKeys: []
+
 controller:
   replicas: 1
   nodeSelector: {}

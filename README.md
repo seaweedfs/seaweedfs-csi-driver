@@ -16,6 +16,7 @@
 - [Testing](#testing)
 - [Static and dynamic provisioning](#static-and-dynamic-provisioning)
 - [DataLocality](#datalocality)
+- [Node topology](#node-topology)
 - [License](#license)
 - [Code of conduct](#code-of-conduct)
 
@@ -270,6 +271,31 @@ You can activate it in the Helm-Chart `values.yaml` -> `node.injectTopologyInfoF
 `node.injectTopologyInfoFromNodeLabel.labels` decides which labels are grabbed from the node.
 
 It is recommended to use [well-known labels](https://kubernetes.io/docs/reference/labels-annotations-taints/#topologykubernetesioregion) to avoid confusion.
+
+# Node topology
+
+When the driver only runs on some nodes, report the labels of those nodes as accessible topology. `CSINode.spec.drivers[].topologyKeys` then gets populated, provisioned PVs get a matching `nodeAffinity` and the scheduler stops placing pods with SeaweedFS PVCs on nodes without the driver.
+
+Level               | Location
+------------------- | --------
+Driver              | Helm: `values.yaml` -> `topologyKeys` <br> Or `DaemonSet` / `Deployment` -> Container `csi-seaweedfs-plugin` -> args `--topologyKeys=`
+
+```yaml
+topologyKeys:
+  - topology.kubernetes.io/zone
+```
+
+Every key is looked up in the labels of the node the driver runs on; keys the node does not have are skipped. A StorageClass can then restrict where volumes are provisioned:
+
+```yaml
+allowedTopologies:
+  - matchLabelExpressions:
+      - key: topology.kubernetes.io/zone
+        values:
+          - zone-a
+```
+
+The node ServiceAccount needs `get` on `nodes`, which the Helm chart already grants.
 
 # License
 [Apache v2 license](https://www.apache.org/licenses/LICENSE-2.0)
