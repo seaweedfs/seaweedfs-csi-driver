@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -21,10 +22,24 @@ import (
 
 var unsafeVolumeIdChars = regexp.MustCompile(`[^-.a-zA-Z0-9]`)
 
+// listChildrenFn lists the names of the direct children of a filer path.
+// It is a field on ControllerServer so tests can substitute a fake that does
+// not talk to a real filer.
+type listChildrenFn func(ctx context.Context, filerPath string) ([]string, error)
+
+// deleteEntryFn deletes a single entry (file or directory) under parentPath,
+// reclaiming its data. It is a field so tests can record the deletes that a
+// DeleteVolume issues without a real filer.
+type deleteEntryFn func(ctx context.Context, parentPath, name string) error
+
 type ControllerServer struct {
 	csi.UnimplementedControllerServer
 
 	Driver *SeaweedFsDriver
+
+	// Injectable seams (overridden in tests).
+	listChildrenFn listChildrenFn
+	deleteEntryFn  deleteEntryFn
 }
 
 var _ = csi.ControllerServer(&ControllerServer{})
@@ -132,11 +147,124 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		volumeName = volumeId
 	}
 
-	if err := filer_pb.Remove(ctx, cs.Driver, parentDir, volumeName, true, true, true, false, nil); err != nil {
+	// A volume provisioned under /buckets is an S3 bucket directory. When the
+	// filer deletes a bucket it does not delete chunks by fileId; it asks the
+	// master to drop the collection that shares the bucket's name. That holds
+	// only when the collection was never renamed. If the StorageClass set a
+	// "collection" parameter (e.g. "nextcloud"), the data lives in that
+	// collection, not in one named after the bucket, and the collection delete
+	// is a silent no-op — the space is never reclaimed.
+	//
+	// To reclaim the space regardless of the collection name, empty the bucket
+	// first: deleting a child of the bucket is not a bucket-scoped delete, so
+	// the filer enqueues the child's chunks by fileId in whichever collection
+	// they live in. The recursion into each child stays bulk on the filer
+	// side, so only the bucket's direct children cost one delete per entry.
+	//
+	// This is idempotent: an interrupted delete leaves some children gone and
+	// the rest to sweep, and the final bucket delete keeps its not-found
+	// tolerance.
+	bucketPath := path.Join(parentDir, volumeName)
+	if err := cs.emptyBucketChildren(ctx, bucketPath); err != nil {
+		return nil, fmt.Errorf("error emptying volume %s: %v", volumeId, err)
+	}
+
+	if err := cs.deleteEntry(ctx, parentDir, volumeName); err != nil {
 		return nil, fmt.Errorf("error deleting volume %s: %v", volumeId, err)
 	}
 
 	return &csi.DeleteVolumeResponse{}, nil
+}
+
+// emptyBucketChildren deletes the direct children of a bucket volume so their
+// chunks are reclaimed by fileId before the bucket itself is dropped. Only
+// buckets (a directory directly under the filer's bucket root) need this; for
+// any other path the caller's single recursive delete already reclaims the
+// data the standard way.
+func (cs *ControllerServer) emptyBucketChildren(ctx context.Context, bucketPath string) error {
+	if path.Dir(bucketPath) != "/buckets" {
+		return nil
+	}
+
+	children, err := cs.listChildren(ctx, bucketPath)
+	if err != nil {
+		// A bucket that is already gone has nothing to empty; the caller's
+		// root delete stays idempotent (the CSI spec wants re-deletes to
+		// succeed). Normalise not-found to "no children" here.
+		if isNotFoundError(err) {
+			return nil
+		}
+		return err
+	}
+	glog.V(4).Infof("emptying bucket %s: %d children", bucketPath, len(children))
+
+	for _, child := range children {
+		if err := cs.deleteEntry(ctx, bucketPath, child); err != nil {
+			return fmt.Errorf("delete child %s of volume %s: %w", child, bucketPath, err)
+		}
+	}
+	return nil
+}
+
+func (cs *ControllerServer) listChildren(ctx context.Context, filerPath string) ([]string, error) {
+	if cs.listChildrenFn != nil {
+		return cs.listChildrenFn(ctx, filerPath)
+	}
+	return listFilerChildren(ctx, cs.Driver, filerPath)
+}
+
+func (cs *ControllerServer) deleteEntry(ctx context.Context, parentPath, name string) error {
+	if cs.deleteEntryFn != nil {
+		return cs.deleteEntryFn(ctx, parentPath, name)
+	}
+	return filer_pb.Remove(ctx, cs.Driver, parentPath, name, true, true, true, false, nil)
+}
+
+// listFilerChildren returns the names of the direct children of a filer
+// directory, without descending into them. The listing is paged: the filer
+// caps one response at its -dirListLimit, and a truncated sweep would leak
+// the children beyond the cap.
+func listFilerChildren(ctx context.Context, filerClient filer_pb.FilerClient, dirPath string) ([]string, error) {
+	const pageSize = uint32(1000)
+
+	var names []string
+	after := ""
+	for {
+		var page []string
+		var lastRaw string
+		err := filerClient.WithFilerClient(false, func(client filer_pb.SeaweedFilerClient) error {
+			return filer_pb.SeaweedList(ctx, client, dirPath, "", func(entry *filer_pb.Entry, isLast bool) error {
+				lastRaw = entry.GetName()
+				if lastRaw != "" {
+					page = append(page, lastRaw)
+				}
+				return nil
+			}, after, false, pageSize)
+		})
+		if err != nil {
+			// A missing directory has nothing to empty; keep what was already
+			// collected so an already-deleted volume does not fail the delete.
+			if isNotFoundError(err) {
+				return names, nil
+			}
+			return nil, err
+		}
+		names = append(names, page...)
+		if len(page) < int(pageSize) || lastRaw == "" {
+			return names, nil
+		}
+		after = lastRaw
+	}
+}
+
+// isNotFoundError reports whether err, or its wire text, is the filer's
+// not-found sentinel. The sentinel can lose its identity crossing gRPC, so the
+// message marker is checked too, mirroring filer_pb's own tolerance.
+func isNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, filer_pb.ErrNotFound) || strings.Contains(err.Error(), filer_pb.ErrNotFound.Error())
 }
 
 // ControllerPublishVolume we need this just only for csi-attach, but we do nothing here generally
