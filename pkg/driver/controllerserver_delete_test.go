@@ -12,13 +12,11 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
 )
 
-// deleteRecord captures one (parent, name) delete issued by DeleteVolume.
 type deleteRecord struct {
 	parent string
 	name   string
 }
 
-// testDriverWithCaps returns a driver that accepts CREATE_DELETE_VOLUME requests.
 func testDriverWithCaps() *SeaweedFsDriver {
 	driver := &SeaweedFsDriver{name: "test"}
 	driver.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{
@@ -27,14 +25,13 @@ func testDriverWithCaps() *SeaweedFsDriver {
 	return driver
 }
 
-// fakeDeleter records deletes and can fail on a chosen entry.
 type fakeDeleter struct {
 	deletes []deleteRecord
-	failOn  string // match "<parent>/<name>" to force an error
+	failOn  string
 }
 
 func (f *fakeDeleter) fn() deleteEntryFn {
-	return func(_ context.Context, parent, name string) error {
+	return func(_ context.Context, parent, name string, _ bool) error {
 		if f.failOn == parent+"/"+name {
 			return fmt.Errorf("delete %s/%s: boom", parent, name)
 		}
@@ -43,17 +40,23 @@ func (f *fakeDeleter) fn() deleteEntryFn {
 	}
 }
 
+func staticChildrenFn(children map[string][]string) listChildrenFn {
+	return func(_ context.Context, dir, _ string, _ uint32) ([]string, string, bool, error) {
+		return children[dir], "", false, nil
+	}
+}
+
+func bucketDirFnFor(dir string) bucketDirFn {
+	return func(_ context.Context) (string, error) { return dir, nil }
+}
+
 func newTestControllerServer(t *testing.T, children map[string][]string, deleter *fakeDeleter) *ControllerServer {
 	t.Helper()
-	driver := &SeaweedFsDriver{name: "test"}
-	driver.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{
-		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-	})
+	driver := testDriverWithCaps()
 	cs := &ControllerServer{
-		Driver: driver,
-		listChildrenFn: func(_ context.Context, dir string) ([]string, error) {
-			return children[dir], nil
-		},
+		Driver:         driver,
+		listChildrenFn: staticChildrenFn(children),
+		bucketDirFn:    bucketDirFnFor("/buckets"),
 	}
 	if deleter != nil {
 		cs.deleteEntryFn = deleter.fn()
@@ -61,10 +64,7 @@ func newTestControllerServer(t *testing.T, children map[string][]string, deleter
 	return cs
 }
 
-func TestDeleteVolumeBucketsAreEmendedChildrenFirst(t *testing.T) {
-	// The CSI provisioner creates volumes as buckets under /buckets. Deleting
-	// the bucket entry alone leaks chunks when a custom collection is set, so
-	// DeleteVolume must delete every direct child before the bucket itself.
+func TestDeleteVolumeBucketsAreEmptiedChildrenFirst(t *testing.T) {
 	volumeID := "/buckets/pvc-abc"
 	deleter := &fakeDeleter{}
 	cs := newTestControllerServer(t, map[string][]string{
@@ -87,8 +87,6 @@ func TestDeleteVolumeBucketsAreEmendedChildrenFirst(t *testing.T) {
 }
 
 func TestDeleteVolumeLegacyIdIsEmptiedAsBucket(t *testing.T) {
-	// Legacy volume IDs are bare names resolved under /buckets; they are
-	// buckets too and must be emptied first.
 	deleter := &fakeDeleter{}
 	cs := newTestControllerServer(t, map[string][]string{
 		"/buckets/pvc-legacy": {"data.bin"},
@@ -107,22 +105,17 @@ func TestDeleteVolumeLegacyIdIsEmptiedAsBucket(t *testing.T) {
 	}
 }
 
-func TestDeleteVolumeNonBucketPathSkipsEmpting(t *testing.T) {
-	// Volumes mounted at an explicit path outside /buckets are not buckets;
-	// the plain recursive filer delete reclaims their chunks by fileId, so no
-	// child listing must happen.
+func TestDeleteVolumeNonBucketPathSkipsEmptying(t *testing.T) {
 	volumeID := "/data/volumes/myvol"
 	listed := false
-	driver := &SeaweedFsDriver{name: "test"}
-	driver.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{
-		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-	})
+	driver := testDriverWithCaps()
 	cs := &ControllerServer{
 		Driver: driver,
-		listChildrenFn: func(_ context.Context, dir string) ([]string, error) {
+		listChildrenFn: func(_ context.Context, _, _ string, _ uint32) ([]string, string, bool, error) {
 			listed = true
-			return nil, nil
+			return nil, "", false, nil
 		},
+		bucketDirFn: bucketDirFnFor("/buckets"),
 	}
 	deleter := &fakeDeleter{}
 	cs.deleteEntryFn = deleter.fn()
@@ -155,9 +148,6 @@ func TestDeleteVolumeEmptyBucketDeletesRootOnly(t *testing.T) {
 }
 
 func TestDeleteVolumeChildFailureStopsBeforeRoot(t *testing.T) {
-	// A failed child delete must abort: the CSI retry will come back for the
-	// rest. Deleting the bucket root while children remain could leave their
-	// chunks unreachable yet un-reclaimed.
 	volumeID := "/buckets/pvc-partial"
 	deleter := &fakeDeleter{failOn: volumeID + "/file1.txt"}
 	cs := newTestControllerServer(t, map[string][]string{
@@ -176,18 +166,13 @@ func TestDeleteVolumeChildFailureStopsBeforeRoot(t *testing.T) {
 }
 
 func TestDeleteVolumeMissingIdIsSuccess(t *testing.T) {
-	// The CSI spec wants DeleteVolume to be idempotent: an unknown volume is
-	// a success. The filer reports not-found through the root delete; the
-	// child listing of a vanished bucket must be treated as empty.
 	cs := &ControllerServer{
 		Driver: testDriverWithCaps(),
-		listChildrenFn: func(_ context.Context, dir string) ([]string, error) {
-			return nil, filer_pb.ErrNotFound
+		listChildrenFn: func(_ context.Context, _, _ string, _ uint32) ([]string, string, bool, error) {
+			return nil, "", false, filer_pb.ErrNotFound
 		},
-		deleteEntryFn: func(_ context.Context, parent, name string) error {
-			// filer_pb.Remove swallows not-found; mirror that.
-			return nil
-		},
+		bucketDirFn:   bucketDirFnFor("/buckets"),
+		deleteEntryFn: func(_ context.Context, _, _ string, _ bool) error { return nil },
 	}
 
 	if _, err := cs.DeleteVolume(context.Background(), &csi.DeleteVolumeRequest{VolumeId: "/buckets/pvc-gone"}); err != nil {
@@ -198,9 +183,10 @@ func TestDeleteVolumeMissingIdIsSuccess(t *testing.T) {
 func TestDeleteVolumeListFailurePropagates(t *testing.T) {
 	cs := &ControllerServer{
 		Driver: testDriverWithCaps(),
-		listChildrenFn: func(_ context.Context, dir string) ([]string, error) {
-			return nil, errors.New("filer unreachable")
+		listChildrenFn: func(_ context.Context, _, _ string, _ uint32) ([]string, string, bool, error) {
+			return nil, "", false, errors.New("filer unreachable")
 		},
+		bucketDirFn: bucketDirFnFor("/buckets"),
 	}
 
 	if _, err := cs.DeleteVolume(context.Background(), &csi.DeleteVolumeRequest{VolumeId: "/buckets/pvc-x"}); err == nil {
@@ -214,5 +200,95 @@ func TestDeleteVolumeValidatesVolumeId(t *testing.T) {
 	cs := &ControllerServer{Driver: testDriverWithCaps()}
 	if _, err := cs.DeleteVolume(context.Background(), &csi.DeleteVolumeRequest{}); err == nil {
 		t.Fatal("expected InvalidArgument for empty volume id")
+	}
+}
+
+func TestDeleteVolumePagedChildrenAllDeleted(t *testing.T) {
+	volumeID := "/buckets/pvc-paged"
+	pages := [][]string{{"a", "b"}, {"c", "d"}}
+	callCount := 0
+	deleter := &fakeDeleter{}
+	cs := &ControllerServer{
+		Driver: testDriverWithCaps(),
+		listChildrenFn: func(_ context.Context, dir, _ string, _ uint32) ([]string, string, bool, error) {
+			if dir != volumeID || callCount >= len(pages) {
+				return nil, "", false, nil
+			}
+			page := pages[callCount]
+			callCount++
+			return page, page[len(page)-1], callCount < len(pages), nil
+		},
+		bucketDirFn:   bucketDirFnFor("/buckets"),
+		deleteEntryFn: deleter.fn(),
+	}
+
+	if _, err := cs.DeleteVolume(context.Background(), &csi.DeleteVolumeRequest{VolumeId: volumeID}); err != nil {
+		t.Fatalf("DeleteVolume: %v", err)
+	}
+
+	want := []deleteRecord{
+		{parent: volumeID, name: "a"},
+		{parent: volumeID, name: "b"},
+		{parent: volumeID, name: "c"},
+		{parent: volumeID, name: "d"},
+		{parent: "/buckets", name: "pvc-paged"},
+	}
+	if !slices.Equal(deleter.deletes, want) {
+		t.Fatalf("deletes = %+v, want %+v", deleter.deletes, want)
+	}
+}
+
+func TestDeleteVolumeCustomBucketDirIsEmptied(t *testing.T) {
+	volumeID := "/tenant-buckets/pvc-x"
+	deleter := &fakeDeleter{}
+	cs := &ControllerServer{
+		Driver: testDriverWithCaps(),
+		listChildrenFn: func(_ context.Context, dir, _ string, _ uint32) ([]string, string, bool, error) {
+			if dir == volumeID {
+				return []string{"file.bin"}, "", false, nil
+			}
+			return nil, "", false, nil
+		},
+		bucketDirFn:   bucketDirFnFor("/tenant-buckets"),
+		deleteEntryFn: deleter.fn(),
+	}
+
+	if _, err := cs.DeleteVolume(context.Background(), &csi.DeleteVolumeRequest{VolumeId: volumeID}); err != nil {
+		t.Fatalf("DeleteVolume: %v", err)
+	}
+
+	want := []deleteRecord{
+		{parent: volumeID, name: "file.bin"},
+		{parent: "/tenant-buckets", name: "pvc-x"},
+	}
+	if !slices.Equal(deleter.deletes, want) {
+		t.Fatalf("deletes = %+v, want %+v", deleter.deletes, want)
+	}
+}
+
+func TestDeleteVolumeNonBucketPathWithCustomBucketDirSkipsEmptying(t *testing.T) {
+	volumeID := "/data/vol"
+	listed := false
+	deleter := &fakeDeleter{}
+	cs := &ControllerServer{
+		Driver: testDriverWithCaps(),
+		listChildrenFn: func(_ context.Context, _, _ string, _ uint32) ([]string, string, bool, error) {
+			listed = true
+			return nil, "", false, nil
+		},
+		bucketDirFn:   bucketDirFnFor("/tenant-buckets"),
+		deleteEntryFn: deleter.fn(),
+	}
+
+	if _, err := cs.DeleteVolume(context.Background(), &csi.DeleteVolumeRequest{VolumeId: volumeID}); err != nil {
+		t.Fatalf("DeleteVolume: %v", err)
+	}
+
+	if listed {
+		t.Fatal("non-bucket volume must not list children")
+	}
+	want := []deleteRecord{{parent: "/data", name: "vol"}}
+	if !slices.Equal(deleter.deletes, want) {
+		t.Fatalf("deletes = %+v, want %+v", deleter.deletes, want)
 	}
 }
