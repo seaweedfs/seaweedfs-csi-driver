@@ -224,8 +224,7 @@ func (cs *ControllerServer) filerBucketDir(ctx context.Context) (string, error) 
 		return nil
 	})
 	if err != nil {
-		glog.V(0).Infof("failed to get filer bucket dir, using default %s: %v", defaultBucketDir, err)
-		return defaultBucketDir, nil
+		return "", fmt.Errorf("get filer bucket directory: %w", err)
 	}
 	if dir == "" {
 		return defaultBucketDir, nil

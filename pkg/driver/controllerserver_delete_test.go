@@ -292,3 +292,18 @@ func TestDeleteVolumeNonBucketPathWithCustomBucketDirSkipsEmptying(t *testing.T)
 		t.Fatalf("deletes = %+v, want %+v", deleter.deletes, want)
 	}
 }
+
+func TestDeleteVolumeBucketDirFailurePropagates(t *testing.T) {
+	cs := &ControllerServer{
+		Driver: testDriverWithCaps(),
+		bucketDirFn: func(_ context.Context) (string, error) {
+			return "", errors.New("filer unreachable")
+		},
+	}
+
+	if _, err := cs.DeleteVolume(context.Background(), &csi.DeleteVolumeRequest{VolumeId: "/buckets/pvc-x"}); err == nil {
+		t.Fatal("expected error when filer bucket dir resolution fails")
+	} else if !strings.Contains(err.Error(), "filer unreachable") {
+		t.Fatalf("error = %v, want it to wrap the bucket dir failure", err)
+	}
+}
