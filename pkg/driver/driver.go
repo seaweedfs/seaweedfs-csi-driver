@@ -96,6 +96,7 @@ func NewSeaweedFsDriver(name, filer, nodeID, endpoint, mountEndpoint string, ena
 		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 		csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 		csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
+		csi.ControllerServiceCapability_RPC_MODIFY_VOLUME,
 	})
 
 	// we need this just only for csi-attach, but we do nothing for attach/detach

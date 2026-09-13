@@ -364,6 +364,59 @@ func (cs *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *
 	}, nil
 }
 
+// mutableMountParameters are the volume context keys a VolumeAttributesClass
+// may change. They are re-read from the volume context on every mount, so a
+// modified value takes effect at the next publish without backend changes.
+// Structural keys (which filer path / collection backs the volume, its
+// identity and capacity) are deliberately excluded: they cannot change on an
+// existing mount.
+var mutableMountParameters = map[string]struct{}{
+	"diskType":           {},
+	"replication":        {},
+	"ttl":                {},
+	"dataCenter":         {},
+	"dataLocality":       {},
+	"uidMap":             {},
+	"gidMap":             {},
+	"chunkSizeLimitMB":   {},
+	"volumeServerAccess": {},
+	"readRetryTime":      {},
+	"concurrentReaders":  {},
+	"concurrentWriters":  {},
+	"cacheCapacityMB":    {},
+	"cacheMetaTtlSec":    {},
+	"collectionQuotaMB":  {},
+}
+
+// ControllerModifyVolume implements VolumeAttributesClass support. The
+// SeaweedFS backend stores no per-volume provisioning metadata, so there is
+// nothing to change controller-side: modified parameters are validated here
+// and take effect when kubelet re-publishes the volume, because the mount
+// command is rebuilt from the volume context on every publish.
+func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi.ControllerModifyVolumeRequest) (*csi.ControllerModifyVolumeResponse, error) {
+	volumeID := req.GetVolumeId()
+	if volumeID == "" {
+		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
+	}
+	if len(req.GetMutableParameters()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "mutable parameters missing in request")
+	}
+
+	var unknown []string
+	for key := range req.GetMutableParameters() {
+		if _, ok := mutableMountParameters[key]; !ok {
+			unknown = append(unknown, key)
+		}
+	}
+	if len(unknown) > 0 {
+		return nil, status.Errorf(codes.InvalidArgument,
+			"parameters are not modifiable on SeaweedFS volumes (structural or unknown): %s", strings.Join(unknown, ", "))
+	}
+
+	glog.Infof("modify volume req: %v, parameters: %v", volumeID, req.GetMutableParameters())
+	return &csi.ControllerModifyVolumeResponse{}, nil
+}
+
 func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	capacity := req.GetCapacityRange().GetRequiredBytes()
 
