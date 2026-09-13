@@ -128,3 +128,11 @@ func TestVacPathIsCollisionFree(t *testing.T) {
 		t.Fatal("path traversal must not match a real VAC path")
 	}
 }
+
+func TestFilerVacStoreReadNoFilers(t *testing.T) {
+	store := newFilerVacStore(nil)
+	params, err := store.Read(context.Background(), "/buckets/pvc-abc")
+	if err != nil || params != nil {
+		t.Fatalf("expected nil,nil with no filers, got %v, %v", params, err)
+	}
+}
