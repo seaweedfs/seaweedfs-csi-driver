@@ -171,6 +171,9 @@ func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket s
 	}
 
 	dataCenter := m.driver.DataCenter
+	if contextDataCenter, ok := volumeContext["dataCenter"]; ok && contextDataCenter != "" {
+		dataCenter = contextDataCenter
+	}
 	if err := CheckDataLocality(&dataLocality, &dataCenter); err != nil {
 		return nil, err
 	}

@@ -65,3 +65,21 @@ func TestBuildMountArgsRejectsManagedOrPositionalExtraArgs(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildMountArgsDataCenterFromVolumeContext(t *testing.T) {
+	mounter := &mountServiceMounter{
+		driver:   &SeaweedFsDriver{},
+		volumeID: "/buckets/pvc-test",
+		volContext: map[string]string{
+			"dataLocality": "write_preferlocaldc",
+			"dataCenter":   "dc1",
+		},
+	}
+	args, err := mounter.buildMountArgs("/staging", "/cache", "/socket", []string{"filer:8888"})
+	if err != nil {
+		t.Fatalf("buildMountArgs with context dataCenter: %v", err)
+	}
+	if !slices.Contains(args, "-dataCenter=dc1") {
+		t.Fatalf("mount args missing -dataCenter=dc1: %v", args)
+	}
+}
