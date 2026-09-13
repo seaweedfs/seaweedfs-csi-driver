@@ -177,14 +177,12 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		return nil, fmt.Errorf("error emptying volume %s: %v", volumeId, err)
 	}
 
-	// Best effort: drop the persisted VolumeAttributesClass entry with the
-	// volume it belonged to. A failure here must not block volume deletion.
-	if err := cs.store().Delete(ctx, volumeId); err != nil {
-		glog.Warningf("could not delete persisted volume attributes for %s: %v", volumeId, err)
-	}
-
 	if err := cs.deleteEntry(ctx, parentDir, volumeName, true); err != nil {
 		return nil, fmt.Errorf("error deleting volume %s: %v", volumeId, err)
+	}
+
+	if err := cs.store().Delete(ctx, volumeId); err != nil {
+		glog.Warningf("could not delete persisted volume attributes for %s: %v", volumeId, err)
 	}
 
 	return &csi.DeleteVolumeResponse{}, nil
