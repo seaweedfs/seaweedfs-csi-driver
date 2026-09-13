@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/datalocality"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb/filer_pb"
 	"github.com/seaweedfs/seaweedfs/weed/s3api/s3bucket"
@@ -369,7 +370,8 @@ func (cs *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *
 // modified value takes effect at the next publish without backend changes.
 // Structural keys (which filer path / collection backs the volume, its
 // identity and capacity) are deliberately excluded: they cannot change on an
-// existing mount.
+// existing mount. collectionQuotaMB is excluded too — the mounter derives the
+// quota from the volume capacity and ignores the context key.
 var mutableMountParameters = map[string]struct{}{
 	"diskType":           {},
 	"replication":        {},
@@ -385,7 +387,26 @@ var mutableMountParameters = map[string]struct{}{
 	"concurrentWriters":  {},
 	"cacheCapacityMB":    {},
 	"cacheMetaTtlSec":    {},
-	"collectionQuotaMB":  {},
+}
+
+// validateMutableParameterValues rejects values the mount would refuse at
+// publish time anyway, so a bad VolumeAttributesClass fails at the modify
+// call instead of breaking the volume's next mount.
+func validateMutableParameterValues(key, value string) error {
+	if value == "" {
+		return nil
+	}
+	switch key {
+	case "dataLocality":
+		if _, ok := datalocality.FromString(value); !ok {
+			return fmt.Errorf("invalid dataLocality %q", value)
+		}
+	case "concurrentReaders", "concurrentWriters", "cacheCapacityMB", "cacheMetaTtlSec", "chunkSizeLimitMB":
+		if _, err := strconv.Atoi(value); err != nil {
+			return fmt.Errorf("%s must be an integer, got %q", key, value)
+		}
+	}
+	return nil
 }
 
 // ControllerModifyVolume implements VolumeAttributesClass support. The
@@ -403,14 +424,27 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 	}
 
 	var unknown []string
-	for key := range req.GetMutableParameters() {
+	var invalid []error
+	for key, value := range req.GetMutableParameters() {
 		if _, ok := mutableMountParameters[key]; !ok {
 			unknown = append(unknown, key)
+			continue
+		}
+		if err := validateMutableParameterValues(key, value); err != nil {
+			invalid = append(invalid, err)
 		}
 	}
 	if len(unknown) > 0 {
 		return nil, status.Errorf(codes.InvalidArgument,
 			"parameters are not modifiable on SeaweedFS volumes (structural or unknown): %s", strings.Join(unknown, ", "))
+	}
+	if len(invalid) > 0 {
+		msgs := make([]string, 0, len(invalid))
+		for _, err := range invalid {
+			msgs = append(msgs, err.Error())
+		}
+		return nil, status.Errorf(codes.InvalidArgument,
+			"invalid parameter values: %s", strings.Join(msgs, "; "))
 	}
 
 	glog.Infof("modify volume req: %v, parameters: %v", volumeID, req.GetMutableParameters())

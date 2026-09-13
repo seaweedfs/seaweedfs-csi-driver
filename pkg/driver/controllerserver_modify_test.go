@@ -71,6 +71,51 @@ func TestControllerModifyVolume_RejectsUnknownParameter(t *testing.T) {
 	}
 }
 
+func TestControllerModifyVolume_RejectsIgnoredQuotaParameter(t *testing.T) {
+	// collectionQuotaMB is listed among the mounter's ignored context keys —
+	// accepting it as modifiable would promise a change that never applies.
+	cs := modifyTestDriver()
+	_, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+		VolumeId:          "pvc-abc",
+		MutableParameters: map[string]string{"collectionQuotaMB": "1024"},
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("code = %v, want InvalidArgument", status.Code(err))
+	}
+}
+
+func TestControllerModifyVolume_RejectsInvalidValues(t *testing.T) {
+	cs := modifyTestDriver()
+	for key, value := range map[string]string{
+		"dataLocality":      "bogus",
+		"concurrentReaders": "not-a-number",
+		"cacheCapacityMB":   "-",
+		"chunkSizeLimitMB":  "1.5",
+	} {
+		_, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+			VolumeId:          "pvc-abc",
+			MutableParameters: map[string]string{key: value},
+		})
+		if status.Code(err) != codes.InvalidArgument {
+			t.Errorf("%s=%q: code = %v, want InvalidArgument", key, value, status.Code(err))
+		}
+	}
+}
+
+func TestControllerModifyVolume_AcceptsValidValues(t *testing.T) {
+	cs := modifyTestDriver()
+	if _, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+		VolumeId: "pvc-abc",
+		MutableParameters: map[string]string{
+			"dataLocality":      "none",
+			"concurrentReaders": "64",
+			"cacheCapacityMB":   "0",
+		},
+	}); err != nil {
+		t.Fatalf("valid values rejected: %v", err)
+	}
+}
+
 func TestControllerModifyVolume_RejectsStructuralParameter(t *testing.T) {
 	cs := modifyTestDriver()
 	for _, key := range []string{"parentDir", "path", "volumeName", "filer.path"} {
