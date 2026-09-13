@@ -477,13 +477,11 @@ func (ns *NodeServer) removeVolumeMutex(volumeID string) {
 // tests can inject fakes that do not touch the real mount service or k8s API.
 func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volContext map[string]string, readOnly bool) (*Volume, error) {
 	effectiveVolContext := cloneVolumeContext(volContext)
-	// VolumeAttributesClass parameters arrive via ControllerModifyVolume,
-	// never via the publish context, so overlay what was persisted for this
-	// volume. Read failures degrade to the PV attributes: staging must not
-	// invent a new failure mode for volumes that never used a VAC.
-	if persisted, err := ns.loadPersistedVolumeAttributes(context.Background(), volumeID); err != nil {
-		glog.Warningf("could not read persisted volume attributes for %s, using PV attributes: %v", volumeID, err)
-	} else if len(persisted) > 0 {
+	persisted, err := ns.loadPersistedVolumeAttributes(context.Background(), volumeID)
+	if err != nil {
+		return nil, fmt.Errorf("reading persisted volume attributes for %s: %w", volumeID, err)
+	}
+	if len(persisted) > 0 {
 		mergePersistedVolumeAttributes(effectiveVolContext, persisted)
 	}
 	capacity, hasCapacity, err := ns.resolveVolumeCapacity(volumeID, effectiveVolContext)
