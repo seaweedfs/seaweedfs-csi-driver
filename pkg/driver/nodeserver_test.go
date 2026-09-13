@@ -4,6 +4,7 @@
 package driver
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -102,5 +103,56 @@ func TestStageNewVolumePropagatesMounterError(t *testing.T) {
 	_, err := ns.stageNewVolume("vol-1", t.TempDir(), nil, false)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected error %v, got %v", wantErr, err)
+	}
+}
+
+func TestStageNewVolumeAppliesPersistedVolumeAttributes(t *testing.T) {
+	var capturedVolContext map[string]string
+	ns := newTestNodeServer(t, &fakeMounter{})
+	ns.mounterFactory = func(volumeID string, readOnly bool, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
+		capturedVolContext = volContext
+		return &fakeMounter{}, nil
+	}
+	ns.vacLoader = func(_ context.Context, volumeID string) (map[string]string, error) {
+		return map[string]string{
+			"diskType":          "ssd",
+			"concurrentReaders": "64",
+			"collection":        "must-not-apply",
+		}, nil
+	}
+
+	stagingPath := filepath.Join(t.TempDir(), "staging")
+	if _, err := ns.stageNewVolume("/buckets/pvc-1", stagingPath, map[string]string{"collection": "c", "concurrentReaders": "128"}, false); err != nil {
+		t.Fatalf("stageNewVolume failed: %v", err)
+	}
+
+	if capturedVolContext["diskType"] != "ssd" {
+		t.Errorf("persisted diskType not applied: %v", capturedVolContext)
+	}
+	if capturedVolContext["concurrentReaders"] != "64" {
+		t.Errorf("persisted concurrentReaders not overriding PV value: %v", capturedVolContext)
+	}
+	if capturedVolContext["collection"] != "c" {
+		t.Errorf("structural key leaked from persisted store: %v", capturedVolContext)
+	}
+}
+
+func TestStageNewVolumeDegradesWhenVacStoreUnreadable(t *testing.T) {
+	var capturedVolContext map[string]string
+	ns := newTestNodeServer(t, &fakeMounter{})
+	ns.mounterFactory = func(volumeID string, readOnly bool, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
+		capturedVolContext = volContext
+		return &fakeMounter{}, nil
+	}
+	ns.vacLoader = func(_ context.Context, volumeID string) (map[string]string, error) {
+		return nil, errors.New("filer unreachable")
+	}
+
+	stagingPath := filepath.Join(t.TempDir(), "staging")
+	if _, err := ns.stageNewVolume("vol-1", stagingPath, map[string]string{"concurrentReaders": "128"}, false); err != nil {
+		t.Fatalf("stageNewVolume must proceed when the store is unreadable: %v", err)
+	}
+	if capturedVolContext["concurrentReaders"] != "128" {
+		t.Errorf("PV attributes must stay intact on read failure: %v", capturedVolContext)
 	}
 }

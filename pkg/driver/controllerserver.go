@@ -42,6 +42,17 @@ type ControllerServer struct {
 	listChildrenFn listChildrenFn
 	deleteEntryFn  deleteEntryFn
 	bucketDirFn    bucketDirFn
+
+	// vacStore persists VolumeAttributesClass parameters accepted by
+	// ControllerModifyVolume. Nil means the default filer-backed store.
+	vacStore vacStore
+}
+
+func (cs *ControllerServer) store() vacStore {
+	if cs.vacStore != nil {
+		return cs.vacStore
+	}
+	return newFilerVacStore(cs.Driver.filers)
 }
 
 var _ = csi.ControllerServer(&ControllerServer{})
@@ -164,6 +175,12 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 	bucketPath := path.Join(parentDir, volumeName)
 	if err := cs.emptyBucketChildren(ctx, bucketPath); err != nil {
 		return nil, fmt.Errorf("error emptying volume %s: %v", volumeId, err)
+	}
+
+	// Best effort: drop the persisted VolumeAttributesClass entry with the
+	// volume it belonged to. A failure here must not block volume deletion.
+	if err := cs.store().Delete(ctx, volumeId); err != nil {
+		glog.Warningf("could not delete persisted volume attributes for %s: %v", volumeId, err)
 	}
 
 	if err := cs.deleteEntry(ctx, parentDir, volumeName, true); err != nil {
@@ -453,6 +470,16 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 	}
 	if err := validateMutableParameters(req.GetMutableParameters()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	// Kubernetes routes VolumeAttributesClass parameters only through this
+	// RPC — the node publish context keeps coming from the immutable PV —
+	// so persist the accepted values where NodeStageVolume can read them
+	// back on every (re)stage. Storage errors fail the modify so the
+	// resizer retries instead of recording a class that never applies.
+	if err := cs.store().Write(ctx, volumeID, req.GetMutableParameters()); err != nil {
+		return nil, status.Errorf(codes.Internal,
+			"persisting modified parameters for %s: %v", volumeID, err)
 	}
 
 	glog.Infof("modify volume req: %v, parameters: %v", volumeID, req.GetMutableParameters())
