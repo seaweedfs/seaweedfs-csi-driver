@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -10,13 +11,50 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func modifyTestDriver() *ControllerServer {
+// memVacStore is an in-memory vacStore fake for tests.
+type memVacStore struct {
+	data      map[string]map[string]string
+	writeErr  error
+	writtenID string
+}
+
+func newMemVacStore() *memVacStore {
+	return &memVacStore{data: map[string]map[string]string{}}
+}
+
+func (m *memVacStore) Read(_ context.Context, volumeID string) (map[string]string, error) {
+	if params, ok := m.data[volumeID]; ok {
+		return params, nil
+	}
+	return nil, nil
+}
+
+func (m *memVacStore) Write(_ context.Context, volumeID string, params map[string]string) error {
+	if m.writeErr != nil {
+		return m.writeErr
+	}
+	m.writtenID = volumeID
+	cp := make(map[string]string, len(params))
+	for k, v := range params {
+		cp[k] = v
+	}
+	m.data[volumeID] = cp
+	return nil
+}
+
+func (m *memVacStore) Delete(_ context.Context, volumeID string) error {
+	delete(m.data, volumeID)
+	return nil
+}
+
+func modifyTestDriver() (*ControllerServer, *memVacStore) {
 	driver := &SeaweedFsDriver{name: "test"}
 	driver.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{
 		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 		csi.ControllerServiceCapability_RPC_MODIFY_VOLUME,
 	})
-	return &ControllerServer{Driver: driver}
+	store := newMemVacStore()
+	return &ControllerServer{Driver: driver, vacStore: store}, store
 }
 
 func hasModifyVolumeCapability(cs *ControllerServer) bool {
@@ -33,14 +71,14 @@ func hasModifyVolumeCapability(cs *ControllerServer) bool {
 }
 
 func TestControllerModifyVolume_CapabilityAdvertised(t *testing.T) {
-	cs := modifyTestDriver()
+	cs, _ := modifyTestDriver()
 	if !hasModifyVolumeCapability(cs) {
 		t.Fatal("MODIFY_VOLUME capability not advertised")
 	}
 }
 
 func TestControllerModifyVolume_AcceptsMutableParameters(t *testing.T) {
-	cs := modifyTestDriver()
+	cs, _ := modifyTestDriver()
 	resp, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
 		VolumeId: "pvc-abc",
 		MutableParameters: map[string]string{
@@ -58,7 +96,7 @@ func TestControllerModifyVolume_AcceptsMutableParameters(t *testing.T) {
 }
 
 func TestControllerModifyVolume_RejectsUnknownParameter(t *testing.T) {
-	cs := modifyTestDriver()
+	cs, _ := modifyTestDriver()
 	_, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
 		VolumeId:          "pvc-abc",
 		MutableParameters: map[string]string{"collection": "other"},
@@ -72,7 +110,7 @@ func TestControllerModifyVolume_RejectsUnknownParameter(t *testing.T) {
 }
 
 func TestControllerModifyVolume_RejectsIgnoredQuotaParameter(t *testing.T) {
-	cs := modifyTestDriver()
+	cs, _ := modifyTestDriver()
 	_, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
 		VolumeId:          "pvc-abc",
 		MutableParameters: map[string]string{"collectionQuotaMB": "1024"},
@@ -83,7 +121,7 @@ func TestControllerModifyVolume_RejectsIgnoredQuotaParameter(t *testing.T) {
 }
 
 func TestControllerModifyVolume_RejectsInvalidValues(t *testing.T) {
-	cs := modifyTestDriver()
+	cs, _ := modifyTestDriver()
 	for key, value := range map[string]string{
 		"dataLocality":      "bogus",
 		"concurrentReaders": "not-a-number",
@@ -101,7 +139,7 @@ func TestControllerModifyVolume_RejectsInvalidValues(t *testing.T) {
 }
 
 func TestControllerModifyVolume_AcceptsValidValues(t *testing.T) {
-	cs := modifyTestDriver()
+	cs, _ := modifyTestDriver()
 	if _, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
 		VolumeId: "pvc-abc",
 		MutableParameters: map[string]string{
@@ -115,7 +153,7 @@ func TestControllerModifyVolume_AcceptsValidValues(t *testing.T) {
 }
 
 func TestControllerModifyVolume_RejectsStructuralParameter(t *testing.T) {
-	cs := modifyTestDriver()
+	cs, _ := modifyTestDriver()
 	for _, key := range []string{"parentDir", "path", "volumeName", "filer.path"} {
 		_, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
 			VolumeId:          "pvc-abc",
@@ -128,7 +166,7 @@ func TestControllerModifyVolume_RejectsStructuralParameter(t *testing.T) {
 }
 
 func TestControllerModifyVolume_RequiresVolumeIdAndParameters(t *testing.T) {
-	cs := modifyTestDriver()
+	cs, _ := modifyTestDriver()
 	if _, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{VolumeId: "pvc-abc"}); status.Code(err) != codes.InvalidArgument {
 		t.Errorf("empty parameters: code = %v, want InvalidArgument", status.Code(err))
 	}
@@ -138,7 +176,7 @@ func TestControllerModifyVolume_RequiresVolumeIdAndParameters(t *testing.T) {
 }
 
 func TestControllerModifyVolume_MounterConsumesModifiedParameters(t *testing.T) {
-	cs := modifyTestDriver()
+	cs, _ := modifyTestDriver()
 	if _, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
 		VolumeId:          "pvc-abc",
 		MutableParameters: map[string]string{"diskType": "ssd"},
@@ -175,7 +213,7 @@ func createVolumeReq(name string, params, mutable map[string]string) *csi.Create
 }
 
 func TestCreateVolume_MergesMutableParametersIntoContext(t *testing.T) {
-	cs := modifyTestDriver()
+	cs, _ := modifyTestDriver()
 	resp, err := cs.CreateVolume(context.Background(), createVolumeReq("pvc-abc",
 		map[string]string{"diskType": "hdd"},
 		map[string]string{"diskType": "ssd", "replication": "001"},
@@ -196,7 +234,7 @@ func TestCreateVolume_MergesMutableParametersIntoContext(t *testing.T) {
 }
 
 func TestCreateVolume_RejectsInvalidMutableParameters(t *testing.T) {
-	cs := modifyTestDriver()
+	cs, _ := modifyTestDriver()
 	for key, value := range map[string]string{
 		"dataLocality":      "bogus",
 		"concurrentReaders": "not-a-number",
@@ -209,11 +247,43 @@ func TestCreateVolume_RejectsInvalidMutableParameters(t *testing.T) {
 }
 
 func TestCreateVolume_RejectsStructuralMutableParameters(t *testing.T) {
-	cs := modifyTestDriver()
+	cs, _ := modifyTestDriver()
 	for _, key := range []string{"parentDir", "path", "volumeName", "collection"} {
 		_, err := cs.CreateVolume(context.Background(), createVolumeReq("pvc-abc", nil, map[string]string{key: "whatever"}))
 		if status.Code(err) != codes.InvalidArgument {
 			t.Errorf("structural key %q: code = %v, want InvalidArgument", key, status.Code(err))
 		}
+	}
+}
+
+func TestControllerModifyVolume_PersistsAcceptedParameters(t *testing.T) {
+	cs, store := modifyTestDriver()
+	if _, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+		VolumeId:          "pvc-abc",
+		MutableParameters: map[string]string{"diskType": "ssd", "concurrentReaders": "64"},
+	}); err != nil {
+		t.Fatalf("modify failed: %v", err)
+	}
+	if store.writtenID != "pvc-abc" {
+		t.Fatalf("expected write for pvc-abc, got %q", store.writtenID)
+	}
+	params, err := store.Read(context.Background(), "pvc-abc")
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if params["diskType"] != "ssd" || params["concurrentReaders"] != "64" {
+		t.Fatalf("persisted parameters lost: %v", params)
+	}
+}
+
+func TestControllerModifyVolume_WriteFailureFailsModify(t *testing.T) {
+	cs, store := modifyTestDriver()
+	store.writeErr = errors.New("filer down")
+	_, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+		VolumeId:          "pvc-abc",
+		MutableParameters: map[string]string{"diskType": "ssd"},
+	})
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("code = %v, want Internal", status.Code(err))
 	}
 }

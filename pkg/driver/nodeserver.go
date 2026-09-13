@@ -68,6 +68,17 @@ type NodeServer struct {
 	unmountFn        func(path string) error
 	bindMountFn      BindMountFn
 	nodeLabelsFn     NodeLabelsFn
+
+	// vacLoader reads the persisted VolumeAttributesClass parameters for a
+	// volume. Nil means the default filer-backed store.
+	vacLoader func(ctx context.Context, volumeID string) (map[string]string, error)
+}
+
+func (ns *NodeServer) loadPersistedVolumeAttributes(ctx context.Context, volumeID string) (map[string]string, error) {
+	if ns.vacLoader != nil {
+		return ns.vacLoader(ctx, volumeID)
+	}
+	return newFilerVacStore(ns.Driver.filers).Read(ctx, volumeID)
 }
 
 var _ = csi.NodeServer(&NodeServer{})
@@ -466,6 +477,15 @@ func (ns *NodeServer) removeVolumeMutex(volumeID string) {
 // tests can inject fakes that do not touch the real mount service or k8s API.
 func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volContext map[string]string, readOnly bool) (*Volume, error) {
 	effectiveVolContext := cloneVolumeContext(volContext)
+	// VolumeAttributesClass parameters arrive via ControllerModifyVolume,
+	// never via the publish context, so overlay what was persisted for this
+	// volume. Read failures degrade to the PV attributes: staging must not
+	// invent a new failure mode for volumes that never used a VAC.
+	if persisted, err := ns.loadPersistedVolumeAttributes(context.Background(), volumeID); err != nil {
+		glog.Warningf("could not read persisted volume attributes for %s, using PV attributes: %v", volumeID, err)
+	} else if len(persisted) > 0 {
+		mergePersistedVolumeAttributes(effectiveVolContext, persisted)
+	}
 	capacity, hasCapacity, err := ns.resolveVolumeCapacity(volumeID, effectiveVolContext)
 	if err != nil {
 		return nil, err
