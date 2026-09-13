@@ -3,15 +3,19 @@ package driver
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb"
+	"github.com/seaweedfs/seaweedfs/weed/util"
 )
 
 // vacRootDir is the filer subtree holding persisted VolumeAttributesClass
@@ -51,20 +55,48 @@ func vacPath(volumeID string) string {
 // state survives PV recreation and cluster rebuilds as long as the data does.
 type filerVacStore struct {
 	filers []pb.ServerAddress
+	scheme string
 	client *http.Client
 }
 
 func newFilerVacStore(filers []pb.ServerAddress) *filerVacStore {
+	tlsConfig := vacStoreTLSConfig()
+	scheme := "http"
+	client := &http.Client{Timeout: 10 * time.Second}
+	if tlsConfig != nil {
+		scheme = "https"
+		client.Transport = &http.Transport{TLSClientConfig: tlsConfig}
+	}
 	return &filerVacStore{
 		filers: filers,
-		client: &http.Client{Timeout: 10 * time.Second},
+		scheme: scheme,
+		client: client,
 	}
+}
+
+func vacStoreTLSConfig() *tls.Config {
+	v := util.GetViper()
+	caFile := v.GetString("grpc.ca")
+	if caFile == "" {
+		return nil
+	}
+	caCert, err := os.ReadFile(caFile)
+	if err != nil {
+		glog.Warningf("could not read grpc.ca for VAC store TLS: %v", err)
+		return nil
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caCert) {
+		glog.Warningf("could not parse grpc.ca for VAC store TLS")
+		return nil
+	}
+	return &tls.Config{RootCAs: pool}
 }
 
 func (s *filerVacStore) roundTrip(ctx context.Context, method, volumeID string, body []byte, okCodes ...int) ([]byte, error) {
 	var lastErr error
 	for _, filer := range s.filers {
-		target := "http://" + filer.ToHttpAddress() + vacPath(volumeID)
+		target := s.scheme + "://" + filer.ToHttpAddress() + vacPath(volumeID)
 		var reqBody io.Reader
 		if body != nil {
 			reqBody = bytes.NewReader(body)
