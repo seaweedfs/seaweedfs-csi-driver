@@ -126,6 +126,9 @@ func (s *filerVacStore) roundTrip(ctx context.Context, method, volumeID string, 
 }
 
 func (s *filerVacStore) Read(ctx context.Context, volumeID string) (map[string]string, error) {
+	if len(s.filers) == 0 {
+		return nil, nil
+	}
 	body, err := s.roundTrip(ctx, http.MethodGet, volumeID, nil, http.StatusOK, http.StatusNotFound)
 	if err != nil {
 		return nil, err
