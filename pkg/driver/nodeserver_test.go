@@ -137,7 +137,20 @@ func TestStageNewVolumeAppliesPersistedVolumeAttributes(t *testing.T) {
 	}
 }
 
-func TestStageNewVolumeDegradesWhenVacStoreUnreadable(t *testing.T) {
+func TestStageNewVolumeFailsWhenVacStoreUnreadable(t *testing.T) {
+	ns := newTestNodeServer(t, &fakeMounter{})
+	ns.vacLoader = func(_ context.Context, volumeID string) (map[string]string, error) {
+		return nil, errors.New("filer unreachable")
+	}
+
+	stagingPath := filepath.Join(t.TempDir(), "staging")
+	_, err := ns.stageNewVolume("vol-1", stagingPath, map[string]string{"concurrentReaders": "128"}, false)
+	if err == nil {
+		t.Fatal("stageNewVolume must fail when the VAC store is unreadable")
+	}
+}
+
+func TestStageNewVolumeFallsBackWhenNoVacEntry(t *testing.T) {
 	var capturedVolContext map[string]string
 	ns := newTestNodeServer(t, &fakeMounter{})
 	ns.mounterFactory = func(volumeID string, readOnly bool, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
@@ -145,14 +158,14 @@ func TestStageNewVolumeDegradesWhenVacStoreUnreadable(t *testing.T) {
 		return &fakeMounter{}, nil
 	}
 	ns.vacLoader = func(_ context.Context, volumeID string) (map[string]string, error) {
-		return nil, errors.New("filer unreachable")
+		return nil, nil
 	}
 
 	stagingPath := filepath.Join(t.TempDir(), "staging")
 	if _, err := ns.stageNewVolume("vol-1", stagingPath, map[string]string{"concurrentReaders": "128"}, false); err != nil {
-		t.Fatalf("stageNewVolume must proceed when the store is unreadable: %v", err)
+		t.Fatalf("stageNewVolume must proceed when no VAC entry exists: %v", err)
 	}
 	if capturedVolContext["concurrentReaders"] != "128" {
-		t.Errorf("PV attributes must stay intact on read failure: %v", capturedVolContext)
+		t.Errorf("PV attributes must stay intact when no VAC entry exists: %v", capturedVolContext)
 	}
 }
