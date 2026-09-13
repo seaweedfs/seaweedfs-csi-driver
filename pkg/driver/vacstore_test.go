@@ -119,3 +119,12 @@ func TestVacPathEscapesSlashes(t *testing.T) {
 		t.Fatalf("volume id not escaped to a single element: %q", p)
 	}
 }
+
+func TestVacPathIsCollisionFree(t *testing.T) {
+	if vacPath("/buckets/a_b") == vacPath("/buckets/a/b") {
+		t.Fatal("distinct volume IDs with underscores vs slashes must not collide")
+	}
+	if vacPath("../escape") == vacPath("/.csi/vac/anything") {
+		t.Fatal("path traversal must not match a real VAC path")
+	}
+}
