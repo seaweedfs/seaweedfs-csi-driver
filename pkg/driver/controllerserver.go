@@ -91,6 +91,18 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	params["parentDir"] = parentDir
 	params["volumeName"] = volumeName
 
+	// Merge VolumeAttributesClass mutable parameters into the volume context
+	// so initial class settings reach the mount. Mutable values take
+	// precedence over static StorageClass parameters.
+	if mutableParams := req.GetMutableParameters(); len(mutableParams) > 0 {
+		if err := validateMutableParameters(mutableParams); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		for key, value := range mutableParams {
+			params[key] = value
+		}
+	}
+
 	if err := cs.Driver.ValidateControllerServiceRequest(csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME); err != nil {
 		glog.V(3).Infof("invalid create volume req: %v", req)
 		return nil, err
@@ -365,13 +377,10 @@ func (cs *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *
 	}, nil
 }
 
-// mutableMountParameters are the volume context keys a VolumeAttributesClass
-// may change. They are re-read from the volume context on every mount, so a
-// modified value takes effect at the next publish without backend changes.
-// Structural keys (which filer path / collection backs the volume, its
-// identity and capacity) are deliberately excluded: they cannot change on an
-// existing mount. collectionQuotaMB is excluded too — the mounter derives the
-// quota from the volume capacity and ignores the context key.
+// mutableMountParameters are volume context keys a VolumeAttributesClass may
+// change. Structural keys (path, collection, volumeName, capacity) are
+// excluded since they cannot change after provisioning; collectionQuotaMB is
+// derived from capacity by the mounter.
 var mutableMountParameters = map[string]struct{}{
 	"diskType":           {},
 	"replication":        {},
@@ -389,9 +398,6 @@ var mutableMountParameters = map[string]struct{}{
 	"cacheMetaTtlSec":    {},
 }
 
-// validateMutableParameterValues rejects values the mount would refuse at
-// publish time anyway, so a bad VolumeAttributesClass fails at the modify
-// call instead of breaking the volume's next mount.
 func validateMutableParameterValues(key, value string) error {
 	if value == "" {
 		return nil
@@ -409,11 +415,34 @@ func validateMutableParameterValues(key, value string) error {
 	return nil
 }
 
-// ControllerModifyVolume implements VolumeAttributesClass support. The
-// SeaweedFS backend stores no per-volume provisioning metadata, so there is
-// nothing to change controller-side: modified parameters are validated here
-// and take effect when kubelet re-publishes the volume, because the mount
-// command is rebuilt from the volume context on every publish.
+// validateMutableParameters rejects structural or unknown keys and values the
+// mount would refuse at publish time, so a bad class fails at modify/create
+// instead of breaking the next mount.
+func validateMutableParameters(params map[string]string) error {
+	var unknown []string
+	var invalid []string
+	for key, value := range params {
+		if _, ok := mutableMountParameters[key]; !ok {
+			unknown = append(unknown, key)
+			continue
+		}
+		if err := validateMutableParameterValues(key, value); err != nil {
+			invalid = append(invalid, err.Error())
+		}
+	}
+	if len(unknown) > 0 {
+		return fmt.Errorf("parameters are not modifiable on SeaweedFS volumes (structural or unknown): %s", strings.Join(unknown, ", "))
+	}
+	if len(invalid) > 0 {
+		return fmt.Errorf("invalid parameter values: %s", strings.Join(invalid, "; "))
+	}
+	return nil
+}
+
+// ControllerModifyVolume validates VolumeAttributesClass parameter changes.
+// The SeaweedFS backend stores no per-volume metadata, so accepted parameters
+// take effect when kubelet re-publishes and rebuilds the mount from the volume
+// context.
 func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi.ControllerModifyVolumeRequest) (*csi.ControllerModifyVolumeResponse, error) {
 	volumeID := req.GetVolumeId()
 	if volumeID == "" {
@@ -422,29 +451,8 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 	if len(req.GetMutableParameters()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "mutable parameters missing in request")
 	}
-
-	var unknown []string
-	var invalid []error
-	for key, value := range req.GetMutableParameters() {
-		if _, ok := mutableMountParameters[key]; !ok {
-			unknown = append(unknown, key)
-			continue
-		}
-		if err := validateMutableParameterValues(key, value); err != nil {
-			invalid = append(invalid, err)
-		}
-	}
-	if len(unknown) > 0 {
-		return nil, status.Errorf(codes.InvalidArgument,
-			"parameters are not modifiable on SeaweedFS volumes (structural or unknown): %s", strings.Join(unknown, ", "))
-	}
-	if len(invalid) > 0 {
-		msgs := make([]string, 0, len(invalid))
-		for _, err := range invalid {
-			msgs = append(msgs, err.Error())
-		}
-		return nil, status.Errorf(codes.InvalidArgument,
-			"invalid parameter values: %s", strings.Join(msgs, "; "))
+	if err := validateMutableParameters(req.GetMutableParameters()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	glog.Infof("modify volume req: %v, parameters: %v", volumeID, req.GetMutableParameters())

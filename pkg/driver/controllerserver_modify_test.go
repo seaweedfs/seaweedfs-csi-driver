@@ -72,8 +72,6 @@ func TestControllerModifyVolume_RejectsUnknownParameter(t *testing.T) {
 }
 
 func TestControllerModifyVolume_RejectsIgnoredQuotaParameter(t *testing.T) {
-	// collectionQuotaMB is listed among the mounter's ignored context keys —
-	// accepting it as modifiable would promise a change that never applies.
 	cs := modifyTestDriver()
 	_, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
 		VolumeId:          "pvc-abc",
@@ -140,8 +138,6 @@ func TestControllerModifyVolume_RequiresVolumeIdAndParameters(t *testing.T) {
 }
 
 func TestControllerModifyVolume_MounterConsumesModifiedParameters(t *testing.T) {
-	// The contract that makes MODIFY_VOLUME meaningful: a modified diskType
-	// must reach the weed mount command line on the next publish.
 	cs := modifyTestDriver()
 	if _, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
 		VolumeId:          "pvc-abc",
@@ -163,5 +159,61 @@ func TestControllerModifyVolume_MounterConsumesModifiedParameters(t *testing.T) 
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "-disk=ssd") {
 		t.Errorf("mount args missing -disk=ssd: %s", joined)
+	}
+}
+
+func createVolumeReq(name string, params, mutable map[string]string) *csi.CreateVolumeRequest {
+	return &csi.CreateVolumeRequest{
+		Name:              name,
+		Parameters:        params,
+		MutableParameters: mutable,
+		VolumeCapabilities: []*csi.VolumeCapability{{
+			AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{}},
+			AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+		}},
+	}
+}
+
+func TestCreateVolume_MergesMutableParametersIntoContext(t *testing.T) {
+	cs := modifyTestDriver()
+	resp, err := cs.CreateVolume(context.Background(), createVolumeReq("pvc-abc",
+		map[string]string{"diskType": "hdd"},
+		map[string]string{"diskType": "ssd", "replication": "001"},
+	))
+	if err != nil {
+		t.Fatalf("CreateVolume: %v", err)
+	}
+	vc := resp.GetVolume().GetVolumeContext()
+	if vc["diskType"] != "ssd" {
+		t.Errorf("mutable diskType should take precedence: got %q", vc["diskType"])
+	}
+	if vc["replication"] != "001" {
+		t.Errorf("mutable replication missing from context: got %q", vc["replication"])
+	}
+	if vc["parentDir"] != "/buckets" || vc["volumeName"] != "pvc-abc" {
+		t.Errorf("structural keys clobbered: parentDir=%q volumeName=%q", vc["parentDir"], vc["volumeName"])
+	}
+}
+
+func TestCreateVolume_RejectsInvalidMutableParameters(t *testing.T) {
+	cs := modifyTestDriver()
+	for key, value := range map[string]string{
+		"dataLocality":      "bogus",
+		"concurrentReaders": "not-a-number",
+	} {
+		_, err := cs.CreateVolume(context.Background(), createVolumeReq("pvc-abc", nil, map[string]string{key: value}))
+		if status.Code(err) != codes.InvalidArgument {
+			t.Errorf("%s=%q: code = %v, want InvalidArgument", key, value, status.Code(err))
+		}
+	}
+}
+
+func TestCreateVolume_RejectsStructuralMutableParameters(t *testing.T) {
+	cs := modifyTestDriver()
+	for _, key := range []string{"parentDir", "path", "volumeName", "collection"} {
+		_, err := cs.CreateVolume(context.Background(), createVolumeReq("pvc-abc", nil, map[string]string{key: "whatever"}))
+		if status.Code(err) != codes.InvalidArgument {
+			t.Errorf("structural key %q: code = %v, want InvalidArgument", key, status.Code(err))
+		}
 	}
 }
