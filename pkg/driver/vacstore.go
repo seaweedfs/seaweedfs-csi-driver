@@ -3,12 +3,11 @@ package driver
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
@@ -38,13 +37,11 @@ type vacEntry struct {
 
 // vacPath returns the filer path for a volume's persisted parameters. The
 // volume ID may contain '/' (controller-resolved absolute paths) and must
-// become a single path element. Percent-encoding the slash does not help:
-// net/http decodes %2F back into '/' in URL.Path before the filer sees it,
-// so the separator is mapped to a literal '_' instead. Volume IDs are
-// sanitized to [-.a-zA-Z0-9] plus '/' (see unsafeVolumeIdChars), which
-// contains no '_', keeping the mapping collision-free.
+// become a single path element. base64 RawURLEncoding is injective and
+// contains no '/', so distinct volume IDs never collide and path traversal
+// is impossible.
 func vacPath(volumeID string) string {
-	escaped := url.PathEscape(strings.ReplaceAll(volumeID, "/", "_"))
+	escaped := base64.RawURLEncoding.EncodeToString([]byte(volumeID))
 	return vacRootDir + "/" + escaped
 }
 
