@@ -186,3 +186,18 @@ func TestStageNewVolumeRejectsWritebackDlmCombo(t *testing.T) {
 		t.Fatalf("error should name the exclusivity: %v", err)
 	}
 }
+
+func TestStageNewVolumeValidatesMergedValues(t *testing.T) {
+	ns := newTestNodeServer(t, &fakeMounter{})
+	ns.vacLoader = func(_ context.Context, volumeID string) (map[string]string, error) {
+		return map[string]string{"concurrentReaders": "64"}, nil
+	}
+
+	stagingPath := filepath.Join(t.TempDir(), "staging")
+	// Static PV attribute with a typo: stage must fail with an invalid
+	// argument error instead of a weed mount flag parse failure.
+	_, err := ns.stageNewVolume("/buckets/pvc-1", stagingPath, map[string]string{"writebackCache": "yes"}, false)
+	if err == nil || !strings.Contains(err.Error(), "invalid argument") {
+		t.Fatalf("expected invalid argument error, got %v", err)
+	}
+}

@@ -40,6 +40,41 @@ func GetVolumeCapacity(driverName, volumeId string) (int64, error) {
 }
 
 func getVolumeCapacity(ctx context.Context, client kubernetes.Interface, driverName, volumeId string) (int64, error) {
+	volume, err := resolvePersistentVolume(ctx, client, driverName, volumeId)
+	if err != nil {
+		return 0, err
+	}
+	return persistentVolumeCapacity(volume)
+}
+
+// GetVolumeAttributes returns the CSI volume attributes of the persistent
+// volume backing volumeId, resolved the same way capacity is.
+func GetVolumeAttributes(driverName, volumeId string) (map[string]string, error) {
+	client, err := newInCluster()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	volume, err := resolvePersistentVolume(ctx, client, driverName, volumeId)
+	if err != nil {
+		return nil, err
+	}
+	if volume.Spec.CSI == nil {
+		return nil, fmt.Errorf("persistent volume %q has no CSI source", volume.Name)
+	}
+	attrs := make(map[string]string, len(volume.Spec.CSI.VolumeAttributes))
+	for k, v := range volume.Spec.CSI.VolumeAttributes {
+		attrs[k] = v
+	}
+	return attrs, nil
+}
+
+// resolvePersistentVolume finds the PV for a CSI volume id: direct Get by the
+// PV name when the handle's last element is a DNS-1123 subdomain, otherwise a
+// list matching the full CSI volume handle.
+func resolvePersistentVolume(ctx context.Context, client kubernetes.Interface, driverName, volumeId string) (*corev1.PersistentVolume, error) {
 	// Fast path: avoid listing every PersistentVolume in the cluster on each
 	// stage. Legacy dynamic volumes used the PV name directly as the CSI volume
 	// handle, while newer ones use a full filer path (e.g. "/buckets/pvc-xxxx")
@@ -50,7 +85,7 @@ func getVolumeCapacity(ctx context.Context, client kubernetes.Interface, driverN
 		if volume, err := client.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{}); err == nil &&
 			volume.Spec.CSI != nil && volume.Spec.CSI.Driver == driverName &&
 			(volume.Spec.CSI.VolumeHandle == volumeId || volume.Name == volumeId) {
-			return persistentVolumeCapacity(volume)
+			return volume, nil
 		}
 	}
 
@@ -58,7 +93,7 @@ func getVolumeCapacity(ctx context.Context, client kubernetes.Interface, driverN
 	// handle is an arbitrary filer path), so match by CSI volume handle instead.
 	volumes, err := client.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return 0, fmt.Errorf("list persistent volumes for CSI volume handle %q: %w", volumeId, err)
+		return nil, fmt.Errorf("list persistent volumes for CSI volume handle %q: %w", volumeId, err)
 	}
 
 	var matched *corev1.PersistentVolume
@@ -70,15 +105,14 @@ func getVolumeCapacity(ctx context.Context, client kubernetes.Interface, driverN
 			continue
 		}
 		if matched != nil {
-			return 0, fmt.Errorf("multiple persistent volumes use CSI volume handle %q", volumeId)
+			return nil, fmt.Errorf("multiple persistent volumes use CSI volume handle %q", volumeId)
 		}
 		matched = volume
 	}
 	if matched == nil {
-		return 0, fmt.Errorf("persistent volume with name or CSI volume handle %q not found", volumeId)
+		return nil, fmt.Errorf("persistent volume with name or CSI volume handle %q not found", volumeId)
 	}
-
-	return persistentVolumeCapacity(matched)
+	return matched, nil
 }
 
 func persistentVolumeCapacity(volume *corev1.PersistentVolume) (int64, error) {

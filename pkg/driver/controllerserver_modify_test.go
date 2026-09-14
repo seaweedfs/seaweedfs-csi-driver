@@ -357,3 +357,36 @@ func TestMounterConsumesWritebackTunables(t *testing.T) {
 		}
 	}
 }
+
+func TestControllerModifyVolume_ValidatesMergedPvAttributes(t *testing.T) {
+	// PV carries static dlm=true; the class only flips writebackCache — the
+	// combo is invisible to the mutable parameters alone, so the merged
+	// effective set must be validated before persisting.
+	cs, store := modifyTestDriver()
+	cs.pvAttributesFn = func(_ context.Context, volumeID string) (map[string]string, error) {
+		return map[string]string{"dlm": "true"}, nil
+	}
+	_, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+		VolumeId:          "pvc-abc",
+		MutableParameters: map[string]string{"writebackCache": "true"},
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("code = %v, want InvalidArgument for the merged combo", status.Code(err))
+	}
+	if len(store.data) != 0 {
+		t.Fatalf("rejected modification must not be persisted: %v", store.data)
+	}
+}
+
+func TestControllerModifyVolume_ProceedsWhenPvAttributesUnreadable(t *testing.T) {
+	cs, _ := modifyTestDriver()
+	cs.pvAttributesFn = func(_ context.Context, volumeID string) (map[string]string, error) {
+		return nil, errors.New("api server unreachable")
+	}
+	if _, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+		VolumeId:          "pvc-abc",
+		MutableParameters: map[string]string{"concurrentReaders": "32"},
+	}); err != nil {
+		t.Fatalf("unreadable PV attributes must not block the modify: %v", err)
+	}
+}

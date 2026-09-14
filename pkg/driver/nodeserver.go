@@ -488,10 +488,10 @@ func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volCont
 	// fully merged context is validated here — the last point before the
 	// mount command is built.
 	if err := validateConstrainedParameterValues(effectiveVolContext); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid argument: %w", err)
 	}
 	if err := validateWritebackDlmCombo(effectiveVolContext); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid argument: %w", err)
 	}
 	capacity, hasCapacity, err := ns.resolveVolumeCapacity(volumeID, effectiveVolContext)
 	if err != nil {
