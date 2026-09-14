@@ -226,6 +226,52 @@ spec:
       storage: 1Gi
 ```
 
+# VolumeAttributesClass
+
+Mount-time parameters can be changed on a **bound** PVC through
+[VolumeAttributesClass](https://kubernetes.io/docs/concepts/storage/volume-attributes-classes/),
+without recreating the volume:
+
+```
+apiVersion: storage.k8s.io/v1
+kind: VolumeAttributesClass
+metadata:
+  name: seaweedfs-ssd
+driverName: seaweedfs-csi-driver
+parameters:
+  diskType: "ssd"
+  concurrentReaders: "64"
+```
+
+```
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-pvc
+spec:
+  volumeAttributesClassName: seaweedfs-ssd
+  ...
+```
+
+Modifiable parameters are the mount-time knobs: `diskType`, `replication`,
+`ttl`, `dataCenter`, `dataLocality`, `uidMap`, `gidMap`, `chunkSizeLimitMB`,
+`volumeServerAccess`, `readRetryTime`, `concurrentReaders`,
+`concurrentWriters`, `cacheCapacityMB`, `cacheMetaTtlSec`. Structural keys
+(`collection`, `path`, `parentDir`, `volumeName`, capacity) are rejected, as
+are invalid values (unknown `dataLocality`, non-integer numeric options).
+
+Notes:
+
+- A class applied when the PVC is created reaches the first mount directly.
+  Changing the class of a bound PVC persists the accepted parameters on the
+  filer (under `/.csi/vac/<volume>`, outside `/buckets`); the volume picks
+  them up at its next stage (pod restart or reschedule).
+- The entry is removed with the volume on `DeleteVolume`.
+- The cluster's `csi-resizer` must support VolumeAttributesClass against the
+  k8s API version in use: released v1.14.0 still watches the
+  `storage.k8s.io/v1beta1` API removed in Kubernetes 1.34 — use a build from
+  master (or a newer release once available).
+
 # DataLocality
 
 DataLocality (inspired by [Longhorn](https://longhorn.io/docs/latest/high-availability/data-locality/)) allows instructing the storage-driver which volume-locations will be used or preferred in Pods to read & write.
