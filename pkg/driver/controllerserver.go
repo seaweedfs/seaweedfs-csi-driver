@@ -397,20 +397,23 @@ func (cs *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *
 // excluded since they cannot change after provisioning; collectionQuotaMB is
 // derived from capacity by the mounter.
 var mutableMountParameters = map[string]struct{}{
-	"diskType":           {},
-	"replication":        {},
-	"ttl":                {},
-	"dataCenter":         {},
-	"dataLocality":       {},
-	"uidMap":             {},
-	"gidMap":             {},
-	"chunkSizeLimitMB":   {},
-	"volumeServerAccess": {},
-	"readRetryTime":      {},
-	"concurrentReaders":  {},
-	"concurrentWriters":  {},
-	"cacheCapacityMB":    {},
-	"cacheMetaTtlSec":    {},
+	"diskType":             {},
+	"replication":          {},
+	"ttl":                  {},
+	"dataCenter":           {},
+	"dataLocality":         {},
+	"uidMap":               {},
+	"gidMap":               {},
+	"chunkSizeLimitMB":     {},
+	"volumeServerAccess":   {},
+	"readRetryTime":        {},
+	"concurrentReaders":    {},
+	"concurrentWriters":    {},
+	"cacheCapacityMB":      {},
+	"cacheMetaTtlSec":      {},
+	"writebackCache":       {},
+	"metadataFlushSeconds": {},
+	"dlm":                  {},
 }
 
 func validateMutableParameterValues(key, value string) error {
@@ -422,9 +425,13 @@ func validateMutableParameterValues(key, value string) error {
 		if _, ok := datalocality.FromString(value); !ok {
 			return fmt.Errorf("invalid dataLocality %q", value)
 		}
-	case "concurrentReaders", "concurrentWriters", "cacheCapacityMB", "cacheMetaTtlSec", "chunkSizeLimitMB":
+	case "concurrentReaders", "concurrentWriters", "cacheCapacityMB", "cacheMetaTtlSec", "chunkSizeLimitMB", "metadataFlushSeconds":
 		if _, err := strconv.Atoi(value); err != nil {
 			return fmt.Errorf("%s must be an integer, got %q", key, value)
+		}
+	case "writebackCache", "dlm":
+		if _, err := strconv.ParseBool(value); err != nil {
+			return fmt.Errorf("%s must be a boolean, got %q", key, value)
 		}
 	}
 	return nil
