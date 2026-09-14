@@ -64,7 +64,7 @@ func (cs *ControllerServer) pvAttributes(ctx context.Context, volumeID string) (
 	if cs.pvAttributesFn != nil {
 		return cs.pvAttributesFn(ctx, volumeID)
 	}
-	return k8s.GetVolumeAttributes(cs.Driver.name, volumeID)
+	return k8s.GetVolumeAttributes(ctx, cs.Driver.name, volumeID)
 }
 
 var _ = csi.ControllerServer(&ControllerServer{})
@@ -527,14 +527,18 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 	// mutable parameters. Without this, a class flipping dlm on while the PV
 	// carries static writebackCache=true passes here and the volume only
 	// fails at staging, after the modification was persisted.
+	// If the PV attributes cannot be read, fail with a retryable error
+	// instead of persisting an unvalidated set: the combo check is
+	// meaningless without the static half, and persisting could record a
+	// combination that every later stage rejects.
 	effective := make(map[string]string)
-	if attrs, err := cs.pvAttributes(ctx, volumeID); err != nil {
-		glog.V(4).Infof("could not read PV attributes for %s: %v", volumeID, err)
-	} else {
-		for key, value := range attrs {
-			if _, mutable := mutableMountParameters[key]; mutable {
-				effective[key] = value
-			}
+	attrs, err := cs.pvAttributes(ctx, volumeID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "reading PV attributes for %s: %v", volumeID, err)
+	}
+	for key, value := range attrs {
+		if _, mutable := mutableMountParameters[key]; mutable {
+			effective[key] = value
 		}
 	}
 	for key, value := range req.GetMutableParameters() {
