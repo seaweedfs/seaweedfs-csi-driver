@@ -273,13 +273,19 @@ driverName: seaweedfs-csi-driver
 parameters:
   writebackCache: "true"
   metadataFlushSeconds: "300"
-  dlm: "true"
 ```
 
 `writebackCache=true` enables FUSE writeback caching — data accepted before
-the last flush is lost if the mount crashes; `metadataFlushSeconds` bounds
-that window for metadata; `dlm` serializes writers across mounts of the same
-volume and honors POSIX advisory locks.
+the last flush is lost if the mount crashes. `metadataFlushSeconds` is
+unrelated to that window: it periodically flushes file **metadata** to the
+filer so long-running writes are not purged by `volume.fsck`; it does not
+make cached data crash-safe.
+
+`dlm` is mutually exclusive with `writebackCache`: weed mount runs
+single-writer under writeback and silently disables the distributed lock
+manager when both are requested, so the driver rejects the combination at
+modify/create time. Set `dlm` on a separate class (without writeback) when
+concurrent mounts need coordination.
 
 Notes:
 

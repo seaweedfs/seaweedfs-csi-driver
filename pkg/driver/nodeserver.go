@@ -484,6 +484,15 @@ func (ns *NodeServer) stageNewVolume(volumeID, stagingTargetPath string, volCont
 	if len(persisted) > 0 {
 		mergePersistedVolumeAttributes(effectiveVolContext, persisted)
 	}
+	// Static PV attributes skip controller-side validation entirely, so the
+	// fully merged context is validated here — the last point before the
+	// mount command is built.
+	if err := validateConstrainedParameterValues(effectiveVolContext); err != nil {
+		return nil, err
+	}
+	if err := validateWritebackDlmCombo(effectiveVolContext); err != nil {
+		return nil, err
+	}
 	capacity, hasCapacity, err := ns.resolveVolumeCapacity(volumeID, effectiveVolContext)
 	if err != nil {
 		return nil, err

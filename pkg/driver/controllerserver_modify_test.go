@@ -295,7 +295,6 @@ func TestControllerModifyVolume_WritebackTunables(t *testing.T) {
 		MutableParameters: map[string]string{
 			"writebackCache":       "true",
 			"metadataFlushSeconds": "300",
-			"dlm":                  "true",
 		},
 	}); err != nil {
 		t.Fatalf("writeback tunables rejected: %v", err)
@@ -304,8 +303,22 @@ func TestControllerModifyVolume_WritebackTunables(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read back: %v", err)
 	}
-	if params["writebackCache"] != "true" || params["dlm"] != "true" || params["metadataFlushSeconds"] != "300" {
+	if params["writebackCache"] != "true" || params["metadataFlushSeconds"] != "300" {
 		t.Fatalf("persisted parameters lost: %v", params)
+	}
+}
+
+func TestControllerModifyVolume_RejectsWritebackDlmCombo(t *testing.T) {
+	cs, _ := modifyTestDriver()
+	_, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+		VolumeId: "pvc-abc",
+		MutableParameters: map[string]string{
+			"writebackCache": "true",
+			"dlm":            "true",
+		},
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("code = %v, want InvalidArgument (mutually exclusive)", status.Code(err))
 	}
 }
 
