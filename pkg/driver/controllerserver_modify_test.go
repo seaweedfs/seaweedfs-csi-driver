@@ -54,7 +54,14 @@ func modifyTestDriver() (*ControllerServer, *memVacStore) {
 		csi.ControllerServiceCapability_RPC_MODIFY_VOLUME,
 	})
 	store := newMemVacStore()
-	return &ControllerServer{Driver: driver, vacStore: store}, store
+	cs := &ControllerServer{Driver: driver, vacStore: store}
+	// Default to a PV carrying no static mutable attributes, so tests do
+	// not depend on an in-cluster k8s client. Tests that exercise the
+	// merged-set validation override pvAttributesFn.
+	cs.pvAttributesFn = func(_ context.Context, _ string) (map[string]string, error) {
+		return map[string]string{}, nil
+	}
+	return cs, store
 }
 
 func hasModifyVolumeCapability(cs *ControllerServer) bool {
@@ -378,15 +385,24 @@ func TestControllerModifyVolume_ValidatesMergedPvAttributes(t *testing.T) {
 	}
 }
 
-func TestControllerModifyVolume_ProceedsWhenPvAttributesUnreadable(t *testing.T) {
-	cs, _ := modifyTestDriver()
+func TestControllerModifyVolume_FailsWhenPvAttributesUnreadable(t *testing.T) {
+	// The PV lookup is the only source of the static half of the effective
+	// set. When it fails the combo check is meaningless, so the modify must
+	// fail with a retryable error and must not persist the unvalidated
+	// parameters — otherwise a transient API outage could record a
+	// combination that every later stage rejects.
+	cs, store := modifyTestDriver()
 	cs.pvAttributesFn = func(_ context.Context, volumeID string) (map[string]string, error) {
 		return nil, errors.New("api server unreachable")
 	}
-	if _, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+	_, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
 		VolumeId:          "pvc-abc",
 		MutableParameters: map[string]string{"concurrentReaders": "32"},
-	}); err != nil {
-		t.Fatalf("unreadable PV attributes must not block the modify: %v", err)
+	})
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("code = %v, want Internal (retryable)", status.Code(err))
+	}
+	if len(store.data) != 0 {
+		t.Fatalf("failed modify must not be persisted: %v", store.data)
 	}
 }

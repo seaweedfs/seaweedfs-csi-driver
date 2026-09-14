@@ -48,13 +48,15 @@ func getVolumeCapacity(ctx context.Context, client kubernetes.Interface, driverN
 }
 
 // GetVolumeAttributes returns the CSI volume attributes of the persistent
-// volume backing volumeId, resolved the same way capacity is.
-func GetVolumeAttributes(driverName, volumeId string) (map[string]string, error) {
+// volume backing volumeId, resolved the same way capacity is. The supplied
+// context bounds the lookup; a 30s ceiling is applied when ctx carries no
+// deadline so a slow or cancelled caller does not block indefinitely.
+func GetVolumeAttributes(ctx context.Context, driverName, volumeId string) (map[string]string, error) {
 	client, err := newInCluster()
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	volume, err := resolvePersistentVolume(ctx, client, driverName, volumeId)
