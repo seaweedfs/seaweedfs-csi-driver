@@ -287,3 +287,60 @@ func TestControllerModifyVolume_WriteFailureFailsModify(t *testing.T) {
 		t.Fatalf("code = %v, want Internal", status.Code(err))
 	}
 }
+
+func TestControllerModifyVolume_WritebackTunables(t *testing.T) {
+	cs, store := modifyTestDriver()
+	if _, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+		VolumeId: "pvc-abc",
+		MutableParameters: map[string]string{
+			"writebackCache":       "true",
+			"metadataFlushSeconds": "300",
+			"dlm":                  "true",
+		},
+	}); err != nil {
+		t.Fatalf("writeback tunables rejected: %v", err)
+	}
+	params, err := store.Read(context.Background(), "pvc-abc")
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if params["writebackCache"] != "true" || params["dlm"] != "true" || params["metadataFlushSeconds"] != "300" {
+		t.Fatalf("persisted parameters lost: %v", params)
+	}
+}
+
+func TestControllerModifyVolume_RejectsInvalidWritebackTunables(t *testing.T) {
+	cs, _ := modifyTestDriver()
+	for key, value := range map[string]string{
+		"writebackCache":       "yes",
+		"dlm":                  "maybe",
+		"metadataFlushSeconds": "ten",
+	} {
+		_, err := cs.ControllerModifyVolume(context.Background(), &csi.ControllerModifyVolumeRequest{
+			VolumeId:          "pvc-abc",
+			MutableParameters: map[string]string{key: value},
+		})
+		if status.Code(err) != codes.InvalidArgument {
+			t.Errorf("%s=%q: code = %v, want InvalidArgument", key, value, status.Code(err))
+		}
+	}
+}
+
+func TestMounterConsumesWritebackTunables(t *testing.T) {
+	d := &SeaweedFsDriver{name: "test", CacheCapacityMB: 0, CacheMetaTtlSec: 60}
+	m := &mountServiceMounter{driver: d, volContext: map[string]string{
+		"writebackCache":       "true",
+		"metadataFlushSeconds": "300",
+		"dlm":                  "true",
+	}, volumeID: "/buckets/pvc-abc", readOnly: false}
+	args, err := m.buildMountArgs("/tmp/target", "/var/cache/x", "/var/lib/seaweedfs-mount.sock", []string{"127.0.0.1:8888"})
+	if err != nil {
+		t.Fatalf("buildMountArgs: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"-writebackCache=true", "-metadataFlushSeconds=300", "-dlm=true"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("mount args missing %s: %s", want, joined)
+		}
+	}
+}
