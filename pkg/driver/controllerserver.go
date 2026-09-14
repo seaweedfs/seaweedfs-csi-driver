@@ -458,6 +458,40 @@ func validateMutableParameters(params map[string]string) error {
 	if len(invalid) > 0 {
 		return fmt.Errorf("invalid parameter values: %s", strings.Join(invalid, "; "))
 	}
+	if err := validateWritebackDlmCombo(params); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateConstrainedParameterValues checks the values of recognized
+// mount-time parameters, whether they arrive as StorageClass parameters,
+// persistent volume attributes or VolumeAttributesClass mutable parameters.
+// Keys without a cheap controller-side constraint are skipped.
+func validateConstrainedParameterValues(params map[string]string) error {
+	for key, value := range params {
+		if _, constrained := mutableMountParameters[key]; !constrained {
+			continue
+		}
+		if err := validateMutableParameterValues(key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateWritebackDlmCombo rejects writebackCache together with dlm: weed
+// mount requires single-writer mode for writeback caching and silently
+// disables the distributed lock manager when both are requested, which would
+// leave the volume mounted without the coordination the caller asked for.
+func validateWritebackDlmCombo(params map[string]string) error {
+	if wb, dlm := params["writebackCache"], params["dlm"]; wb != "" && dlm != "" {
+		wbOn, wbErr := strconv.ParseBool(wb)
+		dlmOn, dlmErr := strconv.ParseBool(dlm)
+		if wbErr == nil && dlmErr == nil && wbOn && dlmOn {
+			return fmt.Errorf("writebackCache and dlm are mutually exclusive: weed mount disables the distributed lock manager when writeback caching is enabled")
+		}
+	}
 	return nil
 }
 

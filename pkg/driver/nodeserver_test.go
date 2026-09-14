@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -167,5 +168,21 @@ func TestStageNewVolumeFallsBackWhenNoVacEntry(t *testing.T) {
 	}
 	if capturedVolContext["concurrentReaders"] != "128" {
 		t.Errorf("PV attributes must stay intact when no VAC entry exists: %v", capturedVolContext)
+	}
+}
+
+func TestStageNewVolumeRejectsWritebackDlmCombo(t *testing.T) {
+	ns := newTestNodeServer(t, &fakeMounter{})
+	ns.vacLoader = func(_ context.Context, volumeID string) (map[string]string, error) {
+		return map[string]string{"writebackCache": "true"}, nil
+	}
+
+	stagingPath := filepath.Join(t.TempDir(), "staging")
+	_, err := ns.stageNewVolume("/buckets/pvc-1", stagingPath, map[string]string{"dlm": "true"}, false)
+	if err == nil {
+		t.Fatal("expected combo rejection")
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("error should name the exclusivity: %v", err)
 	}
 }
