@@ -120,8 +120,8 @@ github.com/sagikazarmark/locafero v0.11.0 h1:1iurJgmM9G3PA/I+wWYIOw/5SyBtxapeHDc
 github.com/sagikazarmark/locafero v0.11.0/go.mod h1:nVIGvgyzw595SUSUE6tvCp3YYTeHs15MvlmU87WwIik=
 github.com/seaweedfs/goexif v2.0.0+incompatible h1:x8pckiT12QQhifwhDQpeISgDfsqmQ6VR4LFPQ64JRps=
 github.com/seaweedfs/goexif v2.0.0+incompatible/go.mod h1:Oni780Z236sXpIQzk1XoJlTwqrJ02smEin9zQeff7Fk=
-github.com/seaweedfs/seaweedfs v0.0.0-20260913200710-10c0857476d2 h1:EqZv9QZIpulphMZaAthfYrAQ7Ef0aYZGviuS91QX+RE=
-github.com/seaweedfs/seaweedfs v0.0.0-20260913200710-10c0857476d2/go.mod h1:gvt1SxRlxyDteILcbzqT/WLJNJSq/FbmTdxo8TjhK0U=
+github.com/seaweedfs/seaweedfs v0.0.0-20260914013409-ea179963c0a4 h1:3hxA+bTtf555turmTg4icGtnp8lehgsFs6BD+0XYpVU=
+github.com/seaweedfs/seaweedfs v0.0.0-20260914013409-ea179963c0a4/go.mod h1:gvt1SxRlxyDteILcbzqT/WLJNJSq/FbmTdxo8TjhK0U=
 github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 h1:+jumHNA0Wrelhe64i8F6HNlS8pkoyMv5sreGx2Ry5Rw=
 github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8/go.mod h1:3n1Cwaq1E1/1lhQhtRK2ts/ZwZEhjcQeJQ1RuC6Q/8U=
 github.com/spf13/afero v1.15.0 h1:b/YBCLWAJdFWJTN9cLhiXXcD7mzKn9Dm86dNnfyQw1I=
