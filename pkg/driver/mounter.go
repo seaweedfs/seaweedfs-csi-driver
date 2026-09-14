@@ -159,6 +159,12 @@ func (m *mountServiceMounter) buildMountArgs(targetPath, cacheDir, localSocket s
 		"chunkSizeLimitMB":   "",
 		"volumeServerAccess": "",
 		"readRetryTime":      "",
+		// Per-volume mount tunables (overridable via volumeContext /
+		// StorageClass parameters) for workload profiles that need
+		// writeback semantics — e.g. regenerable dev workspaces.
+		"writebackCache":       "",
+		"metadataFlushSeconds": "",
+		"dlm":                  "",
 	}
 
 	dataLocality := m.driver.DataLocality
