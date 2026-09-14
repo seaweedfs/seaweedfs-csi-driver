@@ -256,9 +256,30 @@ spec:
 Modifiable parameters are the mount-time knobs: `diskType`, `replication`,
 `ttl`, `dataCenter`, `dataLocality`, `uidMap`, `gidMap`, `chunkSizeLimitMB`,
 `volumeServerAccess`, `readRetryTime`, `concurrentReaders`,
-`concurrentWriters`, `cacheCapacityMB`, `cacheMetaTtlSec`. Structural keys
-(`collection`, `path`, `parentDir`, `volumeName`, capacity) are rejected, as
-are invalid values (unknown `dataLocality`, non-integer numeric options).
+`concurrentWriters`, `cacheCapacityMB`, `cacheMetaTtlSec`, `writebackCache`,
+`metadataFlushSeconds`, `dlm`. Structural keys (`collection`, `path`,
+`parentDir`, `volumeName`, capacity) are rejected, as are invalid values
+(unknown `dataLocality`, non-integer numeric options, non-boolean flags).
+
+For regenerable-data workloads (build caches, scratch workspaces) a
+writeback-profiled class trades crash-safety for write throughput:
+
+```
+apiVersion: storage.k8s.io/v1
+kind: VolumeAttributesClass
+metadata:
+  name: seaweedfs-writeback
+driverName: seaweedfs-csi-driver
+parameters:
+  writebackCache: "true"
+  metadataFlushSeconds: "300"
+  dlm: "true"
+```
+
+`writebackCache=true` enables FUSE writeback caching — data accepted before
+the last flush is lost if the mount crashes; `metadataFlushSeconds` bounds
+that window for metadata; `dlm` serializes writers across mounts of the same
+volume and honors POSIX advisory locks.
 
 Notes:
 
