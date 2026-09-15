@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -374,7 +375,63 @@ func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetC
 					},
 				},
 			},
+			{
+				Type: &csi.NodeServiceCapability_Rpc{
+					Rpc: &csi.NodeServiceCapability_RPC{
+						Type: csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
+					},
+				},
+			},
 		},
+	}, nil
+}
+
+// NodeGetVolumeStats reports filesystem usage for a staged volume. The kubelet
+// polls it to publish kubelet_volume_stats_* metrics (used/available capacity
+// and inodes) for PVCs backed by this driver.
+func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	volumeID := req.GetVolumeId()
+	volumePath := req.GetVolumePath()
+
+	if volumeID == "" {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+	if volumePath == "" {
+		return nil, status.Error(codes.InvalidArgument, "Volume path missing in request")
+	}
+
+	// The kubelet passes the per-pod published path (not the staging path),
+	// so report usage for whatever path the request carries instead of
+	// matching it against the staged globalmount.
+
+	usage, err := readVolumeUsage(volumePath)
+	if err != nil {
+		return nil, err
+	}
+
+	respUsage := []*csi.VolumeUsage{
+		{
+			Unit:      csi.VolumeUsage_BYTES,
+			Total:     usage.capacityBytes,
+			Used:      usage.usedBytes,
+			Available: usage.availableBytes,
+		},
+	}
+	// Filesystems that do not track inode usage report a sentinel count
+	// (e.g. weed mount reports MaxInt64); forwarding it would turn into
+	// nonsense kubelet_volume_stats_inodes metrics, so omit INODES unless
+	// the numbers look real.
+	if usage.inodes > 0 && usage.inodes < math.MaxInt64/2 {
+		respUsage = append(respUsage, &csi.VolumeUsage{
+			Unit:      csi.VolumeUsage_INODES,
+			Total:     usage.inodes,
+			Used:      usage.inodesUsed,
+			Available: usage.inodesFree,
+		})
+	}
+
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: respUsage,
 	}, nil
 }
 
