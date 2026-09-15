@@ -135,6 +135,11 @@ func (vol *Volume) AddPublishPath(path string, readOnly bool) {
 	vol.publishPaths.Store(path, readOnly)
 }
 
+func (vol *Volume) HasPublishPath(path string) bool {
+	_, ok := vol.publishPaths.Load(path)
+	return ok
+}
+
 func (vol *Volume) RemovePublishPath(path string) {
 	vol.publishPaths.Delete(path)
 }

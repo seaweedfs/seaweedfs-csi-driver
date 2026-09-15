@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -44,6 +45,7 @@ type NodeServer struct {
 	// information about the managed volumes
 	volumes       sync.Map
 	volumeMutexes *KeyMutex
+	activeStats   sync.Map
 
 	// stopCh signals the health monitor goroutine to stop. Guarded by
 	// stopOnce so NodeCleanup is safe to call from multiple shutdown paths.
@@ -61,13 +63,14 @@ type NodeServer struct {
 	activeRecoveries sync.Map // map[string]struct{}
 
 	// Injectable factories / operations (overridden in tests).
-	mounterFactory   MounterFactory
-	capacityFn       CapacityFn
-	isHealthyFn      HealthCheckFn
-	cleanupStagingFn func(stagingPath string) error
-	unmountFn        func(path string) error
-	bindMountFn      BindMountFn
-	nodeLabelsFn     NodeLabelsFn
+	mounterFactory    MounterFactory
+	capacityFn        CapacityFn
+	isHealthyFn       HealthCheckFn
+	cleanupStagingFn  func(stagingPath string) error
+	unmountFn         func(path string) error
+	bindMountFn       BindMountFn
+	nodeLabelsFn      NodeLabelsFn
+	readVolumeUsageFn func(path string) (*volumeUsage, error)
 
 	// vacLoader reads the persisted VolumeAttributesClass parameters for a
 	// volume. Nil means the default filer-backed store.
@@ -374,7 +377,69 @@ func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetC
 					},
 				},
 			},
+			{
+				Type: &csi.NodeServiceCapability_Rpc{
+					Rpc: &csi.NodeServiceCapability_RPC{
+						Type: csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
+					},
+				},
+			},
 		},
+	}, nil
+}
+
+// NodeGetVolumeStats reports filesystem usage for a staged or published volume.
+func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	volumeID := req.GetVolumeId()
+	volumePath := req.GetVolumePath()
+
+	if volumeID == "" {
+		return nil, status.Error(codes.InvalidArgument, "Volume ID missing in request")
+	}
+	if volumePath == "" {
+		return nil, status.Error(codes.InvalidArgument, "Volume path missing in request")
+	}
+	if err := volumeStatsSupported(); err != nil {
+		return nil, err
+	}
+
+	statsCtx, cancel := context.WithTimeout(ctx, defaultHealthCheckTimeout)
+	defer cancel()
+
+	unlock, err := ns.lockVolumeStats(statsCtx, volumeID)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+
+	if err := ns.validateVolumeStatsPath(volumeID, volumePath); err != nil {
+		return nil, err
+	}
+
+	usage, err := ns.readVolumeUsageWithTimeout(statsCtx, volumeID, volumePath)
+	if err != nil {
+		return nil, err
+	}
+
+	respUsage := []*csi.VolumeUsage{
+		{
+			Unit:      csi.VolumeUsage_BYTES,
+			Total:     usage.capacityBytes,
+			Used:      usage.usedBytes,
+			Available: usage.availableBytes,
+		},
+	}
+	if usage.inodes > 0 && usage.inodes != math.MaxInt64 {
+		respUsage = append(respUsage, &csi.VolumeUsage{
+			Unit:      csi.VolumeUsage_INODES,
+			Total:     usage.inodes,
+			Used:      usage.inodesUsed,
+			Available: usage.inodesFree,
+		})
+	}
+
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: respUsage,
 	}, nil
 }
 
