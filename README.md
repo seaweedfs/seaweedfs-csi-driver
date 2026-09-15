@@ -13,7 +13,6 @@
   - [Kubernetes (kubectl)](#kubernetes-kubectl)
   - [Kubernetes (helm)](#kubernetes-helm)
 - [Update (Safe rollout)](#update-safe-rollout)
-- [Upgrading existing installations to `fsGroupPolicy: File`](#upgrading-existing-installations-to-fsgrouppolicy-file)
 - [Testing](#testing)
 - [Static and dynamic provisioning](#static-and-dynamic-provisioning)
 - [DataLocality](#datalocality)
@@ -122,21 +121,6 @@ For safe update set `node.updateStrategy.type: OnDelete` for manual update. Step
   4. delete DS pod on node
   5. uncordon or remove taint on node
   6. repeat all steps on [all nodes]
-
-## Upgrading existing installations to `fsGroupPolicy: File`
-
-`spec.fsGroupPolicy` is immutable in Kubernetes < 1.29, so an existing installation that
-was created without the field cannot be patched to `File` directly: `helm upgrade` or
-`kubectl apply` fails with `spec.fsGroupPolicy: field is immutable`. Delete the CSIDriver
-object first and re-install/upgrade the chart; existing volume mounts are unaffected, and
-the driver re-registers as soon as the object is recreated:
-
-```bash
-kubectl delete csidriver seaweedfs-csi-driver
-helm upgrade seaweedfs-csi-driver ./deploy/helm/seaweedfs-csi-driver --set seaweedfsFiler=<filerHost:port>
-```
-
-On Kubernetes >= 1.29 the field is mutable and a plain upgrade applies the policy directly.
 
 # Testing
 
