@@ -59,7 +59,7 @@ func (ns *NodeServer) readVolumeUsageWithTimeout(ctx context.Context, volumeID, 
 	ctx, cancel := context.WithTimeout(ctx, defaultHealthCheckTimeout)
 	defer cancel()
 
-	request := volumeStatsRequest{volumeID: volumeID, volumePath: filepath.Clean(volumePath)}
+	request := volumeStatsRequest{volumeID: volumeID, volumePath: volumePath}
 	call := &volumeStatsCall{done: make(chan struct{})}
 	actual, loaded := ns.activeStats.LoadOrStore(request, call)
 	if loaded {
