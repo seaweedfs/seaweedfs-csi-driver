@@ -27,6 +27,11 @@ type volumeStatsCall struct {
 	err   error
 }
 
+type volumeStatsRequest struct {
+	volumeID   string
+	volumePath string
+}
+
 func (ns *NodeServer) validateVolumeStatsPath(volumeID, volumePath string) error {
 	if !filepath.IsAbs(volumePath) {
 		return status.Errorf(codes.InvalidArgument, "volume path %s is not absolute", volumePath)
@@ -54,15 +59,16 @@ func (ns *NodeServer) readVolumeUsageWithTimeout(ctx context.Context, volumeID, 
 	ctx, cancel := context.WithTimeout(ctx, defaultHealthCheckTimeout)
 	defer cancel()
 
+	request := volumeStatsRequest{volumeID: volumeID, volumePath: filepath.Clean(volumePath)}
 	call := &volumeStatsCall{done: make(chan struct{})}
-	actual, loaded := ns.activeStats.LoadOrStore(volumeID, call)
+	actual, loaded := ns.activeStats.LoadOrStore(request, call)
 	if loaded {
 		return waitVolumeStatsCall(ctx, volumeID, actual.(*volumeStatsCall))
 	}
 
 	go func() {
 		defer func() {
-			ns.activeStats.Delete(volumeID)
+			ns.activeStats.Delete(request)
 			close(call.done)
 		}()
 		call.usage, call.err = ns.readVolumeUsageForStats(volumePath)
