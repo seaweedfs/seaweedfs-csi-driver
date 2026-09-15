@@ -133,7 +133,7 @@ the driver re-registers as soon as the object is recreated:
 
 ```bash
 kubectl delete csidriver seaweedfs-csi-driver
-helm upgrade seaweedfs-csi-driver ./deploy/helm/seaweedfs-csi-driver -n seaweedfs-csi --set seaweedfsFiler=<filerHost:port>
+helm upgrade seaweedfs-csi-driver ./deploy/helm/seaweedfs-csi-driver --set seaweedfsFiler=<filerHost:port>
 ```
 
 On Kubernetes >= 1.29 the field is mutable and a plain upgrade applies the policy directly.
