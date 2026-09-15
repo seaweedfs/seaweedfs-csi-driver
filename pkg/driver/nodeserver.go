@@ -45,6 +45,7 @@ type NodeServer struct {
 	// information about the managed volumes
 	volumes       sync.Map
 	volumeMutexes *KeyMutex
+	activeStats   sync.Map
 
 	// stopCh signals the health monitor goroutine to stop. Guarded by
 	// stopOnce so NodeCleanup is safe to call from multiple shutdown paths.
@@ -62,13 +63,14 @@ type NodeServer struct {
 	activeRecoveries sync.Map // map[string]struct{}
 
 	// Injectable factories / operations (overridden in tests).
-	mounterFactory   MounterFactory
-	capacityFn       CapacityFn
-	isHealthyFn      HealthCheckFn
-	cleanupStagingFn func(stagingPath string) error
-	unmountFn        func(path string) error
-	bindMountFn      BindMountFn
-	nodeLabelsFn     NodeLabelsFn
+	mounterFactory    MounterFactory
+	capacityFn        CapacityFn
+	isHealthyFn       HealthCheckFn
+	cleanupStagingFn  func(stagingPath string) error
+	unmountFn         func(path string) error
+	bindMountFn       BindMountFn
+	nodeLabelsFn      NodeLabelsFn
+	readVolumeUsageFn func(path string) (*volumeUsage, error)
 
 	// vacLoader reads the persisted VolumeAttributesClass parameters for a
 	// volume. Nil means the default filer-backed store.
@@ -386,9 +388,7 @@ func (ns *NodeServer) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetC
 	}, nil
 }
 
-// NodeGetVolumeStats reports filesystem usage for a staged volume. The kubelet
-// polls it to publish kubelet_volume_stats_* metrics (used/available capacity
-// and inodes) for PVCs backed by this driver.
+// NodeGetVolumeStats reports filesystem usage for a staged or published volume.
 func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
 	volumeID := req.GetVolumeId()
 	volumePath := req.GetVolumePath()
@@ -399,12 +399,19 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 	if volumePath == "" {
 		return nil, status.Error(codes.InvalidArgument, "Volume path missing in request")
 	}
+	if err := volumeStatsSupported(); err != nil {
+		return nil, err
+	}
 
-	// The kubelet passes the per-pod published path (not the staging path),
-	// so report usage for whatever path the request carries instead of
-	// matching it against the staged globalmount.
+	volumeMutex := ns.getVolumeMutex(volumeID)
+	volumeMutex.Lock()
+	defer volumeMutex.Unlock()
 
-	usage, err := readVolumeUsage(volumePath)
+	if err := ns.validateVolumeStatsPath(volumeID, volumePath); err != nil {
+		return nil, err
+	}
+
+	usage, err := ns.readVolumeUsageWithTimeout(ctx, volumeID, volumePath)
 	if err != nil {
 		return nil, err
 	}
@@ -417,11 +424,7 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 			Available: usage.availableBytes,
 		},
 	}
-	// Filesystems that do not track inode usage report a sentinel count
-	// (e.g. weed mount reports MaxInt64); forwarding it would turn into
-	// nonsense kubelet_volume_stats_inodes metrics, so omit INODES unless
-	// the numbers look real.
-	if usage.inodes > 0 && usage.inodes < math.MaxInt64/2 {
+	if usage.inodes > 0 && usage.inodes != math.MaxInt64 {
 		respUsage = append(respUsage, &csi.VolumeUsage{
 			Unit:      csi.VolumeUsage_INODES,
 			Total:     usage.inodes,

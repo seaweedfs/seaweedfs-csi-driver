@@ -8,18 +8,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// volumeUsage holds filesystem usage numbers reported by NodeGetVolumeStats.
-type volumeUsage struct {
-	capacityBytes  int64
-	usedBytes      int64
-	availableBytes int64
-	inodes         int64
-	inodesUsed     int64
-	inodesFree     int64
+func volumeStatsSupported() error {
+	return nil
 }
 
-// readVolumeUsage stats the given volume path and converts statfs counters to
-// CSI VolumeUsage values. Linux only; other platforms return Unimplemented.
 func readVolumeUsage(path string) (*volumeUsage, error) {
 	var sfs syscall.Statfs_t
 	if err := syscall.Statfs(path, &sfs); err != nil {
@@ -42,4 +34,15 @@ func readVolumeUsage(path string) (*volumeUsage, error) {
 		usage.inodesUsed = 0
 	}
 	return usage, nil
+}
+
+func (ns *NodeServer) readVolumeUsageForStats(path string) (*volumeUsage, error) {
+	healthyFn := ns.isHealthyFn
+	if healthyFn == nil {
+		healthyFn = isStagingPathHealthy
+	}
+	if !healthyFn(path) {
+		return nil, status.Errorf(codes.NotFound, "volume path %s is not a live mount", path)
+	}
+	return ns.readVolumeUsage(path)
 }
