@@ -61,8 +61,10 @@ func (ns *NodeServer) readVolumeUsageWithTimeout(ctx context.Context, volumeID, 
 	}
 
 	go func() {
-		defer ns.activeStats.Delete(volumeID)
-		defer close(call.done)
+		defer func() {
+			ns.activeStats.Delete(volumeID)
+			close(call.done)
+		}()
 		call.usage, call.err = ns.readVolumeUsageForStats(volumePath)
 	}()
 
