@@ -403,15 +403,20 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 		return nil, err
 	}
 
-	volumeMutex := ns.getVolumeMutex(volumeID)
-	volumeMutex.Lock()
-	defer volumeMutex.Unlock()
+	statsCtx, cancel := context.WithTimeout(ctx, defaultHealthCheckTimeout)
+	defer cancel()
+
+	unlock, err := ns.lockVolumeStats(statsCtx, volumeID)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 
 	if err := ns.validateVolumeStatsPath(volumeID, volumePath); err != nil {
 		return nil, err
 	}
 
-	usage, err := ns.readVolumeUsageWithTimeout(ctx, volumeID, volumePath)
+	usage, err := ns.readVolumeUsageWithTimeout(statsCtx, volumeID, volumePath)
 	if err != nil {
 		return nil, err
 	}

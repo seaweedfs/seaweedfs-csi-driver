@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -31,12 +32,15 @@ func (ns *NodeServer) validateVolumeStatsPath(volumeID, volumePath string) error
 		return status.Errorf(codes.InvalidArgument, "volume path %s is not absolute", volumePath)
 	}
 
+	if owner, ok := ns.volumeStatsPathOwner(volumePath); ok && owner != volumeID {
+		return status.Errorf(codes.NotFound, "volume path %s is not published for volume %s", volumePath, volumeID)
+	}
+
 	if value, ok := ns.volumes.Load(volumeID); ok {
 		vol := value.(*Volume)
 		if vol.StagedPath == volumePath || vol.HasPublishPath(volumePath) {
 			return nil
 		}
-		return status.Errorf(codes.NotFound, "volume path %s is not published for volume %s", volumePath, volumeID)
 	}
 
 	if isKubeletCSIPublishPath(volumePath) {
@@ -51,8 +55,9 @@ func (ns *NodeServer) readVolumeUsageWithTimeout(ctx context.Context, volumeID, 
 	defer cancel()
 
 	call := &volumeStatsCall{done: make(chan struct{})}
-	if _, loaded := ns.activeStats.LoadOrStore(volumeID, call); loaded {
-		return nil, status.Errorf(codes.Unavailable, "volume stats collection already in progress for volume %s", volumeID)
+	actual, loaded := ns.activeStats.LoadOrStore(volumeID, call)
+	if loaded {
+		return waitVolumeStatsCall(ctx, volumeID, actual.(*volumeStatsCall))
 	}
 
 	go func() {
@@ -61,14 +66,15 @@ func (ns *NodeServer) readVolumeUsageWithTimeout(ctx context.Context, volumeID, 
 		call.usage, call.err = ns.readVolumeUsageForStats(volumePath)
 	}()
 
+	return waitVolumeStatsCall(ctx, volumeID, call)
+}
+
+func waitVolumeStatsCall(ctx context.Context, volumeID string, call *volumeStatsCall) (*volumeUsage, error) {
 	select {
 	case <-call.done:
 		return call.usage, call.err
 	case <-ctx.Done():
-		if errors.Is(ctx.Err(), context.Canceled) {
-			return nil, status.Error(codes.Canceled, "volume stats request canceled")
-		}
-		return nil, status.Errorf(codes.DeadlineExceeded, "volume stats collection timed out for volume %s", volumeID)
+		return nil, volumeStatsContextError(ctx, volumeID)
 	}
 }
 
@@ -77,6 +83,46 @@ func (ns *NodeServer) readVolumeUsage(path string) (*volumeUsage, error) {
 		return ns.readVolumeUsageFn(path)
 	}
 	return readVolumeUsage(path)
+}
+
+func (ns *NodeServer) lockVolumeStats(ctx context.Context, volumeID string) (func(), error) {
+	volumeMutex := ns.getVolumeMutex(volumeID)
+	if volumeMutex.TryLock() {
+		return volumeMutex.Unlock, nil
+	}
+
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, volumeStatsContextError(ctx, volumeID)
+		case <-ticker.C:
+			if volumeMutex.TryLock() {
+				return volumeMutex.Unlock, nil
+			}
+		}
+	}
+}
+
+func volumeStatsContextError(ctx context.Context, volumeID string) error {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return status.Error(codes.Canceled, "volume stats request canceled")
+	}
+	return status.Errorf(codes.DeadlineExceeded, "volume stats collection timed out for volume %s", volumeID)
+}
+
+func (ns *NodeServer) volumeStatsPathOwner(volumePath string) (string, bool) {
+	var owner string
+	ns.volumes.Range(func(key, value interface{}) bool {
+		vol := value.(*Volume)
+		if vol.StagedPath == volumePath || vol.HasPublishPath(volumePath) {
+			owner = key.(string)
+			return false
+		}
+		return true
+	})
+	return owner, owner != ""
 }
 
 func isKubeletCSIPublishPath(path string) bool {

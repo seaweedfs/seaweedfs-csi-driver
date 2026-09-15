@@ -38,11 +38,31 @@ func TestNodeGetVolumeStats(t *testing.T) {
 	}
 	assertStatfsUsage(t, resp, podPath)
 
+	unknownPodPath := kubeletPublishPath(t, "pv-unknown")
 	if _, err := ns.NodeGetVolumeStats(context.Background(), &csi.NodeGetVolumeStatsRequest{
 		VolumeId:   "vol-unknown",
-		VolumePath: podPath,
+		VolumePath: unknownPodPath,
 	}); err != nil {
 		t.Errorf("expected restart-style request to use a valid publish path, got %v", err)
+	}
+
+	restartedPodPath := kubeletPublishPath(t, "pv-restarted")
+	if _, err := ns.NodeGetVolumeStats(context.Background(), &csi.NodeGetVolumeStatsRequest{
+		VolumeId:   "vol-1",
+		VolumePath: restartedPodPath,
+	}); err != nil {
+		t.Errorf("expected untracked restart-style publish path to be accepted, got %v", err)
+	}
+
+	otherPodPath := kubeletPublishPath(t, "pv-2")
+	otherVol := NewVolume("vol-2", &fakeMounter{}, ns.Driver)
+	otherVol.AddPublishPath(otherPodPath, false)
+	ns.volumes.Store("vol-2", otherVol)
+	if _, err := ns.NodeGetVolumeStats(context.Background(), &csi.NodeGetVolumeStatsRequest{
+		VolumeId:   "vol-1",
+		VolumePath: otherPodPath,
+	}); status.Code(err) != codes.NotFound {
+		t.Errorf("expected NotFound for another tracked volume's path, got %v", err)
 	}
 
 	if _, err := ns.NodeGetVolumeStats(context.Background(), &csi.NodeGetVolumeStatsRequest{
@@ -146,7 +166,9 @@ func TestNodeGetVolumeStatsDeduplicatesBlockedCollection(t *testing.T) {
 	started := make(chan struct{})
 	unblock := make(chan struct{})
 	var once sync.Once
+	var readCalls atomic.Int32
 	ns.readVolumeUsageFn = func(path string) (*volumeUsage, error) {
+		readCalls.Add(1)
 		once.Do(func() { close(started) })
 		<-unblock
 		return &volumeUsage{capacityBytes: 1, availableBytes: 1}, nil
@@ -168,12 +190,39 @@ func TestNodeGetVolumeStatsDeduplicatesBlockedCollection(t *testing.T) {
 		t.Fatal("stats collection did not start")
 	}
 
-	_, err = ns.NodeGetVolumeStats(context.Background(), &csi.NodeGetVolumeStatsRequest{
+	secondCtx, secondCancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	_, err = ns.NodeGetVolumeStats(secondCtx, &csi.NodeGetVolumeStatsRequest{
 		VolumeId:   "vol-1",
 		VolumePath: podPath,
 	})
-	if status.Code(err) != codes.Unavailable {
-		t.Fatalf("expected Unavailable while first collection is still active, got %v", err)
+	secondCancel()
+	if status.Code(err) != codes.DeadlineExceeded {
+		t.Fatalf("expected DeadlineExceeded while first collection is still active, got %v", err)
+	}
+	if got := readCalls.Load(); got != 1 {
+		t.Fatalf("expected one stats collection, got %d", got)
+	}
+}
+
+func TestNodeGetVolumeStatsMutexWaitHonorsDeadline(t *testing.T) {
+	ns := newTestNodeServer(t, &fakeMounter{})
+	podPath := kubeletPublishPath(t, "pv-1")
+	vol := NewVolume("vol-1", &fakeMounter{}, ns.Driver)
+	vol.AddPublishPath(podPath, false)
+	ns.volumes.Store("vol-1", vol)
+
+	volumeMutex := ns.getVolumeMutex("vol-1")
+	volumeMutex.Lock()
+	defer volumeMutex.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	_, err := ns.NodeGetVolumeStats(ctx, &csi.NodeGetVolumeStatsRequest{
+		VolumeId:   "vol-1",
+		VolumePath: podPath,
+	})
+	if status.Code(err) != codes.DeadlineExceeded {
+		t.Fatalf("expected DeadlineExceeded waiting for volume mutex, got %v", err)
 	}
 }
 
