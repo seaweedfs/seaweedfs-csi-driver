@@ -5,3 +5,4 @@ metadata:
 spec:
   attachRequired: {{ .Values.csiAttacher.enabled }}
   podInfoOnMount: true
+  fsGroupPolicy: {{ .Values.fsGroupPolicy }}
