@@ -263,6 +263,61 @@ func TestNodeGetVolumeStatsDoesNotDeduplicateDifferentPaths(t *testing.T) {
 	}
 }
 
+func TestNodeGetVolumeStatsDoesNotDeduplicateCleanPathCollisions(t *testing.T) {
+	ns := newTestNodeServer(t, &fakeMounter{})
+	basePath := filepath.Join(t.TempDir(), "volume")
+	collidingPath := filepath.Join(filepath.Dir(basePath), "link") + string(os.PathSeparator) + ".." + string(os.PathSeparator) + filepath.Base(basePath)
+	vol := NewVolume("vol-1", &fakeMounter{}, ns.Driver)
+	vol.AddPublishPath(collidingPath, false)
+	vol.AddPublishPath(basePath, false)
+	ns.volumes.Store("vol-1", vol)
+
+	ns.isHealthyFn = func(path string) bool { return true }
+	startedFirst := make(chan struct{})
+	unblockFirst := make(chan struct{})
+	var startedOnce sync.Once
+	ns.readVolumeUsageFn = func(path string) (*volumeUsage, error) {
+		switch path {
+		case collidingPath:
+			startedOnce.Do(func() { close(startedFirst) })
+			<-unblockFirst
+			return &volumeUsage{capacityBytes: 1, availableBytes: 1}, nil
+		case basePath:
+			return &volumeUsage{capacityBytes: 2, availableBytes: 2}, nil
+		default:
+			t.Errorf("unexpected stats path %s", path)
+			return &volumeUsage{}, nil
+		}
+	}
+	defer close(unblockFirst)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	_, err := ns.NodeGetVolumeStats(ctx, &csi.NodeGetVolumeStatsRequest{
+		VolumeId:   "vol-1",
+		VolumePath: collidingPath,
+	})
+	cancel()
+	if status.Code(err) != codes.DeadlineExceeded {
+		t.Fatalf("expected DeadlineExceeded, got %v", err)
+	}
+	select {
+	case <-startedFirst:
+	default:
+		t.Fatal("first stats collection did not start")
+	}
+
+	resp, err := ns.NodeGetVolumeStats(context.Background(), &csi.NodeGetVolumeStatsRequest{
+		VolumeId:   "vol-1",
+		VolumePath: basePath,
+	})
+	if err != nil {
+		t.Fatalf("expected cleaned-collision path stats to succeed, got %v", err)
+	}
+	if got := findUsage(resp, csi.VolumeUsage_BYTES); got == nil || got.Total != 2 {
+		t.Fatalf("expected base path usage, got %v", got)
+	}
+}
+
 func TestNodeGetVolumeStatsMutexWaitHonorsDeadline(t *testing.T) {
 	ns := newTestNodeServer(t, &fakeMounter{})
 	podPath := kubeletPublishPath(t, "pv-1")
