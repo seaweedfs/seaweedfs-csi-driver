@@ -19,9 +19,9 @@ import (
 )
 
 // vacRootDir is the filer subtree holding persisted VolumeAttributesClass
-// parameters. It deliberately lives outside /buckets so it is invisible to
-// S3 bucket listing and to the volumes' own mounts, and it dies with the
-// volume because DeleteVolume removes the per-volume entry.
+// parameters. It lives outside /buckets so it is invisible to S3 bucket
+// listing and to the volumes' own mounts, and it dies with the volume
+// because DeleteVolume removes the per-volume entry.
 const vacRootDir = "/.csi/vac"
 
 // vacStore persists the mutable parameters accepted by ControllerModifyVolume
@@ -34,33 +34,32 @@ type vacStore interface {
 	Delete(ctx context.Context, volumeID string) error
 }
 
-// vacEntry is the JSON document stored per volume.
 type vacEntry struct {
 	Parameters map[string]string `json:"parameters"`
 }
 
-// vacPath returns the filer path for a volume's persisted parameters. The
-// volume ID may contain '/' (controller-resolved absolute paths) and must
-// become a single path element. base64 RawURLEncoding is injective and
-// contains no '/', so distinct volume IDs never collide and path traversal
-// is impossible.
+// vacPath escapes the volume ID into a single path element: base64
+// RawURLEncoding is injective and contains no '/', so distinct volume IDs
+// never collide and path traversal is impossible.
 func vacPath(volumeID string) string {
 	escaped := base64.RawURLEncoding.EncodeToString([]byte(volumeID))
 	return vacRootDir + "/" + escaped
 }
 
-// filerVacStore keeps the entries on the filer via its HTTP API: PUT/GET/DELETE
-// on a small file next to nothing the volumes can see. Content and availability
-// follow the filer store (e.g. an SQL-backed filer), not the k8s API, so the
-// state survives PV recreation and cluster rebuilds as long as the data does.
+// filerVacStore keeps the entries on the filer via its HTTP API, so the
+// state follows the filer store and survives PV recreation and cluster
+// rebuilds as long as the data does.
 type filerVacStore struct {
 	filers []pb.ServerAddress
 	scheme string
 	client *http.Client
 }
 
-func newFilerVacStore(filers []pb.ServerAddress) *filerVacStore {
-	tlsConfig := vacStoreTLSConfig()
+func newFilerVacStore(filers []pb.ServerAddress) (*filerVacStore, error) {
+	tlsConfig, err := vacStoreTLSConfig()
+	if err != nil {
+		return nil, err
+	}
 	scheme := "http"
 	client := &http.Client{Timeout: 10 * time.Second}
 	if tlsConfig != nil {
@@ -71,46 +70,37 @@ func newFilerVacStore(filers []pb.ServerAddress) *filerVacStore {
 		filers: filers,
 		scheme: scheme,
 		client: client,
-	}
+	}, nil
 }
 
-// vacStoreTLSConfig builds the TLS config for the VAC store's HTTP calls to
-// the filer. The scheme is EXPLICIT: it is enabled by [vac] use_tls = true in
-// the security config (or env WEED_VAC_USE_TLS=true), never inferred from
-// grpc.ca. grpc.ca configures trust for the filer *gRPC* port and says
-// nothing about the HTTP port: many deployments keep it plain HTTP, or
-// terminate TLS with a public CA the driver cannot validate against the
-// SeaweedFS CA. Inferring https from grpc.ca breaks every volume mount on
-// such clusters ("server gave HTTP response to HTTPS client").
-//
-// CA resolution when use_tls is set: vac.ca first, then grpc.ca (some
-// deployments serve the filer HTTP port with the internal SeaweedFS TLS).
-// With no CA configured, the system trust store is used (public CA behind a
-// load balancer).
-func vacStoreTLSConfig() *tls.Config {
+// vacStoreTLSConfig returns the TLS config for the VAC store's HTTP calls,
+// or nil when [vac] use_tls (env WEED_VAC_USE_TLS) is unset. TLS is never
+// inferred from grpc.ca, which configures trust for the filer gRPC port
+// only; the HTTP port may be plain HTTP or terminate TLS elsewhere.
+// CA resolution prefers vac.ca, then grpc.ca; with neither configured the
+// system trust store is used. A configured CA that cannot be loaded is a
+// configuration error, not a reason to silently change the trust policy.
+func vacStoreTLSConfig() (*tls.Config, error) {
 	v := util.GetViper()
 	if !v.GetBool("vac.use_tls") {
-		return nil
+		return nil, nil
 	}
 	caFile := v.GetString("vac.ca")
 	if caFile == "" {
 		caFile = v.GetString("grpc.ca")
 	}
 	if caFile == "" {
-		glog.Warningf("vac.use_tls is set without vac.ca or grpc.ca; VAC store will trust the system CA store")
-		return &tls.Config{MinVersion: tls.VersionTLS12}
+		return &tls.Config{MinVersion: tls.VersionTLS12}, nil
 	}
 	caCert, err := os.ReadFile(caFile)
 	if err != nil {
-		glog.Warningf("could not read VAC store CA %s: %v; falling back to the system CA store", caFile, err)
-		return &tls.Config{MinVersion: tls.VersionTLS12}
+		return nil, fmt.Errorf("could not read VAC store CA %s: %w", caFile, err)
 	}
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(caCert) {
-		glog.Warningf("could not parse VAC store CA %s; falling back to the system CA store", caFile)
-		return &tls.Config{MinVersion: tls.VersionTLS12}
+		return nil, fmt.Errorf("could not parse VAC store CA %s", caFile)
 	}
-	return &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	return &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}, nil
 }
 
 func (s *filerVacStore) roundTrip(ctx context.Context, method, volumeID string, body []byte, okCodes ...int) ([]byte, error) {
@@ -154,7 +144,6 @@ func (s *filerVacStore) Read(ctx context.Context, volumeID string) (map[string]s
 		return nil, err
 	}
 	if len(body) == 0 {
-		// 404: no persisted parameters for this volume — the normal case.
 		return nil, nil
 	}
 	var entry vacEntry
@@ -182,9 +171,8 @@ func (s *filerVacStore) Delete(ctx context.Context, volumeID string) error {
 }
 
 // mergePersistedVolumeAttributes overlays the persisted parameters onto the
-// volume context. Only mutable keys are ever taken from the store — the write
-// side filters to them, and the read side filters again so a corrupted or
-// stale entry cannot smuggle structural values (collection, path) into a mount.
+// volume context, restricted to mutable keys so a stale or corrupted entry
+// cannot smuggle structural values (collection, path) into a mount.
 func mergePersistedVolumeAttributes(volContext map[string]string, persisted map[string]string) {
 	for key, value := range persisted {
 		if _, mutable := mutableMountParameters[key]; !mutable {

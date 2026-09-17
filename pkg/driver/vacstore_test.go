@@ -2,9 +2,12 @@ package driver
 
 import (
 	"context"
+	"encoding/pem"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -40,18 +43,23 @@ func newTestVacServer(t *testing.T) (*httptest.Server, map[string]string) {
 	return server, files
 }
 
-func testStoreFor(server *httptest.Server) *filerVacStore {
+func testStoreFor(t *testing.T, server *httptest.Server) *filerVacStore {
+	t.Helper()
 	addr := strings.TrimPrefix(server.URL, "http://")
-	return newFilerVacStore([]pb.ServerAddress{pb.ServerAddress(addr)})
+	store, err := newFilerVacStore([]pb.ServerAddress{pb.ServerAddress(addr)})
+	if err != nil {
+		t.Fatalf("newFilerVacStore: %v", err)
+	}
+	return store
 }
 
 func TestVacStoreSchemeNotInferredFromGrpcCA(t *testing.T) {
-	// Core regression: a configured grpc.ca (gRPC trust) must NOT turn the VAC
-	// store's HTTP calls into https://. The filer HTTP port is commonly plain
-	// HTTP even when gRPC is TLS; forcing https breaks every mount.
 	t.Setenv("WEED_GRPC_CA", "/does/not/matter")
 	t.Setenv("WEED_VAC_USE_TLS", "")
-	s := newFilerVacStore([]pb.ServerAddress{"filer:8888"})
+	s, err := newFilerVacStore([]pb.ServerAddress{"filer:8888"})
+	if err != nil {
+		t.Fatalf("newFilerVacStore: %v", err)
+	}
 	if s.scheme != "http" {
 		t.Fatalf("grpc.ca alone must keep http scheme, got %q", s.scheme)
 	}
@@ -61,30 +69,72 @@ func TestVacStoreSchemeNotInferredFromGrpcCA(t *testing.T) {
 }
 
 func TestVacStoreExplicitTlsUsesCa(t *testing.T) {
-	// vac.use_tls=true is the explicit opt-in; CA resolution prefers vac.ca.
-	// Use the test server's own cert so the store is actually usable over TLS.
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
-	t.Setenv("WEED_GRPC_CA", "")
-	t.Setenv("WEED_VAC_USE_TLS", "true")
-	t.Setenv("WEED_VAC_CA", "")
-	addr := strings.TrimPrefix(server.URL, "https://")
-	s := newFilerVacStore([]pb.ServerAddress{pb.ServerAddress(addr)})
-	if s.scheme != "https" {
-		t.Fatalf("vac.use_tls=true must use https, got %q", s.scheme)
+
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+	if err := os.WriteFile(caFile, caPEM, 0644); err != nil {
+		t.Fatal(err)
 	}
-	// System store won't trust the test cert; a failure here is a TLS handshake
-	// (expected). We assert only the scheme decision, not transport success.
+	addr := strings.TrimPrefix(server.URL, "https://")
+
+	for _, tc := range []struct {
+		name   string
+		vacCA  string
+		grpcCA string
+	}{
+		{"vac.ca", caFile, ""},
+		{"grpc.ca fallback", "", caFile},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("WEED_VAC_USE_TLS", "true")
+			t.Setenv("WEED_VAC_CA", tc.vacCA)
+			t.Setenv("WEED_GRPC_CA", tc.grpcCA)
+			s, err := newFilerVacStore([]pb.ServerAddress{pb.ServerAddress(addr)})
+			if err != nil {
+				t.Fatalf("newFilerVacStore: %v", err)
+			}
+			if s.scheme != "https" {
+				t.Fatalf("vac.use_tls=true must use https, got %q", s.scheme)
+			}
+			if _, err := s.Read(context.Background(), "/buckets/pvc-abc"); err != nil {
+				t.Fatalf("request through configured CA: %v", err)
+			}
+		})
+	}
+}
+
+func TestVacStoreUnusableCaFails(t *testing.T) {
+	badPEM := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(badPEM, []byte("not a pem"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name  string
+		vacCA string
+	}{
+		{"missing file", "/does/not/exist"},
+		{"malformed pem", badPEM},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("WEED_VAC_USE_TLS", "true")
+			t.Setenv("WEED_VAC_CA", tc.vacCA)
+			t.Setenv("WEED_GRPC_CA", "")
+			if _, err := newFilerVacStore([]pb.ServerAddress{"filer:8888"}); err == nil {
+				t.Fatal("expected configuration error for unusable vac.ca")
+			}
+		})
+	}
 }
 
 func TestFilerVacStore_RoundTrip(t *testing.T) {
 	server, files := newTestVacServer(t)
-	store := testStoreFor(server)
+	store := testStoreFor(t, server)
 	ctx := context.Background()
 
-	// Read of an unknown volume is nil, nil — the common case, not an error.
 	params, err := store.Read(ctx, "/buckets/pvc-abc")
 	if err != nil || params != nil {
 		t.Fatalf("expected nil,nil for unknown volume, got %v, %v", params, err)
@@ -93,7 +143,6 @@ func TestFilerVacStore_RoundTrip(t *testing.T) {
 	if err := store.Write(ctx, "/buckets/pvc-abc", map[string]string{"diskType": "ssd"}); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	// Volume IDs containing '/' must be escaped into one path element.
 	for p := range files {
 		if !strings.HasPrefix(p, vacRootDir+"/") || strings.Count(strings.TrimPrefix(p, vacRootDir+"/"), "/") != 0 {
 			t.Fatalf("sidecar path not a single element: %q", p)
@@ -119,7 +168,7 @@ func TestFilerVacStore_RoundTrip(t *testing.T) {
 func TestFilerVacStore_CorruptEntry(t *testing.T) {
 	server, files := newTestVacServer(t)
 	files[vacPath("/buckets/pvc-abc")] = "{not json"
-	store := testStoreFor(server)
+	store := testStoreFor(t, server)
 
 	if _, err := store.Read(context.Background(), "/buckets/pvc-abc"); err == nil {
 		t.Fatal("expected error for corrupt entry")
@@ -131,10 +180,8 @@ func TestMergePersistedVolumeAttributes(t *testing.T) {
 	mergePersistedVolumeAttributes(context, map[string]string{
 		"diskType":          "ssd",
 		"concurrentReaders": "64",
-		// Structural keys must never come from the store, even if a stale
-		// or corrupted entry contains them.
-		"collection": "evil",
-		"path":       "/elsewhere",
+		"collection":        "evil",
+		"path":              "/elsewhere",
 	})
 	if context["diskType"] != "ssd" || context["concurrentReaders"] != "64" {
 		t.Fatalf("mutable parameters not applied: %v", context)
@@ -164,7 +211,10 @@ func TestVacPathIsCollisionFree(t *testing.T) {
 }
 
 func TestFilerVacStoreReadNoFilers(t *testing.T) {
-	store := newFilerVacStore(nil)
+	store, err := newFilerVacStore(nil)
+	if err != nil {
+		t.Fatalf("newFilerVacStore: %v", err)
+	}
 	params, err := store.Read(context.Background(), "/buckets/pvc-abc")
 	if err != nil || params != nil {
 		t.Fatalf("expected nil,nil with no filers, got %v, %v", params, err)
