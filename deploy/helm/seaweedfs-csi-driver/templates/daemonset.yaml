@@ -88,9 +88,6 @@ spec:
             - name: SEAWEEDFS_FILER
               value: {{ .Values.seaweedfsFiler | quote }}
             {{- if .Values.vacStore.useTls }}
-            # TLS for the VAC store (VolumeAttributesClass persisted on the
-            # filer HTTP port). EXPLICIT opt-in only: the scheme is never
-            # inferred from [grpc] ca, which configures gRPC trust only.
             - name: WEED_VAC_USE_TLS
               value: "true"
             {{- with .Values.vacStore.caFile }}
@@ -143,6 +140,11 @@ spec:
             {{- if .Values.tlsSecret }}
             - name: tls
               mountPath: /var/run/secrets/app/tls
+              readOnly: true
+            {{- end }}
+            {{- if .Values.vacStore.caSecret }}
+            - name: vac-ca
+              mountPath: /var/run/secrets/vac-ca
               readOnly: true
             {{- end }}
             {{- include "seaweedfs-csi-driver.security-volumemount" . | nindent 12 }}
@@ -262,6 +264,11 @@ spec:
         - name: tls
           secret:
             secretName: {{ .Values.tlsSecret }}
+        {{- end }}
+        {{- if .Values.vacStore.caSecret }}
+        - name: vac-ca
+          secret:
+            secretName: {{ .Values.vacStore.caSecret }}
         {{- end }}
         {{- include "seaweedfs-csi-driver.security-volume" . | nindent 8 }}
         {{- if and $mountEndpoint $mountSocketDir $mountHostPath }}

@@ -53,9 +53,9 @@ type ControllerServer struct {
 	pvAttributesFn func(ctx context.Context, volumeID string) (map[string]string, error)
 }
 
-func (cs *ControllerServer) store() vacStore {
+func (cs *ControllerServer) store() (vacStore, error) {
 	if cs.vacStore != nil {
-		return cs.vacStore
+		return cs.vacStore, nil
 	}
 	return newFilerVacStore(cs.Driver.filers)
 }
@@ -193,7 +193,11 @@ func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVol
 		return nil, fmt.Errorf("error deleting volume %s: %v", volumeId, err)
 	}
 
-	if err := cs.store().Delete(ctx, volumeId); err != nil {
+	store, err := cs.store()
+	if err == nil {
+		err = store.Delete(ctx, volumeId)
+	}
+	if err != nil {
 		glog.Warningf("could not delete persisted volume attributes for %s: %v", volumeId, err)
 	}
 
@@ -556,7 +560,11 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 	// so persist the accepted values where NodeStageVolume can read them
 	// back on every (re)stage. Storage errors fail the modify so the
 	// resizer retries instead of recording a class that never applies.
-	if err := cs.store().Write(ctx, volumeID, req.GetMutableParameters()); err != nil {
+	store, err := cs.store()
+	if err == nil {
+		err = store.Write(ctx, volumeID, req.GetMutableParameters())
+	}
+	if err != nil {
 		return nil, status.Errorf(codes.Internal,
 			"persisting modified parameters for %s: %v", volumeID, err)
 	}
