@@ -74,23 +74,43 @@ func newFilerVacStore(filers []pb.ServerAddress) *filerVacStore {
 	}
 }
 
+// vacStoreTLSConfig builds the TLS config for the VAC store's HTTP calls to
+// the filer. The scheme is EXPLICIT: it is enabled by [vac] use_tls = true in
+// the security config (or env WEED_VAC_USE_TLS=true), never inferred from
+// grpc.ca. grpc.ca configures trust for the filer *gRPC* port and says
+// nothing about the HTTP port: many deployments keep it plain HTTP, or
+// terminate TLS with a public CA the driver cannot validate against the
+// SeaweedFS CA. Inferring https from grpc.ca breaks every volume mount on
+// such clusters ("server gave HTTP response to HTTPS client").
+//
+// CA resolution when use_tls is set: vac.ca first, then grpc.ca (some
+// deployments serve the filer HTTP port with the internal SeaweedFS TLS).
+// With no CA configured, the system trust store is used (public CA behind a
+// load balancer).
 func vacStoreTLSConfig() *tls.Config {
 	v := util.GetViper()
-	caFile := v.GetString("grpc.ca")
-	if caFile == "" {
+	if !v.GetBool("vac.use_tls") {
 		return nil
+	}
+	caFile := v.GetString("vac.ca")
+	if caFile == "" {
+		caFile = v.GetString("grpc.ca")
+	}
+	if caFile == "" {
+		glog.Warningf("vac.use_tls is set without vac.ca or grpc.ca; VAC store will trust the system CA store")
+		return &tls.Config{MinVersion: tls.VersionTLS12}
 	}
 	caCert, err := os.ReadFile(caFile)
 	if err != nil {
-		glog.Warningf("could not read grpc.ca for VAC store TLS: %v", err)
-		return nil
+		glog.Warningf("could not read VAC store CA %s: %v; falling back to the system CA store", caFile, err)
+		return &tls.Config{MinVersion: tls.VersionTLS12}
 	}
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(caCert) {
-		glog.Warningf("could not parse grpc.ca for VAC store TLS")
-		return nil
+		glog.Warningf("could not parse VAC store CA %s; falling back to the system CA store", caFile)
+		return &tls.Config{MinVersion: tls.VersionTLS12}
 	}
-	return &tls.Config{RootCAs: pool}
+	return &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 }
 
 func (s *filerVacStore) roundTrip(ctx context.Context, method, volumeID string, body []byte, okCodes ...int) ([]byte, error) {

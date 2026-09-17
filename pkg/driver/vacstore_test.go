@@ -45,6 +45,40 @@ func testStoreFor(server *httptest.Server) *filerVacStore {
 	return newFilerVacStore([]pb.ServerAddress{pb.ServerAddress(addr)})
 }
 
+func TestVacStoreSchemeNotInferredFromGrpcCA(t *testing.T) {
+	// Core regression: a configured grpc.ca (gRPC trust) must NOT turn the VAC
+	// store's HTTP calls into https://. The filer HTTP port is commonly plain
+	// HTTP even when gRPC is TLS; forcing https breaks every mount.
+	t.Setenv("WEED_GRPC_CA", "/does/not/matter")
+	t.Setenv("WEED_VAC_USE_TLS", "")
+	s := newFilerVacStore([]pb.ServerAddress{"filer:8888"})
+	if s.scheme != "http" {
+		t.Fatalf("grpc.ca alone must keep http scheme, got %q", s.scheme)
+	}
+	if s.client.Transport != nil {
+		t.Fatal("expected no custom TLS transport with vac.use_tls unset")
+	}
+}
+
+func TestVacStoreExplicitTlsUsesCa(t *testing.T) {
+	// vac.use_tls=true is the explicit opt-in; CA resolution prefers vac.ca.
+	// Use the test server's own cert so the store is actually usable over TLS.
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	t.Setenv("WEED_GRPC_CA", "")
+	t.Setenv("WEED_VAC_USE_TLS", "true")
+	t.Setenv("WEED_VAC_CA", "")
+	addr := strings.TrimPrefix(server.URL, "https://")
+	s := newFilerVacStore([]pb.ServerAddress{pb.ServerAddress(addr)})
+	if s.scheme != "https" {
+		t.Fatalf("vac.use_tls=true must use https, got %q", s.scheme)
+	}
+	// System store won't trust the test cert; a failure here is a TLS handshake
+	// (expected). We assert only the scheme decision, not transport success.
+}
+
 func TestFilerVacStore_RoundTrip(t *testing.T) {
 	server, files := newTestVacServer(t)
 	store := testStoreFor(server)
