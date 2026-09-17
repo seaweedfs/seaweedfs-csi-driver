@@ -8,6 +8,21 @@ storageClassVolumeBindingMode: Immediate
 storageClassParameters: {}
 isDefaultStorageClass: false
 tlsSecret: ""
+
+# TLS for the VAC store -- the VolumeAttributesClass parameters the driver
+# persists on the filer via its HTTP API (PUT/GET /.csi/vac/...).
+# INDEPENDENT from [grpc] ca in security.toml: that key configures trust for
+# the filer *gRPC* port only. The filer HTTP port may be plain HTTP (TLS
+# terminated at a LB/ingress) or use a different CA.
+vacStore:
+  # true => https:// for the VAC store. false (default) => http://, matching
+  # deployments where the filer HTTP port is plain HTTP.
+  useTls: false
+  # Optional CA file (in-container path, e.g. /etc/seaweedfs/ca.crt) used to
+  # verify the filer HTTP certificate. Falls back to [grpc] ca from
+  # security.toml when set there; uses the system trust store when neither is
+  # set (public CA behind a load balancer).
+  caFile: ""
 #logVerbosity: 4
 #cacheCapacityMB: 0
 #cacheMetaTtlSec: 60
