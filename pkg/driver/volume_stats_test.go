@@ -367,11 +367,16 @@ func assertStatfsUsage(t *testing.T, resp *csi.NodeGetVolumeStatsResponse, path 
 	if got, want := bytesUsage.Total, int64(sfs.Blocks)*int64(sfs.Bsize); got != want {
 		t.Errorf("bytes total = %d, want %d", got, want)
 	}
-	if got, want := bytesUsage.Used, int64(sfs.Blocks-sfs.Bfree)*int64(sfs.Bsize); got != want {
-		t.Errorf("bytes used = %d, want %d", got, want)
+	// Used and available are snapshots of a filesystem shared with other
+	// activity: a few blocks can shift between the two statfs reads. The
+	// allowance stays far below the reserved-free delta, so a Bfree/Bavail
+	// mix-up still fails.
+	const drift = 64 << 20
+	if got, want := bytesUsage.Used, int64(sfs.Blocks-sfs.Bfree)*int64(sfs.Bsize); math.Abs(float64(got-want)) > drift {
+		t.Errorf("bytes used = %d, want %d (within %d)", got, want, drift)
 	}
-	if got, want := bytesUsage.Available, int64(sfs.Bavail)*int64(sfs.Bsize); got != want {
-		t.Errorf("bytes available = %d, want %d", got, want)
+	if got, want := bytesUsage.Available, int64(sfs.Bavail)*int64(sfs.Bsize); math.Abs(float64(got-want)) > drift {
+		t.Errorf("bytes available = %d, want %d (within %d)", got, want, drift)
 	}
 	if got, want := inodeUsage.Total, int64(sfs.Files); got != want {
 		t.Errorf("inodes total = %d, want %d", got, want)
