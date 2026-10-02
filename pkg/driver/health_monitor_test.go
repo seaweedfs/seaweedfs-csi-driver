@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 )
 
@@ -509,5 +510,117 @@ func TestHealthMonitorRetriesFailedPublishes(t *testing.T) {
 	// The publish path was re-bound: bindMountCalls went up by 1.
 	if state.bindMountCalls != initialBind+1 {
 		t.Errorf("expected %d bind mounts after retry, got %d", initialBind+1, state.bindMountCalls)
+	}
+}
+
+// A mount whose FUSE daemon is dead can still answer the statx-based
+// mount-point check from cached inode attributes while every real I/O fails
+// with ENOTCONN. Recovery must then detach the dead mount instead of
+// aborting at the "still a mount point" guard forever.
+func TestHealthMonitorRecoversDeadMountpoint(t *testing.T) {
+	state := newFakeMountState()
+	ns := newNodeServerWithFakes(t, state)
+
+	root := t.TempDir()
+	stagingPath := filepath.Join(root, "staging")
+	volCtx := map[string]string{"collection": "c"}
+
+	vol, err := ns.stageNewVolume("vol-1", stagingPath, volCtx, false)
+	if err != nil {
+		t.Fatalf("stageNewVolume: %v", err)
+	}
+	vol.volContext = volCtx
+	// A restarted mount service has no record of the old mount process.
+	vol.unmounter = nil
+	ns.volumes.Store("vol-1", vol)
+
+	origMountPoint := isLikelyNotMountPointFn
+	origStatfs := statfsFn
+	origLazy := lazyUnmount
+	defer func() {
+		isLikelyNotMountPointFn = origMountPoint
+		statfsFn = origStatfs
+		lazyUnmount = origLazy
+	}()
+
+	var lazyCalls int
+	isLikelyNotMountPointFn = func(p string) (bool, error) {
+		if p == stagingPath {
+			return false, nil // still a mount point
+		}
+		return origMountPoint(p)
+	}
+	statfsFn = func(p string) error {
+		if p == stagingPath {
+			return syscall.ENOTCONN
+		}
+		return nil
+	}
+	lazyUnmount = func(p string) error {
+		lazyCalls++
+		return nil
+	}
+	state.healthy.Store(false)
+
+	ns.checkAndRecoverVolumes()
+	ns.recoveryWg.Wait()
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if lazyCalls != 1 {
+		t.Errorf("expected 1 lazy unmount of the dead staging mount, got %d", lazyCalls)
+	}
+	if state.cleanupCalls != 1 {
+		t.Errorf("expected 1 staging cleanup, got %d", state.cleanupCalls)
+	}
+	if state.stageCalls != 2 {
+		t.Errorf("expected 2 stage calls after recovery, got %d", state.stageCalls)
+	}
+}
+
+// A mount that still answers statfs is alive: recovery must keep refusing
+// to remove the staging path underneath it.
+func TestHealthMonitorStillAbortsOnLiveMountpoint(t *testing.T) {
+	state := newFakeMountState()
+	ns := newNodeServerWithFakes(t, state)
+
+	root := t.TempDir()
+	stagingPath := filepath.Join(root, "staging")
+	volCtx := map[string]string{"collection": "c"}
+
+	vol, err := ns.stageNewVolume("vol-1", stagingPath, volCtx, false)
+	if err != nil {
+		t.Fatalf("stageNewVolume: %v", err)
+	}
+	vol.volContext = volCtx
+	vol.unmounter = nil
+	ns.volumes.Store("vol-1", vol)
+
+	origMountPoint := isLikelyNotMountPointFn
+	origStatfs := statfsFn
+	defer func() {
+		isLikelyNotMountPointFn = origMountPoint
+		statfsFn = origStatfs
+	}()
+
+	isLikelyNotMountPointFn = func(p string) (bool, error) {
+		if p == stagingPath {
+			return false, nil
+		}
+		return origMountPoint(p)
+	}
+	statfsFn = func(p string) error { return nil }
+	state.healthy.Store(false)
+
+	ns.checkAndRecoverVolumes()
+	ns.recoveryWg.Wait()
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.cleanupCalls != 0 {
+		t.Errorf("expected no cleanup against a live mount, got %d", state.cleanupCalls)
+	}
+	if state.stageCalls != 1 {
+		t.Errorf("expected no re-stage against a live mount, got %d", state.stageCalls)
 	}
 }
