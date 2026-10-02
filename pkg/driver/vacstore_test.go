@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/seaweedfs/seaweedfs/weed/pb"
+	"github.com/seaweedfs/seaweedfs/weed/security"
+	"github.com/seaweedfs/seaweedfs/weed/util"
 )
 
 func newTestVacServer(t *testing.T) (*httptest.Server, map[string]string) {
@@ -218,5 +220,92 @@ func TestFilerVacStoreReadNoFilers(t *testing.T) {
 	params, err := store.Read(context.Background(), "/buckets/pvc-abc")
 	if err != nil || params != nil {
 		t.Fatalf("expected nil,nil with no filers, got %v, %v", params, err)
+	}
+}
+
+// A filer with filer_signing keys configured rejects unauthenticated HTTP
+// calls with 401. The store must mint a filer JWT per request — the read
+// key for GET, the write key for PUT/DELETE, mirroring the filer's own
+// per-method verification.
+func TestFilerVacStoreSignsRequests(t *testing.T) {
+	const (
+		writeKey = "write-signing-key"
+		readKey  = "read-signing-key"
+	)
+
+	check := func(r *http.Request, key string) bool {
+		tokenStr := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		token, err := security.DecodeJwt(security.SigningKey(key), security.EncodedJwt(tokenStr), &security.SeaweedFilerClaims{})
+		return err == nil && token.Valid
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		key := writeKey
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			key = readKey
+		}
+		if !check(r, key) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		switch r.Method {
+		case http.MethodPut:
+			io.ReadAll(r.Body)
+			w.WriteHeader(http.StatusCreated)
+		case http.MethodGet:
+			io.WriteString(w, `{"parameters":{"disk":"ssd"}}`)
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	v := util.GetViper()
+	v.Set("jwt.filer_signing.key", writeKey)
+	v.Set("jwt.filer_signing.read.key", readKey)
+	defer func() {
+		v.Set("jwt.filer_signing.key", "")
+		v.Set("jwt.filer_signing.read.key", "")
+	}()
+
+	store := testStoreFor(t, server)
+	if err := store.Write(context.Background(), "/buckets/pvc-abc", map[string]string{"disk": "ssd"}); err != nil {
+		t.Fatalf("Write with signed request: %v", err)
+	}
+	params, err := store.Read(context.Background(), "/buckets/pvc-abc")
+	if err != nil {
+		t.Fatalf("Read with signed request: %v", err)
+	}
+	if params["disk"] != "ssd" {
+		t.Fatalf("unexpected params: %v", params)
+	}
+	if err := store.Delete(context.Background(), "/buckets/pvc-abc"); err != nil {
+		t.Fatalf("Delete with signed request: %v", err)
+	}
+}
+
+// With no signing keys configured the store must send no Authorization
+// header at all, preserving behavior against an unsecured filer.
+func TestFilerVacStoreNoKeysNoAuthHeader(t *testing.T) {
+	v := util.GetViper()
+	v.Set("jwt.filer_signing.key", "")
+	v.Set("jwt.filer_signing.read.key", "")
+
+	var sawAuth bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			sawAuth = true
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	store := testStoreFor(t, server)
+	if _, err := store.Read(context.Background(), "/buckets/pvc-abc"); err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if sawAuth {
+		t.Fatal("Authorization header sent despite empty signing keys")
 	}
 }
