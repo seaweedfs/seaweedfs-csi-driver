@@ -58,6 +58,14 @@ func isStagingPathHealthy(stagingPath string) bool {
 		return false
 	}
 
+	// The checks above can be answered from the inode-attribute cache even
+	// after the daemon is gone; statfs reaches the daemon, so a
+	// corrupted-mount errno here proves the mount is dead.
+	if statfsErr := statfsFn(stagingPath); mount.IsCorruptedMnt(statfsErr) {
+		glog.Warningf("staging path %s mount is dead: %v", stagingPath, statfsErr)
+		return false
+	}
+
 	// Deliberately not calling os.ReadDir(stagingPath) here. It used to be a
 	// "FUSE is responsive" probe, but ReadDir enumerates the *entire* root
 	// directory, and seaweedfs mount answers a readdir by fetching the whole
@@ -68,11 +76,10 @@ func isStagingPathHealthy(stagingPath string) bool {
 	// slow listing from scratch: the mount can never finish enumerating and
 	// gets stuck in a permanent recovery loop.
 	//
-	// The os.Stat + IsMountPoint checks above already exercise a FUSE GETATTR
-	// round-trip on the root inode (cost independent of directory size) and
-	// already catch a dead/disconnected daemon via IsCorruptedMnt (ENOTCONN),
-	// which was the actual failure mode behind issue #261. That's sufficient
-	// liveness evidence without paying for a full directory scan.
+	// The statfs probe above is cheap (cost independent of directory size)
+	// and catches a dead/disconnected daemon via IsCorruptedMnt (ENOTCONN).
+	// That's sufficient liveness evidence without paying for a full
+	// directory scan.
 	glog.V(4).Infof("staging path %s is healthy", stagingPath)
 	return true
 }

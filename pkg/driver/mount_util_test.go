@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"syscall"
+
 	"k8s.io/mount-utils"
 )
 
@@ -66,5 +68,34 @@ func TestIsStagingPathHealthy_NotAMountPoint(t *testing.T) {
 
 	if isStagingPathHealthy(dir) {
 		t.Fatal("expected a plain directory that isn't a mount point to be unhealthy")
+	}
+}
+
+// A dead FUSE daemon can keep answering os.Stat and the mount-point check
+// from cached inode attributes; statfs always reaches the daemon, so its
+// ENOTCONN is the reliable dead-mount signal.
+func TestIsStagingPathHealthy_DeadMount(t *testing.T) {
+	dir := t.TempDir()
+	stagingPath := filepath.Join(dir, "staging")
+	if err := os.Mkdir(stagingPath, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origMountutil := mountutil
+	origStatfs := statfsFn
+	mountutil = mount.NewFakeMounter([]mount.MountPoint{{Path: stagingPath}})
+	defer func() {
+		mountutil = origMountutil
+		statfsFn = origStatfs
+	}()
+
+	statfsFn = func(string) error { return syscall.ENOTCONN }
+	if isStagingPathHealthy(stagingPath) {
+		t.Fatal("dead FUSE mount must not report healthy")
+	}
+
+	statfsFn = func(string) error { return nil }
+	if !isStagingPathHealthy(stagingPath) {
+		t.Fatal("live mount must report healthy")
 	}
 }
