@@ -15,6 +15,8 @@ var mountutil = mount.New("")
 
 var lazyUnmount = mountmanager.LazyUnmount
 
+var isLikelyNotMountPointFn = mountutil.IsLikelyNotMountPoint
+
 // isStagingPathHealthy checks if the staging path has a healthy FUSE mount.
 // It returns true if the path is mounted and accessible, false otherwise.
 func isStagingPathHealthy(stagingPath string) bool {

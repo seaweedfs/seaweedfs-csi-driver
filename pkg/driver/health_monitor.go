@@ -158,6 +158,23 @@ func (ns *NodeServer) performVolumeHealthCheck(volumeID string) {
 	}
 }
 
+// isDeadMount reports whether path is a mount whose daemon is dead. The
+// probe is bounded like checkHealth: a timeout means a live but hung mount,
+// which must not be detached and removed underneath containers.
+func isDeadMount(path string) bool {
+	done := make(chan error, 1)
+	go func() {
+		done <- statfsFn(path)
+	}()
+	select {
+	case err := <-done:
+		return mount.IsCorruptedMnt(err)
+	case <-time.After(defaultHealthCheckTimeout):
+		glog.Warningf("health monitor: statfs probe for %s timed out, treating the mount as live", path)
+		return false
+	}
+}
+
 // hasUnhealthyPublishPath returns true if any of the Volume's tracked
 // publish paths is not currently a live, readable mount point. It uses
 // the same isHealthyFn as staging so behavior stays consistent across
@@ -318,9 +335,20 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 	// RemoveAll on a still-mounted FUSE would delete remote data via
 	// gRPC. FUSE can still be alive here if vol.unmounter was nil
 	// (rebuilt volume) or wait()'s kubeMounter.Unmount silently failed.
-	if notMnt, err := mountutil.IsLikelyNotMountPoint(stagingPath); err == nil && !notMnt {
-		glog.Errorf("health monitor: refusing to clean up staging path %s for volume %s — still a mount point; aborting recovery to avoid data deletion", stagingPath, volumeID)
-		return
+	if notMnt, err := isLikelyNotMountPointFn(stagingPath); err == nil && !notMnt {
+		// A dead FUSE still looks mounted: the kernel keeps the entry and
+		// serves statx from cached inode attributes, so only a probe that
+		// reaches the daemon tells them apart. A dead mount serves no
+		// I/O, so detaching it before cleanup cannot delete remote data.
+		if !isDeadMount(stagingPath) {
+			glog.Errorf("health monitor: refusing to clean up staging path %s for volume %s — still a mount point; aborting recovery to avoid data deletion", stagingPath, volumeID)
+			return
+		}
+		glog.Warningf("health monitor: staging mount for volume %s at %s is dead; detaching it before cleanup", volumeID, stagingPath)
+		if err := lazyUnmount(stagingPath); err != nil {
+			glog.Errorf("health monitor: detaching dead staging mount %s for volume %s failed: %v; aborting recovery", stagingPath, volumeID, err)
+			return
+		}
 	}
 
 	// Step 2: Clean up stale staging path
