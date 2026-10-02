@@ -15,6 +15,7 @@ import (
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"github.com/seaweedfs/seaweedfs/weed/pb"
+	"github.com/seaweedfs/seaweedfs/weed/security"
 	"github.com/seaweedfs/seaweedfs/weed/util"
 )
 
@@ -50,9 +51,13 @@ func vacPath(volumeID string) string {
 // state follows the filer store and survives PV recreation and cluster
 // rebuilds as long as the data does.
 type filerVacStore struct {
-	filers []pb.ServerAddress
-	scheme string
-	client *http.Client
+	filers          []pb.ServerAddress
+	scheme          string
+	client          *http.Client
+	signingKey      security.SigningKey
+	expiresAfterSec int
+	readSigningKey  security.SigningKey
+	readExpiresSec  int
 }
 
 func newFilerVacStore(filers []pb.ServerAddress) (*filerVacStore, error) {
@@ -66,10 +71,19 @@ func newFilerVacStore(filers []pb.ServerAddress) (*filerVacStore, error) {
 		scheme = "https"
 		client.Transport = &http.Transport{TLSClientConfig: tlsConfig}
 	}
+	v := util.GetViper()
+	// Mirror the filer's own key names and defaults so a CSI pod sharing the
+	// same security.toml mints tokens the filer accepts.
+	v.SetDefault("jwt.filer_signing.expires_after_seconds", 10)
+	v.SetDefault("jwt.filer_signing.read.expires_after_seconds", 60)
 	return &filerVacStore{
-		filers: filers,
-		scheme: scheme,
-		client: client,
+		filers:          filers,
+		scheme:          scheme,
+		client:          client,
+		signingKey:      security.SigningKey(v.GetString("jwt.filer_signing.key")),
+		expiresAfterSec: v.GetInt("jwt.filer_signing.expires_after_seconds"),
+		readSigningKey:  security.SigningKey(v.GetString("jwt.filer_signing.read.key")),
+		readExpiresSec:  v.GetInt("jwt.filer_signing.read.expires_after_seconds"),
 	}, nil
 }
 
@@ -114,6 +128,15 @@ func (s *filerVacStore) roundTrip(ctx context.Context, method, volumeID string, 
 		req, err := http.NewRequestWithContext(ctx, method, target, reqBody)
 		if err != nil {
 			return nil, err
+		}
+		// The filer verifies reads against filer_signing.read.key and writes
+		// against filer_signing.key; an empty key leaves the header off.
+		signingKey, expiresAfterSec := s.signingKey, s.expiresAfterSec
+		if method == http.MethodGet || method == http.MethodHead {
+			signingKey, expiresAfterSec = s.readSigningKey, s.readExpiresSec
+		}
+		if token := security.GenJwtForFilerServer(signingKey, expiresAfterSec); token != "" {
+			req.Header.Set("Authorization", security.BearerPrefix+string(token))
 		}
 		resp, err := s.client.Do(req)
 		if err != nil {
