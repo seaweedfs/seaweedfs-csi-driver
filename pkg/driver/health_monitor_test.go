@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // fakeMountState tracks the behavior of a fake FUSE mount across a
@@ -622,5 +623,89 @@ func TestHealthMonitorStillAbortsOnLiveMountpoint(t *testing.T) {
 	}
 	if state.stageCalls != 1 {
 		t.Errorf("expected no re-stage against a live mount, got %d", state.stageCalls)
+	}
+}
+
+// A mount that still shows up in /proc/mounts but whose daemon hangs
+// statfs is indistinguishable from a live mount: recovery must abort
+// rather than detach it. Timed-out callers must also reuse the one
+// still-blocked probe instead of piling up a syscall goroutine per sweep.
+func TestHealthMonitorAbortsWhenStatfsProbeHangs(t *testing.T) {
+	state := newFakeMountState()
+	ns := newNodeServerWithFakes(t, state)
+
+	root := t.TempDir()
+	stagingPath := filepath.Join(root, "staging")
+	volCtx := map[string]string{"collection": "c"}
+
+	vol, err := ns.stageNewVolume("vol-1", stagingPath, volCtx, false)
+	if err != nil {
+		t.Fatalf("stageNewVolume: %v", err)
+	}
+	vol.volContext = volCtx
+	vol.unmounter = nil
+	ns.volumes.Store("vol-1", vol)
+
+	origMountPoint := isLikelyNotMountPointFn
+	origStatfs := statfsFn
+	origLazy := lazyUnmount
+	origTimeout := statfsProbeTimeout
+	statfsProbeTimeout = 50 * time.Millisecond
+	defer func() {
+		isLikelyNotMountPointFn = origMountPoint
+		statfsFn = origStatfs
+		lazyUnmount = origLazy
+		statfsProbeTimeout = origTimeout
+		resetStatfsProbe(stagingPath)
+	}()
+
+	isLikelyNotMountPointFn = func(p string) (bool, error) {
+		if p == stagingPath {
+			return false, nil
+		}
+		return origMountPoint(p)
+	}
+	release := make(chan struct{})
+	defer close(release)
+	statfsStarted := make(chan struct{})
+	var startOnce sync.Once
+	var statfsCalls atomic.Int32
+	statfsFn = func(p string) error {
+		if p == stagingPath {
+			statfsCalls.Add(1)
+			startOnce.Do(func() { close(statfsStarted) })
+			<-release
+		}
+		return nil
+	}
+	var lazyCalls int
+	lazyUnmount = func(p string) error {
+		lazyCalls++
+		return nil
+	}
+	state.healthy.Store(false)
+
+	ns.checkAndRecoverVolumes()
+	ns.recoveryWg.Wait()
+
+	// Once the first probe's syscall is known to be blocked, a second
+	// sweep must attach to it rather than spawn another statfs call.
+	<-statfsStarted
+	ns.checkAndRecoverVolumes()
+	ns.recoveryWg.Wait()
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if lazyCalls != 0 {
+		t.Errorf("expected no lazy unmount against a hung mount, got %d", lazyCalls)
+	}
+	if state.cleanupCalls != 0 {
+		t.Errorf("expected no cleanup against a hung mount, got %d", state.cleanupCalls)
+	}
+	if state.stageCalls != 1 {
+		t.Errorf("expected no re-stage against a hung mount, got %d", state.stageCalls)
+	}
+	if got := statfsCalls.Load(); got != 1 {
+		t.Errorf("expected the second sweep to reuse the in-flight probe, got %d statfs syscalls", got)
 	}
 }

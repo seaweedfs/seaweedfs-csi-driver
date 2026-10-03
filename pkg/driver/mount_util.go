@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
@@ -16,6 +17,66 @@ var mountutil = mount.New("")
 var lazyUnmount = mountmanager.LazyUnmount
 
 var isLikelyNotMountPointFn = mountutil.IsLikelyNotMountPoint
+
+// statfsProbeTimeout bounds every statfs probe. statfs on a hung FUSE
+// daemon can block in the kernel indefinitely, so no caller — a CSI
+// request holding the per-volume mutex or a health-monitor sweep — may
+// wait on it unbounded. A var so tests can shorten it.
+var statfsProbeTimeout = defaultHealthCheckTimeout
+
+// statfsProbe is one in-flight statfs syscall for a path. Callers that
+// arrive while it is still blocked attach to it instead of spawning
+// another syscall goroutine, so a permanently hung daemon cannot
+// accumulate one blocked goroutine per sweep or CSI retry.
+type statfsProbe struct {
+	done chan struct{}
+	err  error
+}
+
+var statfsProbes sync.Map // map[string]*statfsProbe
+
+// probeStatfs returns the result of a statfs probe for path,
+// deduplicated and bounded. (err, true) means the syscall produced a
+// result; (nil, false) means the wait timed out — an inconclusive result
+// that must never be treated as proof of a dead mount.
+//
+// A timed-out probe stays registered until its syscall returns, so later
+// callers reuse it rather than pile up blocked goroutines. Once the
+// mount at path is detached or replaced, callers must resetStatfsProbe:
+// the in-flight result describes the old mount and must not be reused
+// for the new one.
+func probeStatfs(path string) (error, bool) {
+	p, loaded := statfsProbes.LoadOrStore(path, &statfsProbe{done: make(chan struct{})})
+	probe := p.(*statfsProbe)
+	if !loaded {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					glog.Errorf("statfs probe for %s panicked: %v", path, r)
+					probe.err = fmt.Errorf("statfs probe for %s panicked: %v", path, r)
+				}
+				close(probe.done)
+				// CompareAndDelete so a probe orphaned by
+				// resetStatfsProbe cannot remove a newer probe's entry.
+				statfsProbes.CompareAndDelete(path, probe)
+			}()
+			probe.err = statfsFn(path)
+		}()
+	}
+	select {
+	case <-probe.done:
+		return probe.err, true
+	case <-time.After(statfsProbeTimeout):
+		return nil, false
+	}
+}
+
+// resetStatfsProbe forgets an in-flight probe for path after the mount
+// there was detached or replaced. The orphaned goroutine still exits on
+// its own when the syscall returns; it just stops absorbing new callers.
+func resetStatfsProbe(path string) {
+	statfsProbes.Delete(path)
+}
 
 // isStagingPathHealthy checks if the staging path has a healthy FUSE mount.
 // It returns true if the path is mounted and accessible, false otherwise.
@@ -60,8 +121,16 @@ func isStagingPathHealthy(stagingPath string) bool {
 
 	// The checks above can be answered from the inode-attribute cache even
 	// after the daemon is gone; statfs reaches the daemon, so a
-	// corrupted-mount errno here proves the mount is dead.
-	if statfsErr := statfsFn(stagingPath); mount.IsCorruptedMnt(statfsErr) {
+	// corrupted-mount errno here proves the mount is dead. The probe is
+	// bounded: a hung daemon is not a usable mount either, so a timeout
+	// reports unhealthy — the cleanup guards downstream still refuse to
+	// remove a live mount.
+	statfsErr, probed := probeStatfs(stagingPath)
+	if !probed {
+		glog.Warningf("staging path %s statfs probe timed out; treating the mount as unhealthy", stagingPath)
+		return false
+	}
+	if mount.IsCorruptedMnt(statfsErr) {
 		glog.Warningf("staging path %s mount is dead: %v", stagingPath, statfsErr)
 		return false
 	}
@@ -98,6 +167,9 @@ func cleanupCorruptedStagingPath(stagingPath string) error {
 			return err
 		}
 	}
+	// The mount here was detached; a still-blocked probe's result
+	// describes the old mount and must not be reused for its replacement.
+	resetStatfsProbe(stagingPath)
 	glog.Infof("successfully cleaned up corrupted staging path %s", stagingPath)
 	return nil
 }
@@ -129,6 +201,8 @@ func cleanupStaleStagingPath(stagingPath string) error {
 	_, statErr := os.Lstat(stagingPath)
 	if statErr != nil {
 		if os.IsNotExist(statErr) {
+			// Nothing mounted here; any in-flight probe's result is stale.
+			resetStatfsProbe(stagingPath)
 			glog.Infof("successfully cleaned up staging path %s", stagingPath)
 			return nil
 		}
@@ -159,6 +233,7 @@ func cleanupStaleStagingPath(stagingPath string) error {
 		return err
 	}
 
+	resetStatfsProbe(stagingPath)
 	glog.Infof("successfully cleaned up staging path %s", stagingPath)
 	return nil
 }

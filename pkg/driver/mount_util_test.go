@@ -3,7 +3,9 @@ package driver
 import (
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"syscall"
 
@@ -20,12 +22,26 @@ import (
 // isStagingPathHealthy regresses to calling ReadDir again, this test
 // catches it (as root, os.ReadDir ignores permission bits, so this test
 // must not be run as root).
+// tempDirResolved returns a temp dir with symlinks resolved. The fake
+// mounter's IsLikelyNotMountPoint compares EvalSymlinks(path) against the
+// registered mount paths, so registering an unresolved path misses on
+// platforms where the temp dir contains a symlink (e.g. /var ->
+// /private/var on macOS).
+func tempDirResolved(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve temp dir: %v", err)
+	}
+	return dir
+}
+
 func TestIsStagingPathHealthy_DoesNotRequireListableDirectory(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("permission bits are not enforced for root")
 	}
 
-	dir := t.TempDir()
+	dir := tempDirResolved(t)
 	stagingPath := filepath.Join(dir, "staging")
 	if err := os.Mkdir(stagingPath, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -75,7 +91,7 @@ func TestIsStagingPathHealthy_NotAMountPoint(t *testing.T) {
 // from cached inode attributes; statfs always reaches the daemon, so its
 // ENOTCONN is the reliable dead-mount signal.
 func TestIsStagingPathHealthy_DeadMount(t *testing.T) {
-	dir := t.TempDir()
+	dir := tempDirResolved(t)
 	stagingPath := filepath.Join(dir, "staging")
 	if err := os.Mkdir(stagingPath, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -97,5 +113,51 @@ func TestIsStagingPathHealthy_DeadMount(t *testing.T) {
 	statfsFn = func(string) error { return nil }
 	if !isStagingPathHealthy(stagingPath) {
 		t.Fatal("live mount must report healthy")
+	}
+}
+
+// A hung FUSE daemon can keep answering the cached stat checks while
+// blocking statfs forever. The probe must stay bounded so callers holding
+// the per-volume lock are not stalled, and repeated callers must reuse
+// the single in-flight syscall instead of accumulating blocked
+// goroutines.
+func TestIsStagingPathHealthy_StatfsProbeTimeout(t *testing.T) {
+	dir := tempDirResolved(t)
+	stagingPath := filepath.Join(dir, "staging")
+	if err := os.Mkdir(stagingPath, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origMountutil := mountutil
+	origStatfs := statfsFn
+	origTimeout := statfsProbeTimeout
+	mountutil = mount.NewFakeMounter([]mount.MountPoint{{Path: stagingPath}})
+	statfsProbeTimeout = 50 * time.Millisecond
+	defer func() {
+		mountutil = origMountutil
+		statfsFn = origStatfs
+		statfsProbeTimeout = origTimeout
+		resetStatfsProbe(stagingPath)
+	}()
+
+	release := make(chan struct{})
+	defer close(release)
+	var statfsCalls atomic.Int32
+	statfsFn = func(string) error {
+		statfsCalls.Add(1)
+		<-release
+		return nil
+	}
+
+	if isStagingPathHealthy(stagingPath) {
+		t.Fatal("a mount whose statfs probe times out must not report healthy")
+	}
+	// While the first syscall is still blocked, a second caller must
+	// attach to it rather than spawn another.
+	if isStagingPathHealthy(stagingPath) {
+		t.Fatal("expected unhealthy while the probe is still blocked")
+	}
+	if got := statfsCalls.Load(); got != 1 {
+		t.Fatalf("expected 1 statfs syscall across two probes, got %d", got)
 	}
 }
