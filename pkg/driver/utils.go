@@ -143,6 +143,7 @@ func checkMount(targetPath string) (bool, error) {
 			if err := mountutil.Unmount(targetPath); err != nil {
 				return false, err
 			}
+			resetStatfsProbe(targetPath)
 			isMnt, err = mountutil.IsMountPoint(targetPath)
 		} else {
 			return false, err

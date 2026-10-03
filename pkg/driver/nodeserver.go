@@ -302,6 +302,7 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 
 		// make sure there is no any garbage
 		_ = mount.CleanupMountPoint(targetPath, mountutil, true)
+		resetStatfsProbe(targetPath)
 
 		return &csi.NodeUnpublishVolumeResponse{}, nil
 	}
@@ -471,6 +472,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 
 		// make sure there is no any garbage
 		_ = mount.CleanupMountPoint(stagingTargetPath, mountutil, true)
+		resetStatfsProbe(stagingTargetPath)
 
 		// Also clean up cache directory and socket if they exist
 		CleanupVolumeResources(ns.Driver, volumeID)

@@ -196,6 +196,7 @@ func (ns *NodeServer) hasUnhealthyPublishPath(vol *Volume) bool {
 // dead FUSE.
 func (ns *NodeServer) tearDownStalePublishBind(path, volumeID string) bool {
 	if err := ns.unmountFn(path); err == nil {
+		resetStatfsProbe(path)
 		return true
 	} else {
 		glog.Warningf("health monitor: unmount publish path %s for volume %s failed: %v, trying force cleanup", path, volumeID, err)
@@ -204,6 +205,7 @@ func (ns *NodeServer) tearDownStalePublishBind(path, volumeID string) bool {
 		glog.Errorf("health monitor: force cleanup of publish path %s for volume %s also failed: %v; skipping re-publish to avoid Publish() falsely satisfying the stale mount", path, volumeID, cleanupErr)
 		return false
 	}
+	resetStatfsProbe(path)
 	return true
 }
 

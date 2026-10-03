@@ -53,7 +53,9 @@ func (vol *Volume) Stage(stagingTargetPath string) error {
 		return err
 	} else if isMnt {
 		// try to unmount before mounting again
-		_ = mountutil.Unmount(stagingTargetPath)
+		if err := mountutil.Unmount(stagingTargetPath); err == nil {
+			resetStatfsProbe(stagingTargetPath)
+		}
 	}
 
 	if u, err := vol.mounter.Mount(stagingTargetPath); err == nil {
@@ -127,6 +129,9 @@ func (vol *Volume) Unpublish(targetPath string) error {
 	if err := mount.CleanupMountPoint(targetPath, mountutil, true); err != nil {
 		return err
 	}
+	// The bind mount was removed; an in-flight probe's result describes
+	// the old mount and must not be reused for its replacement.
+	resetStatfsProbe(targetPath)
 
 	return nil
 }
@@ -172,6 +177,11 @@ func (vol *Volume) Unstage(stagingTargetPath string) error {
 			return err
 		}
 	}
+
+	// The mount at stagingTargetPath was removed; an in-flight probe's
+	// result describes the old mount and must not be reused for its
+	// replacement.
+	resetStatfsProbe(stagingTargetPath)
 
 	// Always attempt to remove the cache directory and socket file
 	CleanupVolumeResources(vol.driver, vol.VolumeId)
