@@ -60,13 +60,28 @@ type filerVacStore struct {
 	readExpiresAfterSec int
 }
 
+// newFilerVacStore snapshots the filer JWT signing configuration and builds
+// the HTTP client for the VAC path; the transport stays plain HTTP unless
+// vac.use_tls is set. Redirects that would carry the JWT from https onto
+// http are refused.
 func newFilerVacStore(filers []pb.ServerAddress) (*filerVacStore, error) {
 	tlsConfig, err := vacStoreTLSConfig()
 	if err != nil {
 		return nil, err
 	}
 	scheme := "http"
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("stopped after 10 redirects")
+			}
+			if via[len(via)-1].URL.Scheme == "https" && req.URL.Scheme == "http" && req.Header.Get("Authorization") != "" {
+				return fmt.Errorf("refusing HTTPS-to-HTTP redirect to %s that would expose the filer JWT", req.URL.Host)
+			}
+			return nil
+		},
+	}
 	if tlsConfig != nil {
 		scheme = "https"
 		client.Transport = &http.Transport{TLSClientConfig: tlsConfig}
@@ -126,6 +141,8 @@ func vacStoreTLSConfig() (*tls.Config, error) {
 	return &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}, nil
 }
 
+// roundTrip sends the request to each configured filer until one answers
+// with an accepted status code.
 func (s *filerVacStore) roundTrip(ctx context.Context, method, volumeID string, body []byte, okCodes ...int) ([]byte, error) {
 	var lastErr error
 	for _, filer := range s.filers {
@@ -166,6 +183,8 @@ func (s *filerVacStore) roundTrip(ctx context.Context, method, volumeID string, 
 	return nil, lastErr
 }
 
+// Read returns the persisted mutable parameters for volumeID, or nil when no
+// entry exists.
 func (s *filerVacStore) Read(ctx context.Context, volumeID string) (map[string]string, error) {
 	if len(s.filers) == 0 {
 		return nil, nil
@@ -184,6 +203,7 @@ func (s *filerVacStore) Read(ctx context.Context, volumeID string) (map[string]s
 	return entry.Parameters, nil
 }
 
+// Write persists params as the volume's VAC entry on the filer.
 func (s *filerVacStore) Write(ctx context.Context, volumeID string, params map[string]string) error {
 	if len(params) == 0 {
 		return nil
@@ -196,6 +216,7 @@ func (s *filerVacStore) Write(ctx context.Context, volumeID string, params map[s
 	return err
 }
 
+// Delete removes the persisted VAC entry for volumeID.
 func (s *filerVacStore) Delete(ctx context.Context, volumeID string) error {
 	_, err := s.roundTrip(ctx, http.MethodDelete, volumeID, nil, http.StatusOK, http.StatusNotFound, http.StatusNoContent)
 	return err

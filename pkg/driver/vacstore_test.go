@@ -16,6 +16,8 @@ import (
 	"github.com/seaweedfs/seaweedfs/weed/util"
 )
 
+// newTestVacServer returns an in-memory filer standing in for the VAC HTTP
+// API, plus the backing map it stores entries in.
 func newTestVacServer(t *testing.T) (*httptest.Server, map[string]string) {
 	t.Helper()
 	files := map[string]string{}
@@ -45,6 +47,7 @@ func newTestVacServer(t *testing.T) (*httptest.Server, map[string]string) {
 	return server, files
 }
 
+// testStoreFor builds a filerVacStore pointed at the given test server.
 func testStoreFor(t *testing.T, server *httptest.Server) *filerVacStore {
 	t.Helper()
 	addr := strings.TrimPrefix(server.URL, "http://")
@@ -223,6 +226,8 @@ func TestFilerVacStoreReadNoFilers(t *testing.T) {
 	}
 }
 
+// setFilerJwtKeys swaps the viper filer signing keys for the test and
+// restores the previous values afterwards.
 func setFilerJwtKeys(t *testing.T, writeKey, readKey string) {
 	t.Helper()
 	v := util.GetViper()
@@ -287,6 +292,44 @@ func TestFilerVacStoreSignsRequests(t *testing.T) {
 	}
 	if err := store.Delete(context.Background(), "/buckets/pvc-abc"); err != nil {
 		t.Fatalf("Delete with signed request: %v", err)
+	}
+}
+
+// A same-host HTTPS-to-HTTP redirect would make the Go client resend the
+// Authorization header in cleartext, so the store refuses to follow it.
+func TestFilerVacStoreRejectsTlsDowngradeRedirect(t *testing.T) {
+	httpHits := 0
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpHits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer plain.Close()
+
+	tlsServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, plain.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	defer tlsServer.Close()
+
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: tlsServer.Certificate().Raw})
+	if err := os.WriteFile(caFile, caPEM, 0644); err != nil {
+		t.Fatal(err)
+	}
+	setFilerJwtKeys(t, "write-key", "read-key")
+	t.Setenv("WEED_VAC_USE_TLS", "true")
+	t.Setenv("WEED_VAC_CA", caFile)
+	t.Setenv("WEED_GRPC_CA", "")
+
+	addr := strings.TrimPrefix(tlsServer.URL, "https://")
+	store, err := newFilerVacStore([]pb.ServerAddress{pb.ServerAddress(addr)})
+	if err != nil {
+		t.Fatalf("newFilerVacStore: %v", err)
+	}
+	if _, err := store.Read(context.Background(), "/buckets/pvc-abc"); err == nil {
+		t.Fatal("expected the credential-bearing downgrade redirect to be refused")
+	}
+	if httpHits != 0 {
+		t.Fatal("plain-HTTP endpoint received the redirected request")
 	}
 }
 
