@@ -223,10 +223,20 @@ func TestFilerVacStoreReadNoFilers(t *testing.T) {
 	}
 }
 
-// A filer with filer_signing keys configured rejects unauthenticated HTTP
-// calls with 401. The store must mint a filer JWT per request — the read
-// key for GET, the write key for PUT/DELETE, mirroring the filer's own
-// per-method verification.
+func setFilerJwtKeys(t *testing.T, writeKey, readKey string) {
+	t.Helper()
+	v := util.GetViper()
+	oldWrite, oldRead := v.GetString("jwt.filer_signing.key"), v.GetString("jwt.filer_signing.read.key")
+	v.Set("jwt.filer_signing.key", writeKey)
+	v.Set("jwt.filer_signing.read.key", readKey)
+	t.Cleanup(func() {
+		v.Set("jwt.filer_signing.key", oldWrite)
+		v.Set("jwt.filer_signing.read.key", oldRead)
+	})
+}
+
+// Requests must carry a filer JWT minted from the filer_signing keys: the
+// read key for GET/HEAD, the write key for everything else.
 func TestFilerVacStoreSignsRequests(t *testing.T) {
 	const (
 		writeKey = "write-signing-key"
@@ -261,13 +271,7 @@ func TestFilerVacStoreSignsRequests(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	v := util.GetViper()
-	v.Set("jwt.filer_signing.key", writeKey)
-	v.Set("jwt.filer_signing.read.key", readKey)
-	defer func() {
-		v.Set("jwt.filer_signing.key", "")
-		v.Set("jwt.filer_signing.read.key", "")
-	}()
+	setFilerJwtKeys(t, writeKey, readKey)
 
 	store := testStoreFor(t, server)
 	if err := store.Write(context.Background(), "/buckets/pvc-abc", map[string]string{"disk": "ssd"}); err != nil {
@@ -285,12 +289,9 @@ func TestFilerVacStoreSignsRequests(t *testing.T) {
 	}
 }
 
-// With no signing keys configured the store must send no Authorization
-// header at all, preserving behavior against an unsecured filer.
+// With no signing keys configured no Authorization header is sent.
 func TestFilerVacStoreNoKeysNoAuthHeader(t *testing.T) {
-	v := util.GetViper()
-	v.Set("jwt.filer_signing.key", "")
-	v.Set("jwt.filer_signing.read.key", "")
+	setFilerJwtKeys(t, "", "")
 
 	var sawAuth bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
