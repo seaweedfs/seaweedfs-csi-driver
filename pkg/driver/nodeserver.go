@@ -301,8 +301,9 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		glog.Warningf("volume %s hasn't been published", volumeID)
 
 		// make sure there is no any garbage
-		_ = mount.CleanupMountPoint(targetPath, mountutil, true)
-		resetStatfsProbe(targetPath)
+		if err := mount.CleanupMountPoint(targetPath, mountutil, true); err == nil {
+			resetStatfsProbe(targetPath)
+		}
 
 		return &csi.NodeUnpublishVolumeResponse{}, nil
 	}
@@ -471,8 +472,9 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		glog.Warningf("volume %s hasn't been staged", volumeID)
 
 		// make sure there is no any garbage
-		_ = mount.CleanupMountPoint(stagingTargetPath, mountutil, true)
-		resetStatfsProbe(stagingTargetPath)
+		if err := mount.CleanupMountPoint(stagingTargetPath, mountutil, true); err == nil {
+			resetStatfsProbe(stagingTargetPath)
+		}
 
 		// Also clean up cache directory and socket if they exist
 		CleanupVolumeResources(ns.Driver, volumeID)
