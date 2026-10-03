@@ -69,6 +69,10 @@ spec:
               value: {{ . | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.vacStore.allowInsecureHttp }}
+            - name: WEED_VAC_ALLOW_INSECURE_HTTP
+              value: "true"
+            {{- end }}
 
             - name: DRIVER_NAME
               value: {{ .Values.driverName | quote }}

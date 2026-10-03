@@ -17,6 +17,10 @@ tlsSecret: ""
 vacStore:
   # true => https://, false (default) => http://
   useTls: false
+  # Opt-in for signed requests over plain HTTP. When false (default) the
+  # driver refuses to send filer JWTs unencrypted; set true only when the
+  # network between the CSI pods and the filer is trusted.
+  allowInsecureHttp: false
   # In-container CA bundle path for verifying the filer HTTP certificate.
   # Falls back to [grpc] ca, then to the system trust store.
   caFile: ""

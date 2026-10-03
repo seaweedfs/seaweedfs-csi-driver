@@ -272,6 +272,8 @@ func TestFilerVacStoreSignsRequests(t *testing.T) {
 	defer server.Close()
 
 	setFilerJwtKeys(t, writeKey, readKey)
+	t.Setenv("WEED_VAC_USE_TLS", "")
+	t.Setenv("WEED_VAC_ALLOW_INSECURE_HTTP", "true")
 
 	store := testStoreFor(t, server)
 	if err := store.Write(context.Background(), "/buckets/pvc-abc", map[string]string{"disk": "ssd"}); err != nil {
@@ -286,6 +288,15 @@ func TestFilerVacStoreSignsRequests(t *testing.T) {
 	}
 	if err := store.Delete(context.Background(), "/buckets/pvc-abc"); err != nil {
 		t.Fatalf("Delete with signed request: %v", err)
+	}
+}
+
+func TestFilerVacStoreSignedHttpRequiresOptIn(t *testing.T) {
+	setFilerJwtKeys(t, "write-key", "read-key")
+	t.Setenv("WEED_VAC_USE_TLS", "")
+	t.Setenv("WEED_VAC_ALLOW_INSECURE_HTTP", "")
+	if _, err := newFilerVacStore([]pb.ServerAddress{"filer:8888"}); err == nil {
+		t.Fatal("signed requests over plain HTTP must require vac.allow_insecure_http")
 	}
 }
 
