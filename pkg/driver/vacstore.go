@@ -51,13 +51,13 @@ func vacPath(volumeID string) string {
 // state follows the filer store and survives PV recreation and cluster
 // rebuilds as long as the data does.
 type filerVacStore struct {
-	filers          []pb.ServerAddress
-	scheme          string
-	client          *http.Client
-	signingKey      security.SigningKey
-	expiresAfterSec int
-	readSigningKey  security.SigningKey
-	readExpiresSec  int
+	filers              []pb.ServerAddress
+	scheme              string
+	client              *http.Client
+	signingKey          security.SigningKey
+	expiresAfterSec     int
+	readSigningKey      security.SigningKey
+	readExpiresAfterSec int
 }
 
 func newFilerVacStore(filers []pb.ServerAddress) (*filerVacStore, error) {
@@ -72,18 +72,27 @@ func newFilerVacStore(filers []pb.ServerAddress) (*filerVacStore, error) {
 		client.Transport = &http.Transport{TLSClientConfig: tlsConfig}
 	}
 	v := util.GetViper()
-	// Mirror the filer's own key names and defaults so a CSI pod sharing the
-	// same security.toml mints tokens the filer accepts.
-	v.SetDefault("jwt.filer_signing.expires_after_seconds", 10)
-	v.SetDefault("jwt.filer_signing.read.expires_after_seconds", 60)
+	signingKey := security.SigningKey(v.GetString("jwt.filer_signing.key"))
+	expiresAfterSec := v.GetInt("jwt.filer_signing.expires_after_seconds")
+	if expiresAfterSec == 0 {
+		expiresAfterSec = 10
+	}
+	readSigningKey := security.SigningKey(v.GetString("jwt.filer_signing.read.key"))
+	readExpiresAfterSec := v.GetInt("jwt.filer_signing.read.expires_after_seconds")
+	if readExpiresAfterSec == 0 {
+		readExpiresAfterSec = 60
+	}
+	if scheme == "http" && (len(signingKey) != 0 || len(readSigningKey) != 0) {
+		glog.Warningf("VAC store sends filer JWTs over plain HTTP; set vac.use_tls (WEED_VAC_USE_TLS) so the tokens are not exposed in transit")
+	}
 	return &filerVacStore{
-		filers:          filers,
-		scheme:          scheme,
-		client:          client,
-		signingKey:      security.SigningKey(v.GetString("jwt.filer_signing.key")),
-		expiresAfterSec: v.GetInt("jwt.filer_signing.expires_after_seconds"),
-		readSigningKey:  security.SigningKey(v.GetString("jwt.filer_signing.read.key")),
-		readExpiresSec:  v.GetInt("jwt.filer_signing.read.expires_after_seconds"),
+		filers:              filers,
+		scheme:              scheme,
+		client:              client,
+		signingKey:          signingKey,
+		expiresAfterSec:     expiresAfterSec,
+		readSigningKey:      readSigningKey,
+		readExpiresAfterSec: readExpiresAfterSec,
 	}, nil
 }
 
@@ -129,11 +138,10 @@ func (s *filerVacStore) roundTrip(ctx context.Context, method, volumeID string, 
 		if err != nil {
 			return nil, err
 		}
-		// The filer verifies reads against filer_signing.read.key and writes
-		// against filer_signing.key; an empty key leaves the header off.
-		signingKey, expiresAfterSec := s.signingKey, s.expiresAfterSec
-		if method == http.MethodGet || method == http.MethodHead {
-			signingKey, expiresAfterSec = s.readSigningKey, s.readExpiresSec
+		isWrite := method != http.MethodGet && method != http.MethodHead
+		signingKey, expiresAfterSec := s.readSigningKey, s.readExpiresAfterSec
+		if isWrite {
+			signingKey, expiresAfterSec = s.signingKey, s.expiresAfterSec
 		}
 		if token := security.GenJwtForFilerServer(signingKey, expiresAfterSec); token != "" {
 			req.Header.Set("Authorization", security.BearerPrefix+string(token))

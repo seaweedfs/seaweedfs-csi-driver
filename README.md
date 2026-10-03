@@ -294,6 +294,10 @@ Notes:
   filer (under `/.csi/vac/<volume>`, outside `/buckets`); the volume picks
   them up at its next stage (pod restart or reschedule).
 - The entry is removed with the volume on `DeleteVolume`.
+- On a filer with security enabled the store signs requests with the
+  `jwt.filer_signing.key` / `jwt.filer_signing.read.key` from the mounted
+  `security.toml`; the chart mounts it into both plugin containers. Set
+  `vacStore.useTls` so the tokens are not sent over plain HTTP.
 - The cluster's `csi-resizer` must support VolumeAttributesClass against the
   k8s API version in use: released v1.14.0 still watches the
   `storage.k8s.io/v1beta1` API removed in Kubernetes 1.34 — use a build from

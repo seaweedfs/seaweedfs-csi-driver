@@ -11,7 +11,9 @@ tlsSecret: ""
 
 # TLS for the VAC store — the driver persists VolumeAttributesClass
 # parameters on the filer via its HTTP API, independent from [grpc] ca in
-# security.toml which configures gRPC trust only.
+# security.toml which configures gRPC trust only. On a filer with security
+# enabled the driver signs these calls with the jwt.filer_signing keys from
+# security.toml; useTls keeps those tokens off the wire.
 vacStore:
   # true => https://, false (default) => http://
   useTls: false
@@ -50,10 +52,16 @@ security:
   create: false
   # "secret" or "configmap" — type of resource to create when create=true
   type: secret
-  # Inline security.toml content used when create=true. Example:
+  # Inline security.toml content used when create=true. The jwt.filer_signing
+  # keys must match the filer's security.toml so the driver can authenticate
+  # its VAC store HTTP calls. Example:
   #   content: |
   #     [jwt.signing.read]
   #     key = "your-jwt-read-key"
+  #     [jwt.filer_signing]
+  #     key = "your-filer-write-key"
+  #     [jwt.filer_signing.read]
+  #     key = "your-filer-read-key"
   #     [grpc]
   #     ca = "/usr/local/share/ca-certificates/ca.crt"
   #     [grpc.client]
