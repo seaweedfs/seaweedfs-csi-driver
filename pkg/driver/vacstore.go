@@ -83,7 +83,10 @@ func newFilerVacStore(filers []pb.ServerAddress) (*filerVacStore, error) {
 		readExpiresAfterSec = 60
 	}
 	if scheme == "http" && (len(signingKey) != 0 || len(readSigningKey) != 0) {
-		glog.Warningf("VAC store sends filer JWTs over plain HTTP; set vac.use_tls (WEED_VAC_USE_TLS) so the tokens are not exposed in transit")
+		if !v.GetBool("vac.allow_insecure_http") {
+			return nil, fmt.Errorf("VAC store would send filer JWTs over plain HTTP: set vac.use_tls (WEED_VAC_USE_TLS) for TLS, or vac.allow_insecure_http (WEED_VAC_ALLOW_INSECURE_HTTP) to opt in")
+		}
+		glog.V(1).Infof("VAC store sends filer JWTs over plain HTTP (vac.allow_insecure_http)")
 	}
 	return &filerVacStore{
 		filers:              filers,
