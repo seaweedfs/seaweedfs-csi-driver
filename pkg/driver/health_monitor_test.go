@@ -709,3 +709,56 @@ func TestHealthMonitorAbortsWhenStatfsProbeHangs(t *testing.T) {
 		t.Errorf("expected the second sweep to reuse the in-flight probe, got %d statfs syscalls", got)
 	}
 }
+
+// Unstage removes the mount at the staging path. A statfs probe still
+// blocked against that old mount must be invalidated; otherwise a mount
+// re-staged at the same path inherits the blocked probe and never
+// reports healthy.
+func TestUnstageResetsBlockedStatfsProbe(t *testing.T) {
+	state := newFakeMountState()
+	ns := newNodeServerWithFakes(t, state)
+
+	stagingPath := filepath.Join(t.TempDir(), "staging")
+	vol, err := ns.stageNewVolume("vol-1", stagingPath, map[string]string{}, false)
+	if err != nil {
+		t.Fatalf("stageNewVolume: %v", err)
+	}
+
+	origStatfs := statfsFn
+	origTimeout := statfsProbeTimeout
+	statfsProbeTimeout = 50 * time.Millisecond
+	defer func() {
+		statfsFn = origStatfs
+		statfsProbeTimeout = origTimeout
+		resetStatfsProbe(stagingPath)
+	}()
+
+	release := make(chan struct{})
+	defer close(release)
+	var statfsCalls atomic.Int32
+	statfsFn = func(p string) error {
+		if p == stagingPath {
+			statfsCalls.Add(1)
+			<-release
+		}
+		return nil
+	}
+
+	// The first probe blocks in the syscall and stays registered.
+	if _, probed := probeStatfs(stagingPath); probed {
+		t.Fatal("expected the blocked probe to time out")
+	}
+
+	if err := vol.Unstage(stagingPath); err != nil {
+		t.Fatalf("Unstage: %v", err)
+	}
+
+	// A probe after unstage must issue a fresh syscall rather than
+	// attach to the orphaned one.
+	if _, probed := probeStatfs(stagingPath); probed {
+		t.Fatal("expected the new probe to time out as well")
+	}
+	if got := statfsCalls.Load(); got != 2 {
+		t.Errorf("expected a fresh statfs syscall after unstage reset the probe, got %d", got)
+	}
+}
