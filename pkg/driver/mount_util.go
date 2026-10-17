@@ -55,10 +55,13 @@ func probeStatfs(path string) (error, bool) {
 					glog.Errorf("statfs probe for %s panicked: %v", path, r)
 					probe.err = fmt.Errorf("statfs probe for %s panicked: %v", path, r)
 				}
-				close(probe.done)
-				// CompareAndDelete so a probe orphaned by
+				// Drop the map entry before signalling completion: a
+				// caller that LoadOrStores this finished probe after
+				// done closes would reuse a result describing the old
+				// mount. CompareAndDelete so a probe orphaned by
 				// resetStatfsProbe cannot remove a newer probe's entry.
 				statfsProbes.CompareAndDelete(path, probe)
+				close(probe.done)
 			}()
 			probe.err = statfsFn(path)
 		}()
