@@ -39,7 +39,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ template "seaweedfs-csi-driver.namespace" . }}
 roleRef:
   kind: ClusterRole
   name: {{ template "seaweedfs-csi-driver.name" . }}-provisioner-role
@@ -72,7 +72,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ template "seaweedfs-csi-driver.namespace" . }}
 roleRef:
   kind: ClusterRole
   name: {{ template "seaweedfs-csi-driver.name" . }}-attacher-role
@@ -121,7 +121,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ template "seaweedfs-csi-driver.namespace" . }}
 roleRef:
   kind: ClusterRole
   name: {{ template "seaweedfs-csi-driver.name" . }}-snapshotter-role
@@ -148,7 +148,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ template "seaweedfs-csi-driver.namespace" . }}
 roleRef:
   kind: ClusterRole
   name: {{ template "seaweedfs-csi-driver.name" . }}-driver-registrar-controller-role
@@ -181,7 +181,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: {{ template "seaweedfs-csi-driver.name" . }}-node-sa
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ template "seaweedfs-csi-driver.namespace" . }}
 roleRef:
   kind: ClusterRole
   name: {{ template "seaweedfs-csi-driver.name" . }}-driver-registrar-node-role
@@ -192,7 +192,7 @@ kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ template "seaweedfs-csi-driver.name" . }}-leader-election-controller-role
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ template "seaweedfs-csi-driver.namespace" . }}
 rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
@@ -202,10 +202,10 @@ kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ template "seaweedfs-csi-driver.name" . }}-leader-election-controller-binding
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ template "seaweedfs-csi-driver.namespace" . }}
 subjects:
   - kind: ServiceAccount
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ template "seaweedfs-csi-driver.namespace" . }}
     name: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
 roleRef:
   kind: Role
@@ -228,7 +228,7 @@ metadata:
   name: {{ template "seaweedfs-csi-driver.name" . }}-resizer-binding
 subjects:
   - kind: ServiceAccount
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ template "seaweedfs-csi-driver.namespace" . }}
     name: {{ template "seaweedfs-csi-driver.name" . }}-controller-sa
 roleRef:
   kind: ClusterRole

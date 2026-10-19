@@ -3,6 +3,7 @@ kind: Deployment
 apiVersion: apps/v1
 metadata:
   name: {{ template "seaweedfs-csi-driver.name" . }}-controller
+  namespace: {{ template "seaweedfs-csi-driver.namespace" . }}
 spec:
   selector:
     matchLabels:
@@ -108,7 +109,7 @@ spec:
           args:
             - --csi-address=$(ADDRESS)
             - --leader-election
-            - --leader-election-namespace={{ .Release.Namespace }}
+            - --leader-election-namespace={{ template "seaweedfs-csi-driver.namespace" . }}
             - --http-endpoint=:9809
             {{- if .Values.topologyKeys }}
             - --feature-gates=Topology=true
@@ -149,7 +150,7 @@ spec:
           args:
             - --csi-address=$(ADDRESS)
             - --leader-election
-            - --leader-election-namespace={{ .Release.Namespace }}
+            - --leader-election-namespace={{ template "seaweedfs-csi-driver.namespace" . }}
             - --http-endpoint=:9810
             #- --v=5
           env:
@@ -188,7 +189,7 @@ spec:
           args:
             - --csi-address=$(ADDRESS)
             - --leader-election
-            - --leader-election-namespace={{ .Release.Namespace }}
+            - --leader-election-namespace={{ template "seaweedfs-csi-driver.namespace" . }}
             - --http-endpoint=:9811
           env:
             - name: ADDRESS

@@ -10,6 +10,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: {{ template "seaweedfs-csi-driver.name" . }}-node
+  namespace: {{ template "seaweedfs-csi-driver.namespace" . }}
 spec:
   selector:
     matchLabels:
