@@ -10,6 +10,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: {{ printf "%s-mount" $chartName }}
+  namespace: {{ template "seaweedfs-csi-driver.namespace" . }}
 spec:
   selector:
     matchLabels:

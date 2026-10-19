@@ -1,5 +1,9 @@
 {{- define "seaweedfs-csi-driver.name" -}}
-{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- .Values.nameOverride | default .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "seaweedfs-csi-driver.namespace" -}}
+{{- .Values.namespaceOverride | default .Release.Namespace | default "default" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{/*

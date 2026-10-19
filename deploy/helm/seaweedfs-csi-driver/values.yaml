@@ -9,6 +9,9 @@ storageClassParameters: {}
 isDefaultStorageClass: false
 tlsSecret: ""
 
+nameOverride: ""
+namespaceOverride: ""
+
 # TLS for the VAC store — the driver persists VolumeAttributesClass
 # parameters on the filer via its HTTP API, independent from [grpc] ca in
 # security.toml which configures gRPC trust only. On a filer with security
