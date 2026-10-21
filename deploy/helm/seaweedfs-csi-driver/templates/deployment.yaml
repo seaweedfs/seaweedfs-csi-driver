@@ -111,6 +111,9 @@ spec:
             - --leader-election
             - --leader-election-namespace={{ template "seaweedfs-csi-driver.namespace" . }}
             - --http-endpoint=:9809
+            {{- with .Values.csiProvisioner.timeout }}
+            - {{ printf "--timeout=%s" . | quote }}
+            {{- end }}
             {{- if .Values.topologyKeys }}
             - --feature-gates=Topology=true
             {{- end }}
