@@ -79,6 +79,8 @@ imagePullPolicy: "IfNotPresent"
 
 csiProvisioner:
   image: registry.k8s.io/sig-storage/csi-provisioner:v3.5.0
+  # CSI create/delete/capacity request timeout (e.g. "10m"). Empty uses the provisioner's default.
+  timeout: ""
   resources: {}
   livenessProbe:
     failureThreshold:
