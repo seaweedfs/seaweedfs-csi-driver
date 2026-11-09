@@ -45,6 +45,7 @@ func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
 		bindMountFn:      defaultBindMount,
 	}
 	ns.startHealthMonitor(defaultHealthCheckInterval)
+	ns.startOrphanSweeper(defaultOrphanSweepInterval)
 	return ns
 }
 
