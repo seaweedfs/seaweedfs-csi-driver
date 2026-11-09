@@ -55,6 +55,12 @@ type SeaweedFsDriver struct {
 
 	RunNode       bool
 	RunController bool
+
+	// KubeletPluginsDir is the host path where the kubelet registers CSI
+	// drivers and creates per-volume globalmount directories. When set, the
+	// node server sweeps it for orphan globalmounts left behind by a mount
+	// service restart (see orphan_sweep.go). Empty disables the sweep.
+	KubeletPluginsDir string
 }
 
 func NewSeaweedFsDriver(name, filer, nodeID, endpoint, mountEndpoint string, enableAttacher bool) *SeaweedFsDriver {

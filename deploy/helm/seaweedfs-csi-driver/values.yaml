@@ -217,6 +217,13 @@ node:
   mountEndpoint: ""    # defaults to mountService.endpoint
   mountSocketDir: ""   # defaults to mountService.socketDir
   mountHostPath: ""    # defaults to mountService.hostPath
+  # Orphan globalmount sweep: when set to the host path of the kubelet
+  # plugins directory (already host-mounted by this daemonset, see
+  # node.volumes.plugins_dir), the node plugin periodically removes
+  # globalmount directories left behind by a mount service restart, which
+  # otherwise wedge the kubelet with "mkdir .../globalmount: file exists".
+  # Empty disables the sweep. Example: /var/lib/kubelet/plugins
+  kubeletPluginsDir: ""
   # When seaweedfs-csi-driver-node pod on node is recreated, all pods on same node using seaweed-csi PV will stop working.
   # For safe update set updateStrategy.type: OnDelete and manually move pods who use seaweed-csi PV, then delete  seaweedfs-csi-driver-node damonset pod
   updateStrategy:

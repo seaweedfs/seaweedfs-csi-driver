@@ -68,6 +68,9 @@ spec:
             - --topologyKeys={{ join "," . }}
             {{- end }}
             - --components=node
+            {{- with .Values.node.kubeletPluginsDir }}
+            - --kubeletPluginsDir={{ . }}
+            {{- end }}
             {{- with .Values.concurrentWriters }}
             - --concurrentWriters={{ . }}
             {{- end }}

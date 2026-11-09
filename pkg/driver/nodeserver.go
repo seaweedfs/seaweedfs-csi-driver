@@ -75,6 +75,9 @@ type NodeServer struct {
 	// vacLoader reads the persisted VolumeAttributesClass parameters for a
 	// volume. Nil means the default filer-backed store.
 	vacLoader func(ctx context.Context, volumeID string) (map[string]string, error)
+
+	// isMountPointFn reports whether a path is a mount point (injectable for tests).
+	isMountPointFn func(path string) (bool, error)
 }
 
 func (ns *NodeServer) loadPersistedVolumeAttributes(ctx context.Context, volumeID string) (map[string]string, error) {
