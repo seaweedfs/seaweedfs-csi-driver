@@ -3,6 +3,8 @@ package driver
 import (
 	"os"
 	"path/filepath"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -42,6 +44,89 @@ func makeGlobalMount(t *testing.T, root, driverName, hash string) string {
 		t.Fatalf("chtimes %s: %v", gm, err)
 	}
 	return gm
+}
+
+func withStatfs(t *testing.T, fn func(string) error) {
+	t.Helper()
+	orig := statfsFn
+	statfsFn = fn
+	t.Cleanup(func() { statfsFn = orig })
+}
+
+// fakeDeadMount keeps gm classified as a mount until unmountFn detaches it;
+// mntErr is what the mount-point check reports while it is attached.
+func fakeDeadMount(ns *NodeServer, mntErr error) {
+	var attached atomic.Bool
+	attached.Store(true)
+	ns.unmountFn = func(string) error {
+		attached.Store(false)
+		return nil
+	}
+	ns.isMountPointFn = func(string) (bool, error) {
+		if !attached.Load() {
+			return false, nil
+		}
+		return mntErr == nil, mntErr
+	}
+}
+
+// Without openat2 the mount-point check stats the mount root, so a dead FUSE
+// mount (the one that fails the kubelet's mkdir) reports ENOTCONN there.
+func TestSweepRemovesDeadMountReportedByMountCheck(t *testing.T) {
+	root := t.TempDir()
+	gm := makeGlobalMount(t, root, "seaweedfs-csi-driver", "enotconn")
+
+	ns := newSweepTestNodeServer(t, root, nil)
+	fakeDeadMount(ns, syscall.ENOTCONN)
+	ns.sweepOrphanGlobalMounts()
+
+	if _, err := os.Stat(gm); !os.IsNotExist(err) {
+		t.Fatalf("dead globalmount %s must be removed, stat err = %v", gm, err)
+	}
+}
+
+// Cached inode attributes keep a dead mount looking attached; statfs reaches
+// the daemon and reports it dead.
+func TestSweepRemovesMountWithDeadStatfs(t *testing.T) {
+	root := t.TempDir()
+	gm := makeGlobalMount(t, root, "seaweedfs-csi-driver", "deadstatfs")
+	withStatfs(t, func(string) error { return syscall.ENOTCONN })
+
+	ns := newSweepTestNodeServer(t, root, nil)
+	fakeDeadMount(ns, nil)
+	ns.sweepOrphanGlobalMounts()
+
+	if _, err := os.Stat(gm); !os.IsNotExist(err) {
+		t.Fatalf("dead globalmount %s must be removed, stat err = %v", gm, err)
+	}
+}
+
+func TestSweepSkipsMountWhoseStatfsHangs(t *testing.T) {
+	root := t.TempDir()
+	gm := makeGlobalMount(t, root, "seaweedfs-csi-driver", "hung")
+	origStatfs, origTimeout := statfsFn, statfsProbeTimeout
+	release := make(chan struct{})
+	statfsFn = func(string) error {
+		<-release
+		return nil
+	}
+	statfsProbeTimeout = 50 * time.Millisecond
+	t.Cleanup(func() {
+		close(release)
+		probeStatfs(gm) // joins the blocked probe before statfsFn is restored
+		statfsFn, statfsProbeTimeout = origStatfs, origTimeout
+	})
+
+	ns := newSweepTestNodeServer(t, root, nil)
+	ns.isMountPointFn = func(string) (bool, error) {
+		t.Error("mount-point check ran after the statfs probe timed out")
+		return false, nil
+	}
+	ns.sweepOrphanGlobalMounts()
+
+	if _, err := os.Stat(gm); err != nil {
+		t.Fatalf("globalmount %s with a hung probe must be preserved, stat err = %v", gm, err)
+	}
 }
 
 // TestSweepRemovesUnownedResidualGlobalMount is the core regression: a leftover

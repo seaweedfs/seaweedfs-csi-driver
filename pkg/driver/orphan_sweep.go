@@ -88,32 +88,13 @@ func (ns *NodeServer) isMountPoint(path string) (bool, error) {
 	return mountutil.IsMountPoint(path)
 }
 
-// isDeadGlobalMount reports whether path is a mount whose FUSE daemon is dead.
-// The probe is bounded so a hung daemon cannot stall the sweep; a timeout is
-// inconclusive and therefore treated as "live" (never detach a mount we cannot
-// prove dead).
-func (ns *NodeServer) isDeadGlobalMount(path string) bool {
-	done := make(chan bool, 1)
-	go func() {
-		_, err := os.Stat(path)
-		done <- mount.IsCorruptedMnt(err)
-	}()
-	select {
-	case dead := <-done:
-		return dead
-	case <-time.After(defaultHealthCheckTimeout):
-		glog.Warningf("orphan sweep: probe for %s timed out, treating the mount as live", path)
-		return false
-	}
-}
-
 // sweepOrphanGlobalMounts removes globalmount directories that are not owned by
 // any tracked volume and whose mount is dead.
 //
 // Safety invariants (mirroring cleanupStaleStagingPath):
 //   - never remove a path that is still a mount point after unmount attempts;
 //   - never remove a path owned by a volume present in ns.volumes;
-//   - a probe timeout is inconclusive and treated as "live" (do not touch).
+//   - a statfs probe timeout is inconclusive and treated as "live".
 func (ns *NodeServer) sweepOrphanGlobalMounts() {
 	root := ns.Driver.KubeletPluginsDir
 	if root == "" {
@@ -122,51 +103,53 @@ func (ns *NodeServer) sweepOrphanGlobalMounts() {
 
 	// Only this driver's own subtree is scanned, so globalmounts belonging to
 	// other CSI drivers sharing the plugins dir are never considered.
-	matches := globalMountDirs(root, ns.Driver.name)
-	if len(matches) == 0 {
+	for _, gm := range globalMountDirs(root, ns.Driver.name) {
+		ns.sweepGlobalMount(gm)
+	}
+}
+
+// sweepGlobalMount handles one globalmount: a residual directory is removed, a
+// dead mount is detached and removed, and a live or unclassifiable one is left.
+func (ns *NodeServer) sweepGlobalMount(gm string) {
+	if ns.isGlobalMountOwned(gm) {
 		return
 	}
-
-	for _, gm := range matches {
-		if ns.isGlobalMountOwned(gm) {
-			continue
-		}
-
-		// Three-way classification, in order of safety:
-		//
-		//  1. Not a mount point at all -> a residual directory (exactly what a
-		//     restarted mount service leaves behind). Nothing is mounted, so
-		//     removing it cannot unlink user data. This is the common case and
-		//     the one that blocks the kubelet with "mkdir: file exists".
-		//  2. A mount point whose daemon is dead (ENOTCONN) -> detach and remove.
-		//  3. A mount point that is alive (or a probe timeout) -> leave alone.
-		isMnt, mntErr := ns.isMountPoint(gm)
-		if mntErr != nil {
-			glog.Warningf("orphan sweep: cannot classify %s: %v", gm, mntErr)
-			continue
-		}
-		if !isMnt {
+	// statfs reaches the FUSE daemon and is bounded, so it runs before the
+	// mount-table check and a hung daemon never stalls the sweep.
+	statfsErr, probed := probeStatfs(gm)
+	if !probed {
+		glog.Warningf("orphan sweep: statfs probe for %s timed out, treating the mount as live", gm)
+		return
+	}
+	if statfsErr == nil {
+		isMnt, err := ns.isMountPoint(gm)
+		switch {
+		case err == nil && isMnt:
+			return
+		case err == nil:
 			// Grace period: a freshly created dir may belong to a stage still
 			// in flight (kubelet mkdirs the globalmount before the FUSE mount
 			// lands, and the volume is only tracked after it succeeds).
-			if info, err := os.Stat(gm); err == nil && time.Since(info.ModTime()) < sweepGracePeriod {
+			if info, statErr := os.Stat(gm); statErr == nil && time.Since(info.ModTime()) < sweepGracePeriod {
 				glog.V(2).Infof("orphan sweep: skipping recent residual %s (within grace period)", gm)
-				continue
+				return
 			}
 			glog.Warningf("orphan sweep: removing residual globalmount dir %s (not mounted, no tracked volume owns it)", gm)
 			if err := os.RemoveAll(gm); err != nil {
 				glog.Errorf("orphan sweep: failed to remove residual %s: %v", gm, err)
 			}
-			continue
+			return
+		case !mount.IsCorruptedMnt(err):
+			glog.Warningf("orphan sweep: cannot classify %s: %v", gm, err)
+			return
 		}
-		if !ns.isDeadGlobalMount(gm) {
-			// Alive, or the probe timed out (inconclusive => treat as live).
-			continue
-		}
-		glog.Warningf("orphan sweep: removing dead globalmount %s (no tracked volume owns it)", gm)
-		if err := ns.removeOrphanGlobalMount(gm); err != nil {
-			glog.Errorf("orphan sweep: failed to remove %s: %v", gm, err)
-		}
+	} else if !mount.IsCorruptedMnt(statfsErr) {
+		glog.Warningf("orphan sweep: cannot classify %s: %v", gm, statfsErr)
+		return
+	}
+	glog.Warningf("orphan sweep: removing dead globalmount %s (no tracked volume owns it)", gm)
+	if err := ns.removeOrphanGlobalMount(gm); err != nil {
+		glog.Errorf("orphan sweep: failed to remove %s: %v", gm, err)
 	}
 }
 
