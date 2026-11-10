@@ -412,3 +412,20 @@ func TestSweepKeepsRecentResidualGlobalMount(t *testing.T) {
 		t.Fatalf("sweep removed a freshly created globalmount (grace period not honoured): %v", err)
 	}
 }
+
+func TestNodeCleanupStopsOrphanSweeper(t *testing.T) {
+	root := t.TempDir()
+	gm := makeGlobalMount(t, root, "seaweedfs-csi-driver", "aftercleanup")
+	orig := orphanSweepStartDelay
+	orphanSweepStartDelay = 20 * time.Millisecond
+	t.Cleanup(func() { orphanSweepStartDelay = orig })
+
+	ns := newSweepTestNodeServer(t, root, nil)
+	ns.startOrphanSweeper(time.Hour)
+	ns.NodeCleanup()
+	time.Sleep(100 * time.Millisecond)
+
+	if _, err := os.Stat(gm); err != nil {
+		t.Fatalf("orphan sweep ran after NodeCleanup returned: %v", err)
+	}
+}

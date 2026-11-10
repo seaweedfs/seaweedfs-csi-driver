@@ -224,25 +224,28 @@ func removeEmptyGlobalMount(gm string) error {
 	return nil
 }
 
-// startOrphanSweeper runs the orphan sweep on its own ticker, independent of the
-// per-volume health monitor.
+// orphanSweepStartDelay runs the first sweep shortly after start so a restart
+// repairs leftovers without waiting a full interval.
+var orphanSweepStartDelay = 10 * time.Second
+
+// startOrphanSweeper runs the orphan sweep on its own timer, independent of the
+// per-volume health monitor, until stopCh closes.
 func (ns *NodeServer) startOrphanSweeper(interval time.Duration) {
 	if ns.Driver.KubeletPluginsDir == "" {
 		glog.Infof("orphan sweeper disabled: kubelet plugins dir not configured")
 		return
 	}
+	next := time.NewTimer(orphanSweepStartDelay)
+	ns.sweeperWg.Add(1)
 	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
+		defer ns.sweeperWg.Done()
+		defer next.Stop()
 		glog.Infof("orphan globalmount sweeper started with interval %v (root=%s)", interval, ns.Driver.KubeletPluginsDir)
-		// Run once shortly after start so a restart repairs leftover zombies
-		// without waiting a full interval.
-		time.Sleep(10 * time.Second)
-		ns.runOrphanSweepTick()
 		for {
 			select {
-			case <-ticker.C:
+			case <-next.C:
 				ns.runOrphanSweepTick()
+				next.Reset(interval)
 			case <-ns.stopCh:
 				glog.Infof("orphan globalmount sweeper stopped")
 				return

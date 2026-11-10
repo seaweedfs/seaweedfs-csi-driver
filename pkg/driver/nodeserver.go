@@ -62,6 +62,9 @@ type NodeServer struct {
 	// sweep to synchronize on the recovery work.
 	recoveryWg sync.WaitGroup
 
+	// sweeperWg lets NodeCleanup wait for the orphan sweeper to exit.
+	sweeperWg sync.WaitGroup
+
 	// activeRecoveries holds the volumeIDs that currently have a
 	// recovery goroutine in flight, used to prevent successive sweeps
 	// from piling up new recovery goroutines on top of a hung one.
@@ -546,6 +549,7 @@ func (ns *NodeServer) NodeCleanup() {
 		// driver does not shut down mid-recovery, which could leave a
 		// volume in a half-staged state.
 		ns.recoveryWg.Wait()
+		ns.sweeperWg.Wait()
 		glog.Infof("node cleanup: health monitor stopped, mount service retains mounts across restarts")
 	})
 }
