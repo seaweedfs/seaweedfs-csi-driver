@@ -238,12 +238,73 @@ func TestSweepIgnoresNonGlobalMountDirs(t *testing.T) {
 	}
 }
 
-// TestRemoveOrphanGlobalMountRefusesStillMountedPath documents the refusal
-// contract: a path that stays a mount point after unmount attempts is left in
-// place rather than deleted through a live mount. Behavioural coverage lives in
-// TestSweepKeepsLiveMount.
+func withLazyUnmount(t *testing.T, fn func(string) error) {
+	t.Helper()
+	orig := lazyUnmount
+	lazyUnmount = fn
+	t.Cleanup(func() { lazyUnmount = orig })
+}
+
+// makeVolumeFile puts a file in gm and backdates gm past the grace period.
+func makeVolumeFile(t *testing.T, gm string) string {
+	t.Helper()
+	f := filepath.Join(gm, "data")
+	if err := os.WriteFile(f, []byte("user data"), 0o600); err != nil {
+		t.Fatalf("write %s: %v", f, err)
+	}
+	old := time.Now().Add(-sweepGracePeriod - time.Minute)
+	if err := os.Chtimes(gm, old, old); err != nil {
+		t.Fatalf("chtimes %s: %v", gm, err)
+	}
+	return f
+}
+
 func TestRemoveOrphanGlobalMountRefusesStillMountedPath(t *testing.T) {
-	t.Skip("covered structurally by TestSweepKeepsLiveMount")
+	root := t.TempDir()
+	gm := makeGlobalMount(t, root, "seaweedfs-csi-driver", "stuck")
+	f := makeVolumeFile(t, gm)
+	withLazyUnmount(t, func(string) error { return nil })
+
+	ns := newSweepTestNodeServer(t, root, nil)
+	ns.isMountPointFn = func(string) (bool, error) { return true, nil }
+
+	if err := ns.removeOrphanGlobalMount(gm); err == nil {
+		t.Fatal("expected an error for a path that stays mounted")
+	}
+	if _, err := os.Stat(f); err != nil {
+		t.Fatalf("file under a still-mounted globalmount must survive, stat err = %v", err)
+	}
+}
+
+func TestRemoveOrphanGlobalMountStopsOnRecheckError(t *testing.T) {
+	root := t.TempDir()
+	gm := makeGlobalMount(t, root, "seaweedfs-csi-driver", "recheck")
+	withLazyUnmount(t, func(string) error { return syscall.EINVAL })
+
+	ns := newSweepTestNodeServer(t, root, syscall.EBUSY)
+	ns.isMountPointFn = func(string) (bool, error) { return false, syscall.EIO }
+
+	if err := ns.removeOrphanGlobalMount(gm); err == nil {
+		t.Fatal("expected the recheck error to be returned")
+	}
+	if _, err := os.Stat(gm); err != nil {
+		t.Fatalf("globalmount with an unknown mount state must survive, stat err = %v", err)
+	}
+}
+
+// A residual directory is removed with rmdir, so files in it (or under a mount
+// that lands after classification) are never unlinked.
+func TestSweepKeepsNonEmptyResidualGlobalMount(t *testing.T) {
+	root := t.TempDir()
+	gm := makeGlobalMount(t, root, "seaweedfs-csi-driver", "nonempty")
+	f := makeVolumeFile(t, gm)
+
+	ns := newSweepTestNodeServer(t, root, nil)
+	ns.sweepOrphanGlobalMounts()
+
+	if _, err := os.Stat(f); err != nil {
+		t.Fatalf("file under a residual globalmount must survive, stat err = %v", err)
+	}
 }
 
 // TestGlobalMountDirsMatchesRealKubeletLayout pins the on-disk layout the
