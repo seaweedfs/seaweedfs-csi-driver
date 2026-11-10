@@ -131,6 +131,43 @@ func TestSweepSkipsMountWhoseStatfsHangs(t *testing.T) {
 	}
 }
 
+func TestSweepSkipsMountWhoseMountCheckHangs(t *testing.T) {
+	root := t.TempDir()
+	gm := makeGlobalMount(t, root, "seaweedfs-csi-driver", "hungcheck")
+	origTimeout := statfsProbeTimeout
+	statfsProbeTimeout = 50 * time.Millisecond
+	release := make(chan struct{})
+
+	ns := newSweepTestNodeServer(t, root, nil)
+	var calls atomic.Int32
+	ns.isMountPointFn = func(string) (bool, error) {
+		calls.Add(1)
+		<-release
+		return false, nil
+	}
+	t.Cleanup(func() {
+		close(release)
+		statfsProbeTimeout = time.Second
+		ns.isMountPoint(gm) // joins the blocked check before the timeout is restored
+		statfsProbeTimeout = origTimeout
+	})
+
+	for i := 0; i < 2; i++ {
+		start := time.Now()
+		ns.sweepOrphanGlobalMounts()
+		if elapsed := time.Since(start); elapsed > 2*time.Second {
+			t.Fatalf("sweep %d waited %v on a hung mount-point check", i, elapsed)
+		}
+	}
+
+	if _, err := os.Stat(gm); err != nil {
+		t.Fatalf("globalmount %s with a hung mount-point check must be preserved, stat err = %v", gm, err)
+	}
+	if n := calls.Load(); n != 1 {
+		t.Fatalf("mount-point check started %d times, want 1 shared in-flight check", n)
+	}
+}
+
 // Errors a live daemon can return must not get an untracked mount detached.
 func TestSweepKeepsMountWithInconclusiveErrors(t *testing.T) {
 	for _, errno := range []syscall.Errno{syscall.EIO, syscall.EACCES, syscall.EHOSTDOWN, syscall.EWOULDBLOCK, syscall.ENODEV} {

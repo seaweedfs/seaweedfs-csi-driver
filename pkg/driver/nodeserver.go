@@ -86,6 +86,8 @@ type NodeServer struct {
 
 	// isMountPointFn reports whether a path is a mount point (injectable for tests).
 	isMountPointFn func(path string) (bool, error)
+
+	mountPointProbes sync.Map // map[string]*mountPointProbe
 }
 
 func (ns *NodeServer) loadPersistedVolumeAttributes(ctx context.Context, volumeID string) (map[string]string, error) {

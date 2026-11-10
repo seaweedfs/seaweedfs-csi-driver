@@ -80,13 +80,44 @@ func globalMountDirs(root, driverName string) []string {
 	return out
 }
 
-// isMountPoint reports whether path is a mount point, using the injectable
-// seam when set (tests) and the real mount table otherwise.
+// mountPointProbe is one in-flight mount-point check, shared by later sweeps
+// the way statfsProbe is.
+type mountPointProbe struct {
+	done  chan struct{}
+	isMnt bool
+	err   error
+}
+
+// isMountPoint is bounded like probeStatfs: without openat2 the check stats
+// the mount root, which blocks on a hung FUSE daemon. A timeout is returned as
+// an error, which no caller treats as a dead mount.
 func (ns *NodeServer) isMountPoint(path string) (bool, error) {
-	if ns.isMountPointFn != nil {
-		return ns.isMountPointFn(path)
+	check := ns.isMountPointFn
+	if check == nil {
+		check = mountutil.IsMountPoint
 	}
-	return mountutil.IsMountPoint(path)
+	p, loaded := ns.mountPointProbes.LoadOrStore(path, &mountPointProbe{done: make(chan struct{})})
+	probe := p.(*mountPointProbe)
+	if !loaded {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					probe.err = fmt.Errorf("mount point check for %s panicked: %v", path, r)
+				}
+				ns.mountPointProbes.CompareAndDelete(path, probe)
+				close(probe.done)
+			}()
+			probe.isMnt, probe.err = check(path)
+		}()
+	}
+	timer := time.NewTimer(statfsProbeTimeout)
+	defer timer.Stop()
+	select {
+	case <-probe.done:
+		return probe.isMnt, probe.err
+	case <-timer.C:
+		return false, fmt.Errorf("mount point check for %s timed out after %v", path, statfsProbeTimeout)
+	}
 }
 
 // sweepOrphanGlobalMounts removes globalmount directories that are not owned by
