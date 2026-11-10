@@ -105,6 +105,11 @@ func (ns *NodeServer) sweepOrphanGlobalMounts() {
 	// Only this driver's own subtree is scanned, so globalmounts belonging to
 	// other CSI drivers sharing the plugins dir are never considered.
 	for _, gm := range globalMountDirs(root, ns.Driver.name) {
+		select {
+		case <-ns.stopCh:
+			return
+		default:
+		}
 		ns.sweepGlobalMount(gm)
 	}
 }
