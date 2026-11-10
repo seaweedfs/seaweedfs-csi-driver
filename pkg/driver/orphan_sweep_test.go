@@ -375,6 +375,15 @@ func TestGlobalMountDirsMatchesRealKubeletLayout(t *testing.T) {
 	if len(got) != 1 || got[0] != real {
 		t.Fatalf("globalMountDirs missed the real kubelet layout: got %v, want [%s]", got, real)
 	}
+
+	direct := filepath.Join(root, "seaweedfs-csi-driver", "otherhash", globalMountSuffix)
+	if err := os.MkdirAll(direct, 0o750); err != nil {
+		t.Fatalf("mkdir %s: %v", direct, err)
+	}
+	got = globalMountDirs(root, "")
+	if len(got) != 2 || got[0] != real || got[1] != direct {
+		t.Fatalf("globalMountDirs missed a supported layout: got %v, want [%s %s]", got, real, direct)
+	}
 }
 
 // TestSweepIgnoresOtherDriverGlobalMounts guards the safety property that the
