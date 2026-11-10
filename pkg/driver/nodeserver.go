@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -46,6 +47,10 @@ type NodeServer struct {
 	volumes       sync.Map
 	volumeMutexes *KeyMutex
 	activeStats   sync.Map
+
+	// stagingPathMutexes keep the orphan sweep off a staging path while a
+	// stage mounts it and before the volume is tracked.
+	stagingPathMutexes KeyMutex
 
 	// stopCh signals the health monitor goroutine to stop. Guarded by
 	// stopOnce so NodeCleanup is safe to call from multiple shutdown paths.
@@ -117,6 +122,9 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	volumeMutex := ns.getVolumeMutex(volumeID)
 	volumeMutex.Lock()
 	defer volumeMutex.Unlock()
+	stagingMutex := ns.getStagingPathMutex(stagingTargetPath)
+	stagingMutex.Lock()
+	defer stagingMutex.Unlock()
 
 	// The volume has been staged and is in memory cache.
 	if _, ok := ns.volumes.Load(volumeID); ok {
@@ -206,6 +214,9 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		// This handles the case where the CSI driver restarted and lost its in-memory state,
 		// but kubelet thinks the volume is already staged and directly calls NodePublishVolume.
 		glog.Infof("volume %s not found in cache, attempting self-healing", volumeID)
+		stagingMutex := ns.getStagingPathMutex(stagingTargetPath)
+		stagingMutex.Lock()
+		defer stagingMutex.Unlock()
 
 		if isStagingPathHealthy(stagingTargetPath) {
 			// The staging path is healthy - rebuild volume cache from existing mount
@@ -541,6 +552,10 @@ func (ns *NodeServer) NodeCleanup() {
 
 func (ns *NodeServer) getVolumeMutex(volumeID string) *sync.Mutex {
 	return ns.volumeMutexes.GetMutex(volumeID)
+}
+
+func (ns *NodeServer) getStagingPathMutex(stagingPath string) *sync.Mutex {
+	return ns.stagingPathMutexes.GetMutex(filepath.Clean(stagingPath))
 }
 
 func (ns *NodeServer) removeVolumeMutex(volumeID string) {

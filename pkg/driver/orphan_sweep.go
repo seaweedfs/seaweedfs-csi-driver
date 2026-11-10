@@ -111,6 +111,11 @@ func (ns *NodeServer) sweepOrphanGlobalMounts() {
 // sweepGlobalMount handles one globalmount: a residual directory is removed, a
 // dead mount is detached and removed, and a live or unclassifiable one is left.
 func (ns *NodeServer) sweepGlobalMount(gm string) {
+	stagingMutex := ns.getStagingPathMutex(gm)
+	if !stagingMutex.TryLock() {
+		return
+	}
+	defer stagingMutex.Unlock()
 	if ns.isGlobalMountOwned(gm) {
 		return
 	}

@@ -6,9 +6,13 @@ package driver
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/container-storage-interface/spec/lib/go/csi"
 )
 
 // fakeMounter records Mount/Unmount calls and reports success without
@@ -37,6 +41,10 @@ func (f *fakeUnmounter) Unmount() error {
 	f.parent.unmountCalls++
 	return nil
 }
+
+type mountFunc func(target string) (Unmounter, error)
+
+func (f mountFunc) Mount(target string) (Unmounter, error) { return f(target) }
 
 // newTestNodeServer returns a NodeServer with all mount/filesystem
 // factories replaced so tests do not touch the mount service or k8s API.
@@ -199,5 +207,38 @@ func TestStageNewVolumeValidatesMergedValues(t *testing.T) {
 	_, err := ns.stageNewVolume("/buckets/pvc-1", stagingPath, map[string]string{"writebackCache": "yes"}, false)
 	if err == nil || !strings.Contains(err.Error(), "invalid argument") {
 		t.Fatalf("expected invalid argument error, got %v", err)
+	}
+}
+
+// The volume is tracked only after its mount succeeds, so the orphan sweep
+// must stay off the staging path for the whole NodeStageVolume call.
+func TestNodeStageVolumeHoldsOffOrphanSweep(t *testing.T) {
+	root := t.TempDir()
+	stagingPath := filepath.Join(root, "kubernetes.io", "csi", "seaweedfs-csi-driver", "stagehash", globalMountSuffix)
+
+	ns := newTestNodeServer(t, nil)
+	ns.Driver.KubeletPluginsDir = root
+	ns.isMountPointFn = func(string) (bool, error) { return false, nil }
+	ns.mounterFactory = func(volumeID string, readOnly bool, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
+		return mountFunc(func(target string) (Unmounter, error) {
+			old := time.Now().Add(-sweepGracePeriod - time.Minute)
+			if err := os.Chtimes(target, old, old); err != nil {
+				t.Fatalf("chtimes %s: %v", target, err)
+			}
+			ns.sweepOrphanGlobalMounts()
+			if _, err := os.Stat(target); err != nil {
+				t.Errorf("orphan sweep removed %s while it was being staged: %v", target, err)
+			}
+			return &fakeUnmounter{parent: &fakeMounter{}}, nil
+		}), nil
+	}
+
+	_, err := ns.NodeStageVolume(context.Background(), &csi.NodeStageVolumeRequest{
+		VolumeId:          "/buckets/pvc-stage",
+		StagingTargetPath: stagingPath,
+		VolumeCapability:  &csi.VolumeCapability{},
+	})
+	if err != nil {
+		t.Fatalf("NodeStageVolume: %v", err)
 	}
 }
