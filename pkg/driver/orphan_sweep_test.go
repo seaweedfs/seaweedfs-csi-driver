@@ -480,3 +480,23 @@ func TestNodeCleanupStopsOrphanSweeper(t *testing.T) {
 		t.Fatalf("orphan sweep ran after NodeCleanup returned: %v", err)
 	}
 }
+
+func TestSweepStopsBetweenPathsAfterNodeCleanup(t *testing.T) {
+	root := t.TempDir()
+	first := makeGlobalMount(t, root, "seaweedfs-csi-driver", "a")
+	second := makeGlobalMount(t, root, "seaweedfs-csi-driver", "b")
+
+	ns := newSweepTestNodeServer(t, root, nil)
+	ns.isMountPointFn = func(path string) (bool, error) {
+		ns.NodeCleanup()
+		return false, nil
+	}
+	ns.sweepOrphanGlobalMounts()
+
+	if _, err := os.Stat(first); !os.IsNotExist(err) {
+		t.Fatalf("path classified before cleanup must be finished, stat err = %v", err)
+	}
+	if _, err := os.Stat(second); err != nil {
+		t.Fatalf("sweep went on after NodeCleanup, stat err = %v", err)
+	}
+}
