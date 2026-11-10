@@ -200,6 +200,25 @@ func TestSweepKeepsGlobalMountNamedAfterTrackedVolumeID(t *testing.T) {
 	}
 }
 
+func TestSweepSkipsGlobalMountBeingStaged(t *testing.T) {
+	root := t.TempDir()
+	gm := makeGlobalMount(t, root, "seaweedfs-csi-driver", "staging")
+
+	ns := newSweepTestNodeServer(t, root, nil)
+	stagingMutex := ns.getStagingPathMutex(gm)
+	stagingMutex.Lock()
+	ns.sweepOrphanGlobalMounts()
+	stagingMutex.Unlock()
+
+	if _, err := os.Stat(gm); err != nil {
+		t.Fatalf("globalmount being staged must be preserved, stat err = %v", err)
+	}
+	ns.sweepOrphanGlobalMounts()
+	if _, err := os.Stat(gm); !os.IsNotExist(err) {
+		t.Fatalf("residual globalmount must be removed once staging released it, stat err = %v", err)
+	}
+}
+
 // TestSweepKeepsLiveMount is the data-safety test: an untracked globalmount
 // that IS a live mount point must never be removed. RemoveAll through a live
 // FUSE mount would unlink user data.
