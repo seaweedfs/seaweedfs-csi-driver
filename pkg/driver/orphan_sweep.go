@@ -1,10 +1,10 @@
 package driver
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
@@ -153,26 +153,25 @@ func (ns *NodeServer) sweepGlobalMount(gm string) {
 	}
 }
 
-// isGlobalMountOwned reports whether gm belongs to a volume currently tracked in
-// ns.volumes. Ownership is matched on the volume hash directory name, which is
-// the same sha256(volumeID) the kubelet and the driver both derive.
+// globalMountKey is the per-volume directory holding a staging path; the
+// kubelet names it after the sha256 of the volume handle.
+func globalMountKey(stagingPath string) string {
+	return filepath.Base(filepath.Dir(stagingPath))
+}
+
+// isGlobalMountOwned reports whether gm belongs to a volume tracked in
+// ns.volumes, by its staging directory or by the hash of its volume ID.
 func (ns *NodeServer) isGlobalMountOwned(gm string) bool {
-	hashDir := filepath.Base(filepath.Dir(gm))
+	key := globalMountKey(gm)
 	owned := false
-	ns.volumes.Range(func(_, value interface{}) bool {
-		vol, ok := value.(*Volume)
-		if !ok || vol == nil {
-			return true
-		}
-		if vol.StagedPath == "" {
-			return true
-		}
-		// The staging path contains the same hash directory the kubelet uses.
-		if strings.Contains(vol.StagedPath, hashDir) {
+	ns.volumes.Range(func(id, value interface{}) bool {
+		volumeID, _ := id.(string)
+		if vol, ok := value.(*Volume); ok && vol != nil && vol.StagedPath != "" && globalMountKey(vol.StagedPath) == key {
 			owned = true
-			return false
+		} else if fmt.Sprintf("%x", sha256.Sum256([]byte(volumeID))) == key {
+			owned = true
 		}
-		return true
+		return !owned
 	})
 	return owned
 }

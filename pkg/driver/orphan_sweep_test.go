@@ -1,6 +1,8 @@
 package driver
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -163,6 +165,38 @@ func TestSweepKeepsGlobalMountOwnedByTrackedVolume(t *testing.T) {
 
 	if _, err := os.Stat(gm); err != nil {
 		t.Fatalf("owned globalmount %s must be preserved, stat err = %v", gm, err)
+	}
+}
+
+// A custom kubelet root that happens to contain an orphan's directory name must
+// not make every tracked volume look like its owner.
+func TestSweepOwnershipMatchesWholeHashDir(t *testing.T) {
+	root := t.TempDir()
+	gm := makeGlobalMount(t, root, "seaweedfs-csi-driver", "kube")
+
+	ns := newSweepTestNodeServer(t, root, nil)
+	ns.volumes.Store("/buckets/pvc-other", &Volume{
+		VolumeId:   "/buckets/pvc-other",
+		StagedPath: "/var/lib/kube/plugins/kubernetes.io/csi/seaweedfs-csi-driver/cccc/globalmount",
+	})
+	ns.sweepOrphanGlobalMounts()
+
+	if _, err := os.Stat(gm); !os.IsNotExist(err) {
+		t.Fatalf("orphan %s must be removed, stat err = %v", gm, err)
+	}
+}
+
+func TestSweepKeepsGlobalMountNamedAfterTrackedVolumeID(t *testing.T) {
+	root := t.TempDir()
+	volumeID := "/buckets/pvc-hashed"
+	gm := makeGlobalMount(t, root, "seaweedfs-csi-driver", fmt.Sprintf("%x", sha256.Sum256([]byte(volumeID))))
+
+	ns := newSweepTestNodeServer(t, root, nil)
+	ns.volumes.Store(volumeID, &Volume{VolumeId: volumeID, StagedPath: "/staging/elsewhere/globalmount"})
+	ns.sweepOrphanGlobalMounts()
+
+	if _, err := os.Stat(gm); err != nil {
+		t.Fatalf("globalmount of tracked volume %s must be preserved, stat err = %v", volumeID, err)
 	}
 }
 
