@@ -2,13 +2,14 @@ package driver
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/seaweedfs/seaweedfs/weed/glog"
-	"k8s.io/mount-utils"
 )
 
 // Orphan globalmount sweep.
@@ -144,11 +145,11 @@ func (ns *NodeServer) sweepGlobalMount(gm string) {
 				glog.Errorf("orphan sweep: failed to remove residual %s: %v", gm, err)
 			}
 			return
-		case !mount.IsCorruptedMnt(err):
+		case !isDeadMountErr(err):
 			glog.Warningf("orphan sweep: cannot classify %s: %v", gm, err)
 			return
 		}
-	} else if !mount.IsCorruptedMnt(statfsErr) {
+	} else if !isDeadMountErr(statfsErr) {
 		glog.Warningf("orphan sweep: cannot classify %s: %v", gm, statfsErr)
 		return
 	}
@@ -156,6 +157,12 @@ func (ns *NodeServer) sweepGlobalMount(gm string) {
 	if err := ns.removeOrphanGlobalMount(gm); err != nil {
 		glog.Errorf("orphan sweep: failed to remove %s: %v", gm, err)
 	}
+}
+
+// isDeadMountErr is narrower than mount.IsCorruptedMnt: errors such as EIO or
+// EACCES can come from a live daemon, and the sweep detaches untracked mounts.
+func isDeadMountErr(err error) bool {
+	return errors.Is(err, syscall.ENOTCONN) || errors.Is(err, syscall.ESTALE)
 }
 
 // globalMountKey is the per-volume directory holding a staging path; the

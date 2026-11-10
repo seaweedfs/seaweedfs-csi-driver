@@ -131,6 +131,48 @@ func TestSweepSkipsMountWhoseStatfsHangs(t *testing.T) {
 	}
 }
 
+// Errors a live daemon can return must not get an untracked mount detached.
+func TestSweepKeepsMountWithInconclusiveErrors(t *testing.T) {
+	for _, errno := range []syscall.Errno{syscall.EIO, syscall.EACCES, syscall.EHOSTDOWN, syscall.EWOULDBLOCK, syscall.ENODEV} {
+		for _, branch := range []string{"statfs", "mountcheck"} {
+			t.Run(branch+"/"+errno.Error(), func(t *testing.T) {
+				root := t.TempDir()
+				gm := makeGlobalMount(t, root, "seaweedfs-csi-driver", "live")
+				ns := newSweepTestNodeServer(t, root, nil)
+				ns.unmountFn = func(string) error {
+					t.Errorf("unmounted %s on %v", gm, errno)
+					return nil
+				}
+				if branch == "statfs" {
+					withStatfs(t, func(string) error { return errno })
+					ns.isMountPointFn = func(string) (bool, error) { return true, nil }
+				} else {
+					ns.isMountPointFn = func(string) (bool, error) { return false, &os.PathError{Op: "statx", Path: gm, Err: errno} }
+				}
+				ns.sweepOrphanGlobalMounts()
+
+				if _, err := os.Stat(gm); err != nil {
+					t.Fatalf("globalmount %s must be preserved on %v, stat err = %v", gm, errno, err)
+				}
+			})
+		}
+	}
+}
+
+func TestSweepRemovesStaleMount(t *testing.T) {
+	root := t.TempDir()
+	gm := makeGlobalMount(t, root, "seaweedfs-csi-driver", "estale")
+	withStatfs(t, func(string) error { return syscall.ESTALE })
+
+	ns := newSweepTestNodeServer(t, root, nil)
+	fakeDeadMount(ns, nil)
+	ns.sweepOrphanGlobalMounts()
+
+	if _, err := os.Stat(gm); !os.IsNotExist(err) {
+		t.Fatalf("stale globalmount %s must be removed, stat err = %v", gm, err)
+	}
+}
+
 // TestSweepRemovesUnownedResidualGlobalMount is the core regression: a leftover
 // globalmount directory with nothing mounted and no owning volume must be
 // removed, otherwise the kubelet fails forever with
