@@ -1,12 +1,12 @@
 package driver
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
 	"github.com/seaweedfs/seaweedfs/weed/glog"
 	"k8s.io/mount-utils"
 )
@@ -135,7 +135,7 @@ func (ns *NodeServer) sweepGlobalMount(gm string) {
 				return
 			}
 			glog.Warningf("orphan sweep: removing residual globalmount dir %s (not mounted, no tracked volume owns it)", gm)
-			if err := os.RemoveAll(gm); err != nil {
+			if err := removeEmptyGlobalMount(gm); err != nil {
 				glog.Errorf("orphan sweep: failed to remove residual %s: %v", gm, err)
 			}
 			return
@@ -182,27 +182,41 @@ func (ns *NodeServer) isGlobalMountOwned(gm string) bool {
 func (ns *NodeServer) removeOrphanGlobalMount(gm string) error {
 	if err := ns.unmountFn(gm); err != nil {
 		glog.Warningf("orphan sweep: unmount %s failed: %v, trying lazy detach", gm, err)
-		if lazyErr := mountmanager.LazyUnmount(gm); lazyErr != nil {
+		if lazyErr := lazyUnmount(gm); lazyErr != nil {
 			glog.Warningf("orphan sweep: lazy unmount %s failed: %v", gm, lazyErr)
 		}
 	}
 
-	// Re-check: never RemoveAll through a live FUSE mount.
-	if isMnt, err := ns.isMountPoint(gm); err == nil && isMnt {
-		// One more attempt, then give up rather than risk deleting user data.
-		if lazyErr := mountmanager.LazyUnmount(gm); lazyErr != nil {
-			return nil // leave it for the next sweep
+	isMnt, err := ns.isMountPoint(gm)
+	if err != nil {
+		return fmt.Errorf("recheck %s after unmount: %w", gm, err)
+	}
+	if isMnt {
+		if err := lazyUnmount(gm); err != nil {
+			return fmt.Errorf("lazy unmount %s: %w", gm, err)
 		}
-		if isMnt2, err2 := ns.isMountPoint(gm); err2 == nil && isMnt2 {
-			glog.Warningf("orphan sweep: %s still mounted after lazy detach, skipping removal", gm)
-			return nil
+		if isMnt, err = ns.isMountPoint(gm); err != nil {
+			return fmt.Errorf("recheck %s after lazy unmount: %w", gm, err)
+		}
+		if isMnt {
+			return fmt.Errorf("%s is still mounted after lazy unmount", gm)
 		}
 	}
+	resetStatfsProbe(gm)
 
-	if err := os.RemoveAll(gm); err != nil {
+	if err := removeEmptyGlobalMount(gm); err != nil {
 		return err
 	}
 	glog.Infof("orphan sweep: removed %s", gm)
+	return nil
+}
+
+// removeEmptyGlobalMount never recurses: a mount that lands on gm after it was
+// classified makes rmdir fail with EBUSY instead of unlinking volume data.
+func removeEmptyGlobalMount(gm string) error {
+	if err := os.Remove(gm); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	return nil
 }
 
