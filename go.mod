@@ -4,13 +4,13 @@ go 1.26.6
 
 require (
 	github.com/container-storage-interface/spec v1.11.0
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	google.golang.org/grpc v1.86.0-dev.0.20261027044109-d619b5d02089
 	k8s.io/client-go v0.32.0
 )
 
 require (
-	github.com/seaweedfs/seaweedfs v0.0.0-20261108181033-4ab66fb76da8
+	github.com/seaweedfs/seaweedfs v0.0.0-20261114020451-d91d58ce472a
 	golang.org/x/sys v0.49.0
 	k8s.io/api v0.32.0
 	k8s.io/apimachinery v0.32.0
@@ -55,7 +55,7 @@ require (
 	github.com/prometheus/client_golang v1.24.1 // indirect
 	github.com/prometheus/client_model v0.6.3 // indirect
 	github.com/prometheus/common v0.71.0 // indirect
-	github.com/prometheus/procfs v0.22.0 // indirect
+	github.com/prometheus/procfs v0.23.0 // indirect
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/seaweedfs/goexif v2.0.0+incompatible // indirect
@@ -69,10 +69,11 @@ require (
 	github.com/viant/ptrie v1.0.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/image v0.46.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
