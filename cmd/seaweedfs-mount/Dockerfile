@@ -1,6 +1,6 @@
 # SEAWEEDFS_COMMIT should match the commit in go.mod for reproducibility
 # Update via: docker build --build-arg SEAWEEDFS_COMMIT=<hash> ...
-ARG SEAWEEDFS_COMMIT=5ef99c1d8dbb
+ARG SEAWEEDFS_COMMIT=3bc6161401c2
 
 # Stay on the native build platform and cross-compile from there. Running the
 # toolchain under QEMU for every target architecture is slow and makes the git
