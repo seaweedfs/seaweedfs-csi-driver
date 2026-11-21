@@ -69,7 +69,12 @@ jobs:
             echo "docker pull attempt $i failed, retrying..."
             sleep 10
           done
-          kind load docker-image chrislusf/seaweedfs:latest --name csi-test
+          # The containerd image store keeps only the local platform of a
+          # multi-arch image, which `kind load docker-image` cannot import.
+          docker save --platform "$(docker version -f '{{.Server.Os}}/{{.Server.Arch}}')" \
+            -o "$RUNNER_TEMP/seaweedfs.tar" chrislusf/seaweedfs:latest
+          kind load image-archive "$RUNNER_TEMP/seaweedfs.tar" --name csi-test
+          rm -f "$RUNNER_TEMP/seaweedfs.tar"
 
       - name: Deploy SeaweedFS
         run: |
