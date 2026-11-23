@@ -31,6 +31,9 @@ type Volume struct {
 	publishPaths sync.Map          // targetPath (string) -> bool (readOnly)
 	volContext   map[string]string // volume context stored for re-staging
 	readOnly     bool              // FUSE-level readOnly flag
+	// stagingLost marks a volume restored while only its pod binds were
+	// mounted; it publishes again once recovery re-stages it.
+	stagingLost bool
 
 	// bindMountFn is used by Publish to perform the bind mount from the
 	// staging path to the pod-specific target path. Populated by the
