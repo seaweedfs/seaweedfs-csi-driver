@@ -26,12 +26,12 @@ vacStore:
   # Existing Secret mounted read-only at /var/run/secrets/vac-ca so caFile
   # can reference it, e.g. /var/run/secrets/vac-ca/ca.crt
   caSecret: ""
-#logVerbosity: 4
-#cacheCapacityMB: 0
-#cacheMetaTtlSec: 60
+# logVerbosity: 4
+# cacheCapacityMB: 0
+# cacheMetaTtlSec: 60
 
-#concurrentWriters: 128
-#concurrentReaders: 128
+# concurrentWriters: 128
+# concurrentReaders: 128
 
 # Extra flags appended to every weed mount command. Arguments managed by the
 # CSI driver, such as -dir and -filer, cannot be overridden here.
@@ -74,8 +74,8 @@ security:
 
 imagePullPolicy: "IfNotPresent"
 
-#imagePullSecrets:
-#- name: mycredentials
+# imagePullSecrets:
+# - name: mycredentials
 
 csiProvisioner:
   image: registry.k8s.io/sig-storage/csi-provisioner:v3.5.0
