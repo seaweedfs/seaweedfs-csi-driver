@@ -3,10 +3,10 @@ name: "helm: lint and test charts"
 on:
   push:
     branches: [ master ]
-    paths: ['deploy/helm/seaweedfs-csi-driver/**']
+    paths: ['deploy/helm/seaweedfs-csi-driver/**', '.github/workflows/helm_ci.yaml']
   pull_request:
     branches: [ master ]
-    paths: ['deploy/helm/seaweedfs-csi-driver/**']
+    paths: ['deploy/helm/seaweedfs-csi-driver/**', '.github/workflows/helm_ci.yaml']
 
 permissions:
   contents: read
