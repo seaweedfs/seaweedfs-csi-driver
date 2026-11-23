@@ -123,7 +123,9 @@ func (ns *NodeServer) restoreMountState(listMounts func() (map[string]string, er
 		vol.readOnly = state.ReadOnly
 		for target, readOnly := range state.PublishPaths {
 			target = filepath.Clean(target)
-			if mounts[target] == device {
+			// A target left on a dead or older FUSE bind by a partial
+			// recovery stays tracked so the health monitor binds it again.
+			if mounts[target] != "" {
 				vol.AddPublishPath(target, readOnly)
 			}
 		}

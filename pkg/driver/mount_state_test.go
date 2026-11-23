@@ -109,7 +109,7 @@ func TestMountStateRecoversExistingPublishesAfterRestart(t *testing.T) {
 	if !maps.Equal(recoveredContext, wantContext) {
 		t.Errorf("mount context = %v, want %v", recoveredContext, wantContext)
 	}
-	wantPublishes := map[string]bool{readWrite: false, readOnly: true}
+	wantPublishes := map[string]bool{readWrite: false, readOnly: true, replaced: false}
 	if !maps.Equal(recoveredPublishes, wantPublishes) {
 		t.Errorf("recovered publishes = %v, want %v", recoveredPublishes, wantPublishes)
 	}
