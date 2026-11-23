@@ -158,6 +158,19 @@ func TestMountStateRestoresVolumeWhoseStagingRecoveryFailed(t *testing.T) {
 	if _, ok := tracked.(*Volume).publishPaths.Load(target); !ok {
 		t.Fatalf("publish path %s is not tracked", target)
 	}
+	other := filepath.Join(root, "other-target")
+	_, err := restarted.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
+		VolumeId:          volumeID,
+		StagingTargetPath: stagingPath,
+		TargetPath:        other,
+		VolumeCapability:  capability,
+	})
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("publish onto the unmounted staging: %v, want Unavailable", err)
+	}
+	if _, ok := tracked.(*Volume).publishPaths.Load(other); ok {
+		t.Fatalf("publish path %s is tracked though nothing was bound", other)
+	}
 }
 
 // A read-only pod that re-stages a writable volume keeps the FUSE mount

@@ -129,6 +129,7 @@ func (ns *NodeServer) restoreMountState(listMounts func() (map[string]string, er
 		}
 		vol.volContext = state.Context
 		vol.readOnly = state.ReadOnly
+		vol.stagingLost = mounts[stagingPath] == ""
 		for target, readOnly := range published {
 			vol.AddPublishPath(target, readOnly)
 		}
