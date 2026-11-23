@@ -36,7 +36,7 @@ jobs:
       - name: Run chart-testing (list-changed)
         id: list-changed
         run: |
-          changed=$(ct list-changed --chart-dirs deploy/helm/seaweedfs-csi-driver/)
+          changed=$(ct list-changed --chart-dirs deploy/helm/)
           if [[ -n "$changed" ]]; then
             echo "::set-output name=changed::true"
           fi
@@ -68,10 +68,10 @@ jobs:
           fi
 
       - name: Run chart-testing (lint)
-        run: ct lint --all --validate-maintainers=false --chart-dirs deploy/helm/seaweedfs-csi-driver/
+        run: ct lint --all --validate-maintainers=false --chart-dirs deploy/helm/
 
       - name: Create kind cluster
         uses: helm/kind-action@v1.5.0
 
       - name: Run chart-testing (install)
-        run: ct install --all --chart-dirs deploy/helm/seaweedfs-csi-driver/
+        run: ct install --all --chart-dirs deploy/helm/
