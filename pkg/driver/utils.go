@@ -44,6 +44,9 @@ func NewNodeServer(n *SeaweedFsDriver) *NodeServer {
 		unmountFn:        mountutil.Unmount,
 		bindMountFn:      defaultBindMount,
 	}
+	if err := ns.restoreMountState(currentFuseMounts); err != nil {
+		glog.Warningf("mount state: could not restore mount tracking: %v", err)
+	}
 	ns.startHealthMonitor(defaultHealthCheckInterval)
 	ns.startOrphanSweeper(defaultOrphanSweepInterval)
 	return ns
