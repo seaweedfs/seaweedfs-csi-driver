@@ -310,11 +310,10 @@ func (ns *NodeServer) rebuildVolumeFromStaging(volumeID string, stagingPath stri
 	}, nil
 }
 
-// isPublishVolumeReadOnly determines if a volume should be mounted read-only based on the publish request.
+// isPublishVolumeReadOnly reports whether the staging mount a publish adopts or
+// re-stages is read-only. The access mode decides: a read-only publish makes
+// only its own bind read-only, and other pods may still write.
 func isPublishVolumeReadOnly(req *csi.NodePublishVolumeRequest) bool {
-	if req.GetReadonly() {
-		return true
-	}
 	cap := req.GetVolumeCapability()
 	if cap == nil || cap.GetAccessMode() == nil {
 		return false

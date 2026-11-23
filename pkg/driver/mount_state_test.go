@@ -160,6 +160,41 @@ func TestMountStateRestoresVolumeWhoseStagingRecoveryFailed(t *testing.T) {
 	}
 }
 
+// A read-only pod that re-stages a writable volume keeps the FUSE mount
+// writable for the other pods; only its own bind is read-only.
+func TestPublishRestageOfWritableVolumeStaysWritable(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	ns := newTestNodeServer(t, &fakeMounter{})
+	var stagedReadOnly *bool
+	ns.mounterFactory = func(_ string, readOnly bool, _ *SeaweedFsDriver, _ map[string]string) (Mounter, error) {
+		stagedReadOnly = &readOnly
+		return &fakeMounter{}, nil
+	}
+	ns.bindMountFn = func(string, string, bool) error { return nil }
+	if _, err := ns.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
+		VolumeId:          "shared",
+		StagingTargetPath: filepath.Join(root, "staging"),
+		TargetPath:        filepath.Join(root, "reader"),
+		VolumeCapability: &csi.VolumeCapability{
+			AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER},
+		},
+		Readonly: true,
+	}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if stagedReadOnly == nil {
+		t.Fatal("publish did not re-stage the volume")
+	}
+	if *stagedReadOnly {
+		t.Fatal("staging was mounted read-only, want writable")
+	}
+	tracked, ok := ns.volumes.Load("shared")
+	if !ok || tracked.(*Volume).readOnly {
+		t.Fatal("re-staged writable volume is tracked as read-only")
+	}
+}
+
 // An invalid journal record cannot make the driver adopt a live mount or
 // prevent a valid record from being restored.
 func TestMountStateRestoresValidRecordsAlongsideInvalidRecords(t *testing.T) {
