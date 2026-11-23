@@ -626,6 +626,53 @@ func TestHealthMonitorStillAbortsOnLiveMountpoint(t *testing.T) {
 	}
 }
 
+// A mount adopted after a plugin restart keeps the mount-service unmounter,
+// but a failed health check alone must not stop a daemon that still answers.
+func TestHealthMonitorKeepsLiveAdoptedMount(t *testing.T) {
+	state := newFakeMountState()
+	ns := newNodeServerWithFakes(t, state)
+
+	root := t.TempDir()
+	stagingPath := filepath.Join(root, "staging")
+	volCtx := map[string]string{"collection": "c"}
+
+	vol, err := ns.stageNewVolume("vol-1", stagingPath, volCtx, false)
+	if err != nil {
+		t.Fatalf("stageNewVolume: %v", err)
+	}
+	vol.volContext = volCtx
+	vol.adopted = true
+	ns.volumes.Store("vol-1", vol)
+
+	origMountPoint := isLikelyNotMountPointFn
+	origStatfs := statfsFn
+	defer func() {
+		isLikelyNotMountPointFn = origMountPoint
+		statfsFn = origStatfs
+	}()
+
+	isLikelyNotMountPointFn = func(p string) (bool, error) {
+		if p == stagingPath {
+			return false, nil
+		}
+		return origMountPoint(p)
+	}
+	statfsFn = func(p string) error { return nil }
+	state.healthy.Store(false)
+
+	ns.checkAndRecoverVolumes()
+	ns.recoveryWg.Wait()
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.unstageCalls != 0 {
+		t.Errorf("stopped a live adopted mount through the mount service %d time(s)", state.unstageCalls)
+	}
+	if state.cleanupCalls != 0 {
+		t.Errorf("expected no cleanup against a live mount, got %d", state.cleanupCalls)
+	}
+}
+
 // A mount that still shows up in /proc/mounts but whose daemon hangs
 // statfs is indistinguishable from a live mount: recovery must abort
 // rather than detach it. Timed-out callers must also reuse the one

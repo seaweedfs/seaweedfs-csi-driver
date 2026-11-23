@@ -320,6 +320,12 @@ func (ns *NodeServer) recoverVolume(volumeID string) {
 	// Step 1: Manager-level unmount. cleanupStagingFn only does a host
 	// unmount + RemoveAll, leaving the manager thinking the volume is
 	// still mounted, so the follow-up Mount would no-op onto a dead path.
+	if vol.adopted {
+		if notMnt, err := isLikelyNotMountPointFn(stagingPath); err == nil && !notMnt && !isDeadMount(stagingPath) {
+			glog.Errorf("health monitor: refusing to stop the adopted mount of volume %s at %s — its daemon still answers; aborting recovery", volumeID, stagingPath)
+			return
+		}
+	}
 	if vol.unmounter != nil {
 		if err := vol.unmounter.Unmount(); err != nil {
 			// Aborting is safer than continuing: RemoveAll on a path the
