@@ -109,8 +109,16 @@ func (ns *NodeServer) restoreMountState(listMounts func() (map[string]string, er
 			continue
 		}
 		stagingPath := filepath.Clean(state.StagingPath)
-		device := mounts[stagingPath]
-		if device == "" {
+		// A target keeps a dead or older FUSE bind when recovery failed
+		// part way; tracking it lets the health monitor bind it again.
+		published := make(map[string]bool)
+		for target, readOnly := range state.PublishPaths {
+			target = filepath.Clean(target)
+			if mounts[target] != "" {
+				published[target] = readOnly
+			}
+		}
+		if mounts[stagingPath] == "" && len(published) == 0 {
 			// A journal may outlive a node reboot or an unstage. Never
 			// recreate a staging mount from a record alone.
 			continue
@@ -121,13 +129,8 @@ func (ns *NodeServer) restoreMountState(listMounts func() (map[string]string, er
 		}
 		vol.volContext = state.Context
 		vol.readOnly = state.ReadOnly
-		for target, readOnly := range state.PublishPaths {
-			target = filepath.Clean(target)
-			// A target left on a dead or older FUSE bind by a partial
-			// recovery stays tracked so the health monitor binds it again.
-			if mounts[target] != "" {
-				vol.AddPublishPath(target, readOnly)
-			}
+		for target, readOnly := range published {
+			vol.AddPublishPath(target, readOnly)
 		}
 		ns.volumes.Store(state.VolumeID, vol)
 		glog.Infof("mount state: restored tracking for volume %s at %s", state.VolumeID, stagingPath)
