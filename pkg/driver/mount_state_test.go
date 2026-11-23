@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -112,6 +113,72 @@ func TestMountStateRecoversExistingPublishesAfterRestart(t *testing.T) {
 	wantPublishes := map[string]bool{readWrite: false, readOnly: true, replaced: false}
 	if !maps.Equal(recoveredPublishes, wantPublishes) {
 		t.Errorf("recovered publishes = %v, want %v", recoveredPublishes, wantPublishes)
+	}
+}
+
+// Recovery can re-stage a volume and fail to bind one pod again, which keeps
+// that bind on the old FUSE. After a restart with staging healthy, the
+// monitor's publish retry still binds it to the new staging mount.
+func TestMountStateRetriesPendingPublishAfterRestart(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	stagingPath := filepath.Join(root, "staging")
+	pending := filepath.Join(root, "pending")
+	bound := filepath.Join(root, "bound")
+	volumeID := "pending-publish"
+	capability := &csi.VolumeCapability{}
+
+	original := newTestNodeServer(t, &fakeMounter{})
+	original.Driver.MountStateDir = filepath.Join(root, "state")
+	if _, err := original.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+		VolumeId:          volumeID,
+		StagingTargetPath: stagingPath,
+		VolumeCapability:  capability,
+	}); err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	for _, target := range []string{pending, bound} {
+		if _, err := original.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
+			VolumeId:          volumeID,
+			StagingTargetPath: stagingPath,
+			TargetPath:        target,
+			VolumeCapability:  capability,
+		}); err != nil {
+			t.Fatalf("publish %s: %v", target, err)
+		}
+	}
+
+	restarted := newTestNodeServer(t, &fakeMounter{})
+	restarted.Driver.MountStateDir = original.Driver.MountStateDir
+	restarted.Driver.mountEndpoint = "unix:///tmp/unused-mount-service.sock"
+	if err := restarted.restoreMountState(func() (map[string]string, error) {
+		return map[string]string{stagingPath: "0:24", bound: "0:24", pending: "0:12"}, nil
+	}); err != nil {
+		t.Fatalf("restore after restart: %v", err)
+	}
+
+	restarted.isHealthyFn = func(path string) bool { return path != pending }
+	var unmounted []string
+	restarted.unmountFn = func(path string) error {
+		unmounted = append(unmounted, path)
+		return nil
+	}
+	tracked, ok := restarted.volumes.Load(volumeID)
+	if !ok {
+		t.Fatal("lost the staged volume across restart")
+	}
+	rebound := map[string]string{}
+	tracked.(*Volume).bindMountFn = func(source, target string, _ bool) error {
+		rebound[target] = source
+		return nil
+	}
+	restarted.retryPublishPaths(volumeID)
+
+	if !slices.Equal(unmounted, []string{pending}) {
+		t.Errorf("unmounted %v, want only %s", unmounted, pending)
+	}
+	if want := map[string]string{pending: stagingPath}; !maps.Equal(rebound, want) {
+		t.Errorf("re-bound %v, want %v", rebound, want)
 	}
 }
 
