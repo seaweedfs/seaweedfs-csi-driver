@@ -115,6 +115,51 @@ func TestMountStateRecoversExistingPublishesAfterRestart(t *testing.T) {
 	}
 }
 
+// Recovery can unmount staging and then fail to mount it again. A restart in
+// that window still finds the pods' binds, so the volume stays tracked.
+func TestMountStateRestoresVolumeWhoseStagingRecoveryFailed(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	stagingPath := filepath.Join(root, "staging")
+	target := filepath.Join(root, "target")
+	volumeID := "half-recovered"
+	capability := &csi.VolumeCapability{}
+
+	original := newTestNodeServer(t, &fakeMounter{})
+	original.Driver.MountStateDir = filepath.Join(root, "state")
+	if _, err := original.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+		VolumeId:          volumeID,
+		StagingTargetPath: stagingPath,
+		VolumeCapability:  capability,
+	}); err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if _, err := original.NodePublishVolume(ctx, &csi.NodePublishVolumeRequest{
+		VolumeId:          volumeID,
+		StagingTargetPath: stagingPath,
+		TargetPath:        target,
+		VolumeCapability:  capability,
+	}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	restarted := newTestNodeServer(t, &fakeMounter{})
+	restarted.Driver.MountStateDir = original.Driver.MountStateDir
+	restarted.Driver.mountEndpoint = "unix:///tmp/unused-mount-service.sock"
+	if err := restarted.restoreMountState(func() (map[string]string, error) {
+		return map[string]string{target: "0:12"}, nil
+	}); err != nil {
+		t.Fatalf("restore after restart: %v", err)
+	}
+	tracked, ok := restarted.volumes.Load(volumeID)
+	if !ok {
+		t.Fatal("forgot a volume whose pods still hold its bind")
+	}
+	if _, ok := tracked.(*Volume).publishPaths.Load(target); !ok {
+		t.Fatalf("publish path %s is not tracked", target)
+	}
+}
+
 // An invalid journal record cannot make the driver adopt a live mount or
 // prevent a valid record from being restored.
 func TestMountStateRestoresValidRecordsAlongsideInvalidRecords(t *testing.T) {
