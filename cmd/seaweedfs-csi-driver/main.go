@@ -30,6 +30,7 @@ var (
 	cacheMetaTtlSec      = flag.Int("cacheMetaTtlSec", 60, "metadata cache TTL in seconds")
 	cacheDir             = flag.String("cacheDir", os.TempDir(), "local cache directory for file chunks and meta data")
 	kubeletPluginsDir    = flag.String("kubeletPluginsDir", "", "host path of the kubelet CSI plugins directory (e.g. /var/lib/kubelet/plugins); when set, orphan globalmount directories left by a mount restart are swept automatically")
+	mountStateDir        = flag.String("mountStateDir", "", "host-backed directory for restoring mount tracking after node plugin restarts")
 	uidMap               = flag.String("map.uid", "", "map local uid to uid on filer, comma-separated <local_uid>:<filer_uid>")
 	gidMap               = flag.String("map.gid", "", "map local gid to gid on filer, comma-separated <local_gid>:<filer_gid>")
 	dataCenter           = flag.String("dataCenter", "", "dataCenter this node is running in (locality-definition)")
@@ -98,6 +99,7 @@ func main() {
 	drv.CacheMetaTtlSec = *cacheMetaTtlSec
 	drv.CacheDir = *cacheDir
 	drv.KubeletPluginsDir = *kubeletPluginsDir
+	drv.MountStateDir = *mountStateDir
 	drv.UidMap = *uidMap
 	drv.GidMap = *gidMap
 	drv.DataCenter = *dataCenter

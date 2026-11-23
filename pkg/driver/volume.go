@@ -3,7 +3,7 @@ package driver
 import (
 	"context"
 	"fmt"
-	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
@@ -152,30 +152,19 @@ func (vol *Volume) RemovePublishPath(path string) {
 func (vol *Volume) Unstage(stagingTargetPath string) error {
 	glog.V(0).Infof("unmounting volume %s from %s", vol.VolumeId, stagingTargetPath)
 
-	if stagingTargetPath != vol.StagedPath && vol.StagedPath != "" {
-		glog.Warningf("staging path %s differs for volume %s at %s", stagingTargetPath, vol.VolumeId, vol.StagedPath)
+	stagingTargetPath = filepath.Clean(stagingTargetPath)
+	if vol.StagedPath != "" && stagingTargetPath != filepath.Clean(vol.StagedPath) {
+		return fmt.Errorf("staging path %s differs from %s for volume %s", stagingTargetPath, vol.StagedPath, vol.VolumeId)
 	}
-
-	if vol.unmounter == nil {
-		// This can happen when the volume was rebuilt from an existing staging path
-		// after a CSI driver restart. In this case, we need to force unmount.
-		glog.Infof("volume %s has no unmounter (rebuilt from existing mount), using force unmount", vol.VolumeId)
-
-		// Clean up using mount utilities. This will also handle unmounting.
-		if err := mount.CleanupMountPoint(stagingTargetPath, mountutil, true); err != nil {
-			glog.Errorf("error cleaning up mount point for volume %s: %v", vol.VolumeId, err)
-			return err
-		}
-	} else {
+	if vol.unmounter != nil {
 		if err := vol.unmounter.Unmount(); err != nil {
-			glog.Errorf("error unmounting volume during unstage: %s, err: %v", stagingTargetPath, err)
-			return err
+			return fmt.Errorf("unmounting volume %s during unstage: %w", vol.VolumeId, err)
 		}
-
-		if err := os.Remove(stagingTargetPath); err != nil && !os.IsNotExist(err) {
-			glog.Errorf("error removing staging path for volume %s at %s, err: %v", vol.VolumeId, stagingTargetPath, err)
-			return err
-		}
+	}
+	// A restarted mount service can acknowledge Unmount without knowing
+	// about the old FUSE mount. Verify that the staging path is detached.
+	if err := mount.CleanupMountPoint(stagingTargetPath, mountutil, true); err != nil {
+		return fmt.Errorf("cleaning up staging path %s for volume %s: %w", stagingTargetPath, vol.VolumeId, err)
 	}
 
 	// The mount at stagingTargetPath was removed; an in-flight probe's

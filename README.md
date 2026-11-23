@@ -122,6 +122,25 @@ For safe update set `node.updateStrategy.type: OnDelete` for manual update. Step
   5. uncordon or remove taint on node
   6. repeat all steps on [all nodes]
 
+## Restore mount tracking after a node plugin restart
+
+Set `node.mountStateDir: /csi/mount-state` to let the node plugin keep mount
+records in its existing host-backed driver directory. The node plugin records
+staging settings and publish targets as CSI requests succeed. On startup it
+checks those records against the node's mount table and restores tracking
+before the mount health monitor runs.
+
+This covers mounts recorded with this option enabled that still have a
+staging mount. Detached publish targets are skipped. After the mount service
+restarts, the health monitor can remount these volumes so existing consumers
+can open files again. Files that were already open on the dead FUSE connection
+must be reopened by the application.
+
+Unstage tries to remove the volume's record. If a mount is detached and the
+node plugin cannot update or remove the record, it logs a warning and completes
+teardown. Startup skips records whose staging mount is gone and ignores
+temporary files left by interrupted writes. It leaves these files on disk.
+
 # Testing
 
 1. Create a persistent volume claim for 5GiB with name `seaweedfs-csi-pvc` and storage class `seaweedfs-storage`. The requested size is applied as a quota to the SeaweedFS collection used by the mount.

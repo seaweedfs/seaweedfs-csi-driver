@@ -71,6 +71,9 @@ spec:
             {{- with .Values.node.kubeletPluginsDir }}
             - --kubeletPluginsDir={{ . }}
             {{- end }}
+            {{- with .Values.node.mountStateDir }}
+            - --mountStateDir={{ . }}
+            {{- end }}
             {{- with .Values.concurrentWriters }}
             - --concurrentWriters={{ . }}
             {{- end }}

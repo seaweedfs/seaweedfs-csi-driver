@@ -61,6 +61,10 @@ type SeaweedFsDriver struct {
 	// node server sweeps it for orphan globalmounts left behind by a mount
 	// service restart (see orphan_sweep.go). Empty disables the sweep.
 	KubeletPluginsDir string
+
+	// MountStateDir holds node-local mount records across plugin restarts.
+	// Empty disables mount state persistence.
+	MountStateDir string
 }
 
 func NewSeaweedFsDriver(name, filer, nodeID, endpoint, mountEndpoint string, enableAttacher bool) *SeaweedFsDriver {

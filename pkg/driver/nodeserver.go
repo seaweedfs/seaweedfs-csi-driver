@@ -124,6 +124,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
 	}
 
+	stagingTargetPath = filepath.Clean(stagingTargetPath)
+
 	volumeMutex := ns.getVolumeMutex(volumeID)
 	volumeMutex.Lock()
 	defer volumeMutex.Unlock()
@@ -132,7 +134,10 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	defer stagingMutex.Unlock()
 
 	// The volume has been staged and is in memory cache.
-	if _, ok := ns.volumes.Load(volumeID); ok {
+	if volume, ok := ns.volumes.Load(volumeID); ok {
+		if err := ns.saveMountState(volume.(*Volume)); err != nil {
+			return nil, status.Errorf(codes.Internal, "saving mount state: %v", err)
+		}
 		glog.Infof("volume %s has been already staged", volumeID)
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
@@ -145,10 +150,16 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		// The staging path is healthy - rebuild the cache from the existing mount
 		// This preserves the existing FUSE mount and avoids disrupting any published volumes
 		glog.Infof("volume %s has existing healthy mount at %s, rebuilding cache", volumeID, stagingTargetPath)
-		volume := ns.rebuildVolumeFromStaging(volumeID, stagingTargetPath)
-		volume.volContext = req.GetVolumeContext()
+		volume, err := ns.rebuildVolumeFromStaging(volumeID, stagingTargetPath)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		volume.volContext = cloneVolumeContext(req.GetVolumeContext())
 		volume.readOnly = isVolumeReadOnly(req)
 		ns.volumes.Store(volumeID, volume)
+		if err := ns.saveMountState(volume); err != nil {
+			return nil, status.Errorf(codes.Internal, "saving mount state: %v", err)
+		}
 		glog.Infof("volume %s cache rebuilt from existing staging at %s", volumeID, stagingTargetPath)
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
@@ -180,6 +191,9 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	}
 
 	ns.volumes.Store(volumeID, volume)
+	if err := ns.saveMountState(volume); err != nil {
+		return nil, status.Errorf(codes.Internal, "saving mount state: %v", err)
+	}
 	glog.Infof("volume %s successfully staged to %s", volumeID, stagingTargetPath)
 
 	return &csi.NodeStageVolumeResponse{}, nil
@@ -209,6 +223,9 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.InvalidArgument, "Staging target path missing in request")
 	}
 
+	stagingTargetPath = filepath.Clean(stagingTargetPath)
+	targetPath = filepath.Clean(targetPath)
+
 	volumeMutex := ns.getVolumeMutex(volumeID)
 	volumeMutex.Lock()
 	defer volumeMutex.Unlock()
@@ -226,8 +243,11 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		if isStagingPathHealthy(stagingTargetPath) {
 			// The staging path is healthy - rebuild volume cache from existing mount
 			glog.Infof("volume %s has healthy staging at %s, rebuilding cache", volumeID, stagingTargetPath)
-			rebuiltVol := ns.rebuildVolumeFromStaging(volumeID, stagingTargetPath)
-			rebuiltVol.volContext = req.GetVolumeContext()
+			rebuiltVol, err := ns.rebuildVolumeFromStaging(volumeID, stagingTargetPath)
+			if err != nil {
+				return nil, status.Error(codes.Internal, err.Error())
+			}
+			rebuiltVol.volContext = cloneVolumeContext(req.GetVolumeContext())
 			rebuiltVol.readOnly = isPublishVolumeReadOnly(req)
 			volume = rebuiltVol
 			ns.volumes.Store(volumeID, volume)
@@ -265,25 +285,29 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	vol.AddPublishPath(targetPath, req.GetReadonly())
+	if err := ns.saveMountState(vol); err != nil {
+		return nil, status.Errorf(codes.Internal, "saving mount state: %v", err)
+	}
 
 	glog.Infof("volume %s successfully published to %s", volumeID, targetPath)
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
-// rebuildVolumeFromStaging creates a Volume struct from an existing healthy staging mount.
-// This is used for self-healing when the CSI driver restarts but the FUSE mount is still active.
-// Note: The returned Volume won't have an unmounter, so Unstage will need special handling.
-func (ns *NodeServer) rebuildVolumeFromStaging(volumeID string, stagingPath string) *Volume {
+// rebuildVolumeFromStaging tracks an existing mount after the node plugin
+// restarts. The mount service may still own the weed mount process.
+func (ns *NodeServer) rebuildVolumeFromStaging(volumeID string, stagingPath string) (*Volume, error) {
+	client, err := mountmanager.NewClient(ns.Driver.mountEndpoint)
+	if err != nil {
+		return nil, fmt.Errorf("creating mount service client: %w", err)
+	}
 	return &Volume{
 		VolumeId:    volumeID,
 		StagedPath:  stagingPath,
 		driver:      ns.Driver,
 		localSocket: mountmanager.LocalSocketPath(ns.Driver.volumeSocketDir, volumeID),
 		bindMountFn: ns.bindMountFn,
-		// mounter and unmounter are nil - this is intentional
-		// The FUSE process is already running, we just need to track the volume
-		// The mount service will have the mount tracked if it's still alive
-	}
+		unmounter:   &mountServiceUnmounter{client: client, volumeID: volumeID},
+	}, nil
 }
 
 // isPublishVolumeReadOnly determines if a volume should be mounted read-only based on the publish request.
@@ -311,6 +335,8 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
 	}
 
+	targetPath = filepath.Clean(targetPath)
+
 	volumeMutex := ns.getVolumeMutex(volumeID)
 	volumeMutex.Lock()
 	defer volumeMutex.Unlock()
@@ -332,6 +358,11 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	vol.RemovePublishPath(targetPath)
+	if err := ns.saveMountState(vol); err != nil {
+		// Restore skips detached publish targets. Allow kubelet to unstage
+		// the volume even if the journal cannot be rewritten.
+		glog.Warningf("mount state: could not record unpublish of %s from %s: %v", volumeID, targetPath, err)
+	}
 
 	glog.Infof("volume %s successfully unpublished from %s", volumeID, targetPath)
 
@@ -482,6 +513,8 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		return nil, status.Error(codes.InvalidArgument, "Target path missing in request")
 	}
 
+	stagingTargetPath = filepath.Clean(stagingTargetPath)
+
 	volumeMutex := ns.getVolumeMutex(volumeID)
 	volumeMutex.Lock()
 	defer volumeMutex.Unlock()
@@ -490,10 +523,10 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	if !ok {
 		glog.Warningf("volume %s hasn't been staged", volumeID)
 
-		// make sure there is no any garbage
-		if err := mount.CleanupMountPoint(stagingTargetPath, mountutil, true); err == nil {
-			resetStatfsProbe(stagingTargetPath)
+		if err := mount.CleanupMountPoint(stagingTargetPath, mountutil, true); err != nil {
+			return nil, status.Errorf(codes.Internal, "cleaning up staging path %s for volume %s: %v", stagingTargetPath, volumeID, err)
 		}
+		resetStatfsProbe(stagingTargetPath)
 
 		// Also clean up cache directory and socket if they exist
 		CleanupVolumeResources(ns.Driver, volumeID)
@@ -503,6 +536,10 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		} else {
 			ns.volumes.Delete(volumeID)
 		}
+	}
+
+	if err := ns.removeMountState(volumeID); err != nil {
+		glog.Warningf("mount state: could not remove record for unstaged volume %s: %v", volumeID, err)
 	}
 
 	// remove mutex on successfull unstage

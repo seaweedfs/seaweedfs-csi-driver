@@ -14,3 +14,7 @@ func remountStaleFuseInContainers(publishPath, stagingPath string, readOnly bool
 func getMountDevice(mountPath string) (string, error) {
 	return "", nil
 }
+
+func currentFuseMounts() (map[string]string, error) {
+	return nil, nil
+}

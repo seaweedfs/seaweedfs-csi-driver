@@ -224,6 +224,9 @@ node:
   # otherwise wedge the kubelet with "mkdir .../globalmount: file exists".
   # Empty disables the sweep. Example: /var/lib/kubelet/plugins
   kubeletPluginsDir: ""
+  # Set to /csi/mount-state to retain mount tracking across node plugin restarts.
+  # /csi is the host-backed directory for this driver.
+  mountStateDir: ""
   # When seaweedfs-csi-driver-node pod on node is recreated, all pods on same node using seaweed-csi PV will stop working.
   # For safe update set updateStrategy.type: OnDelete and manually move pods who use seaweed-csi PV, then delete  seaweedfs-csi-driver-node damonset pod
   updateStrategy:
