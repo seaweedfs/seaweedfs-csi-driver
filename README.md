@@ -125,10 +125,11 @@ For safe update set `node.updateStrategy.type: OnDelete` for manual update. Step
 ## Restore mount tracking after a node plugin restart
 
 Set `node.mountStateDir: /csi/mount-state` to let the node plugin keep mount
-records in its existing host-backed driver directory. The node plugin records
-staging settings and publish targets as CSI requests succeed. On startup it
-checks those records against the node's mount table and restores tracking
-before the mount health monitor runs.
+records in its existing host-backed driver directory. The node image must
+support `--mountStateDir`; v1.4.40 and older exit on the unknown flag. The node
+plugin records staging settings and publish targets as CSI requests succeed. On
+startup it checks those records against the node's mount table and restores
+tracking before the mount health monitor runs.
 
 This covers mounts recorded with this option enabled that still have a
 staging mount. Detached publish targets are skipped. After the mount service
@@ -138,8 +139,9 @@ must be reopened by the application.
 
 Unstage tries to remove the volume's record. If a mount is detached and the
 node plugin cannot update or remove the record, it logs a warning and completes
-teardown. Startup skips records whose staging mount is gone and ignores
-temporary files left by interrupted writes. It leaves these files on disk.
+teardown. Startup skips records with neither a staging mount nor a publish
+bind left, and ignores temporary files left by interrupted writes. It leaves
+these files on disk.
 
 # Testing
 
