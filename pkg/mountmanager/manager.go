@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -20,13 +22,21 @@ var kubeMounter = mount.New("")
 
 var lazyUnmount = LazyUnmount
 
+var startWeedMount = startWeedMountProcess
+
 // Manager owns weed mount processes and exposes helpers to start and stop them.
+//
+// Mounts are keyed by target path, so a volume can be mounted at several
+// targets at once, each by its own weed mount process. Operations on one
+// volume are serialized, and so are operations on one target; the volume
+// lock is always taken before the target lock.
 type Manager struct {
 	weedBinary string
 
-	mu     sync.Mutex
-	mounts map[string]*mountEntry
-	locks  *keyMutex
+	mu          sync.Mutex
+	mounts      map[string]*mountEntry // keyed by the cleaned target path
+	volumeLocks *keyMutex
+	targetLocks *keyMutex
 }
 
 // Config configures a Manager instance.
@@ -41,13 +51,17 @@ func NewManager(cfg Config) *Manager {
 		binary = DefaultWeedBinary
 	}
 	return &Manager{
-		weedBinary: binary,
-		mounts:     make(map[string]*mountEntry),
-		locks:      newKeyMutex(),
+		weedBinary:  binary,
+		mounts:      make(map[string]*mountEntry),
+		volumeLocks: newKeyMutex(),
+		targetLocks: newKeyMutex(),
 	}
 }
 
-// Mount starts a weed mount process using the provided request.
+// Mount starts a weed mount process using the provided request. Mounting a
+// volume again at the target where it is mounted is a no-op. A volume can
+// also be mounted at other targets, but each of its mounts needs its own
+// local socket and cache directory.
 func (m *Manager) Mount(req *MountRequest) (*MountResponse, error) {
 	if req == nil {
 		return nil, errors.New("mount request is nil")
@@ -55,12 +69,16 @@ func (m *Manager) Mount(req *MountRequest) (*MountResponse, error) {
 	if err := validateMountRequest(req); err != nil {
 		return nil, err
 	}
+	target := filepath.Clean(req.TargetPath)
 
-	lock := m.locks.get(req.VolumeID)
-	lock.Lock()
-	defer lock.Unlock()
+	volumeLock := m.volumeLocks.get(req.VolumeID)
+	volumeLock.Lock()
+	defer volumeLock.Unlock()
+	targetLock := m.targetLocks.get(target)
+	targetLock.Lock()
+	defer targetLock.Unlock()
 
-	if entry := m.getMount(req.VolumeID); entry != nil {
+	if entry := m.getMount(target); entry != nil {
 		// If the previous weed mount process has died, the entry is
 		// stale and the FUSE mount is dead. Tear down the stale entry
 		// so we can start a fresh process; otherwise we would falsely
@@ -68,27 +86,31 @@ func (m *Manager) Mount(req *MountRequest) (*MountResponse, error) {
 		// silently bind-mount onto a dead path. See seaweedfs/seaweedfs-csi-driver#261.
 		select {
 		case <-entry.process.exited:
-			glog.Warningf("volume %s previous weed mount process has exited; replacing stale entry with a fresh mount", req.VolumeID)
+			glog.Warningf("volume %s previous weed mount process at %s has exited; replacing stale entry with a fresh mount", entry.volumeID, target)
 			// Wait for wait()'s post-exit cleanup (FUSE unmount) to finish
 			// so ensureTargetClean below sees a quiescent path.
 			<-entry.process.done
-			m.removeMount(req.VolumeID)
+			m.removeMount(target, entry)
 		default:
-			if entry.targetPath == req.TargetPath {
-				glog.Infof("volume %s already mounted at %s", req.VolumeID, req.TargetPath)
-				return &MountResponse{LocalSocket: entry.localSocket}, nil
+			if entry.volumeID != req.VolumeID {
+				return nil, fmt.Errorf("target %s is already mounted by volume %s", target, entry.volumeID)
 			}
-			return nil, fmt.Errorf("volume %s already mounted at %s", req.VolumeID, entry.targetPath)
+			glog.Infof("volume %s already mounted at %s", req.VolumeID, target)
+			return &MountResponse{LocalSocket: entry.localSocket}, nil
 		}
 	}
 
-	entry, err := m.startMount(req)
+	if err := m.reclaimResources(req); err != nil {
+		return nil, err
+	}
+
+	entry, err := m.startMount(req, target)
 	if err != nil {
 		return nil, err
 	}
 
 	m.mu.Lock()
-	m.mounts[req.VolumeID] = entry
+	m.mounts[target] = entry
 	m.mu.Unlock()
 
 	// Proactively clear the entry once the weed mount process exits,
@@ -96,30 +118,74 @@ func (m *Manager) Mount(req *MountRequest) (*MountResponse, error) {
 	// crashes on its own (e.g. backend errors) leaves a stale entry
 	// that fools later Mount calls into reporting success without
 	// starting a new process.
-	go m.watchProcessExit(req.VolumeID, entry)
+	go m.watchProcessExit(target, entry)
 
-	glog.Infof("started weed mount process for volume %s at %s", req.VolumeID, req.TargetPath)
+	glog.Infof("started weed mount process for volume %s at %s", req.VolumeID, target)
 	return &MountResponse{LocalSocket: entry.localSocket}, nil
 }
 
-// watchProcessExit removes the entry for volumeID once its weed mount
+// reclaimResources makes sure that no running mount of this service uses the
+// local socket or the cache directory of req. A second weed mount would take
+// the socket over from the first one, and unmounting either of them removes
+// the shared cache directory. Entries whose process has already exited are
+// dropped, as Mount does with a stale entry at its own target. The caller
+// holds the volume lock of req, so the check is atomic against the volume's
+// own mounts; different volumes do not share these paths, because the node
+// plugin derives both from the volume ID.
+func (m *Manager) reclaimResources(req *MountRequest) error {
+	socket := filepath.Clean(req.LocalSocket)
+	cacheDir := filepath.Clean(req.CacheDir)
+
+	type staleMount struct {
+		target string
+		entry  *mountEntry
+	}
+	var stale []staleMount
+
+	m.mu.Lock()
+	for target, entry := range m.mounts {
+		var resource string
+		switch {
+		case filepath.Clean(entry.localSocket) == socket:
+			resource = "local socket " + socket
+		case filepath.Clean(entry.cacheDir) == cacheDir:
+			resource = "cache dir " + cacheDir
+		default:
+			continue
+		}
+		select {
+		case <-entry.process.exited:
+			stale = append(stale, staleMount{target: target, entry: entry})
+		default:
+			m.mu.Unlock()
+			return fmt.Errorf("volume %s mounted at %s already uses %s; each mount needs its own local socket and cache dir", entry.volumeID, target, resource)
+		}
+	}
+	m.mu.Unlock()
+
+	for _, s := range stale {
+		glog.Warningf("volume %s previous weed mount process at %s has exited; dropping its entry to reuse its local socket and cache dir", s.entry.volumeID, s.target)
+		<-s.entry.process.done
+		m.removeMount(s.target, s.entry)
+	}
+	return nil
+}
+
+// watchProcessExit removes the entry at target once its weed mount
 // process has finished exiting. It is safe to run concurrently with
 // Unmount: if Unmount has already removed the entry (or replaced it
 // with a fresh mount), the identity check ensures we leave the new
 // entry alone.
-func (m *Manager) watchProcessExit(volumeID string, entry *mountEntry) {
+func (m *Manager) watchProcessExit(target string, entry *mountEntry) {
 	<-entry.process.done
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if existing, ok := m.mounts[volumeID]; ok && existing == entry {
-		delete(m.mounts, volumeID)
-		// See removeMount: do not delete the per-volume lock — a
-		// concurrent Mount/Unmount may still be holding it.
-		glog.Infof("removed mount entry for volume %s after weed mount process exited (target: %s)", volumeID, entry.targetPath)
+	if m.removeMount(target, entry) {
+		glog.Infof("removed mount entry for volume %s at %s after weed mount process exited", entry.volumeID, target)
 	}
 }
 
-// Unmount terminates the weed mount process associated with the provided request.
+// Unmount terminates the weed mount process at the requested target. A
+// request without a target, as older clients send, stops the volume's only
+// mount and fails if the volume is mounted at several targets.
 func (m *Manager) Unmount(req *UnmountRequest) (*UnmountResponse, error) {
 	if req == nil {
 		return nil, errors.New("unmount request is nil")
@@ -128,15 +194,43 @@ func (m *Manager) Unmount(req *UnmountRequest) (*UnmountResponse, error) {
 		return nil, errors.New("volumeId is required")
 	}
 
-	lock := m.locks.get(req.VolumeID)
-	lock.Lock()
-	defer lock.Unlock()
+	volumeLock := m.volumeLocks.get(req.VolumeID)
+	volumeLock.Lock()
+	defer volumeLock.Unlock()
+
+	target := req.TargetPath
+	if target == "" {
+		targets := m.targetsOf(req.VolumeID)
+		switch len(targets) {
+		case 0:
+			glog.Infof("volume %s not mounted", req.VolumeID)
+			return &UnmountResponse{}, nil
+		case 1:
+			target = targets[0]
+		default:
+			return nil, fmt.Errorf("volume %s is mounted at %s; the unmount request must name the targetPath", req.VolumeID, strings.Join(targets, ", "))
+		}
+	}
+	target = filepath.Clean(target)
+
+	targetLock := m.targetLocks.get(target)
+	targetLock.Lock()
+	defer targetLock.Unlock()
 
 	// Use getMount first to check if mounted, only remove from state after cleanup succeeds
-	entry := m.getMount(req.VolumeID)
+	entry := m.getMount(target)
 	if entry == nil {
-		glog.Infof("volume %s not mounted", req.VolumeID)
+		glog.Infof("volume %s not mounted at %s", req.VolumeID, target)
 		return &UnmountResponse{}, nil
+	}
+	if entry.volumeID != req.VolumeID {
+		if req.TargetPath == "" {
+			// The volume's only mount was at target and has been replaced
+			// since targetsOf ran; nothing of the volume is left to stop.
+			glog.Infof("volume %s not mounted", req.VolumeID)
+			return &UnmountResponse{}, nil
+		}
+		return nil, fmt.Errorf("target %s is mounted by volume %s, not %s", target, entry.volumeID, req.VolumeID)
 	}
 
 	// Note: We don't explicitly unmount here because weedMountProcess.wait()
@@ -152,36 +246,54 @@ func (m *Manager) Unmount(req *UnmountRequest) (*UnmountResponse, error) {
 	}
 
 	// Only remove from state after all cleanup operations succeeded
-	m.removeMount(req.VolumeID)
+	m.removeMount(target, entry)
 
-	glog.Infof("stopped weed mount process for volume %s at %s", req.VolumeID, entry.targetPath)
+	glog.Infof("stopped weed mount process for volume %s at %s", req.VolumeID, target)
 	return &UnmountResponse{}, nil
 }
 
-func (m *Manager) getMount(volumeID string) *mountEntry {
+func (m *Manager) getMount(target string) *mountEntry {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.mounts[volumeID]
+	return m.mounts[target]
 }
 
-func (m *Manager) removeMount(volumeID string) *mountEntry {
+// targetsOf returns the sorted targets at which volumeID is mounted.
+func (m *Manager) targetsOf(volumeID string) []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	entry := m.mounts[volumeID]
-	delete(m.mounts, volumeID)
-	// Intentionally do NOT delete the per-volume lock here. If a caller
-	// is still holding the lock from m.locks.get(volumeID), deleting it
-	// would let a concurrent caller receive a brand-new lock from the
-	// next m.locks.get() and enter the critical section in parallel —
-	// splitting Mount/Unmount serialization for the same volume. The
-	// lock map grows by one entry per ever-mounted volume, which is
-	// negligible for the manager's lifetime.
-	return entry
+	var targets []string
+	for target, entry := range m.mounts {
+		if entry.volumeID == volumeID {
+			targets = append(targets, target)
+		}
+	}
+	slices.Sort(targets)
+	return targets
 }
 
-func (m *Manager) startMount(req *MountRequest) (*mountEntry, error) {
-	targetPath := req.TargetPath
-	if err := ensureTargetClean(targetPath); err != nil {
+// removeMount drops the entry at target if it is still the given entry, and
+// reports whether it did.
+func (m *Manager) removeMount(target string, entry *mountEntry) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.mounts[target] != entry {
+		return false
+	}
+	delete(m.mounts, target)
+	// Intentionally do NOT delete the per-volume or per-target locks
+	// here. If a caller is still holding a lock from m.volumeLocks.get or
+	// m.targetLocks.get, deleting it would let a concurrent caller receive
+	// a brand-new lock from the next get() and enter the critical section
+	// in parallel — splitting Mount/Unmount serialization for the same
+	// volume or target. The lock maps grow by one small entry per volume and
+	// per target ever requested, which is negligible for the manager's
+	// lifetime.
+	return true
+}
+
+func (m *Manager) startMount(req *MountRequest, target string) (*mountEntry, error) {
+	if err := ensureTargetClean(target); err != nil {
 		return nil, err
 	}
 
@@ -203,14 +315,14 @@ func (m *Manager) startMount(req *MountRequest) (*mountEntry, error) {
 		return nil, errors.New("mountArgs is required")
 	}
 
-	process, err := startWeedMountProcess(m.weedBinary, args, targetPath, req.VolumeID)
+	process, err := startWeedMount(m.weedBinary, args, target, req.VolumeID)
 	if err != nil {
 		return nil, err
 	}
 
 	return &mountEntry{
 		volumeID:    req.VolumeID,
-		targetPath:  targetPath,
+		targetPath:  target,
 		cacheDir:    cacheDir,
 		localSocket: localSocket,
 		process:     process,

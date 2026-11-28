@@ -309,7 +309,7 @@ func (ns *NodeServer) rebuildVolumeFromStaging(volumeID string, stagingPath stri
 		driver:      ns.Driver,
 		localSocket: mountmanager.LocalSocketPath(ns.Driver.volumeSocketDir, volumeID),
 		bindMountFn: ns.bindMountFn,
-		unmounter:   &mountServiceUnmounter{client: client, volumeID: volumeID},
+		unmounter:   &mountServiceUnmounter{client: client, volumeID: volumeID, targetPath: stagingPath},
 		adopted:     true,
 	}, nil
 }

@@ -1,9 +1,62 @@
 package driver
 
 import (
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/seaweedfs/seaweedfs-csi-driver/pkg/mountmanager"
 )
+
+// The unmount request names the mount's target, so a mount service that
+// holds several mounts of the volume stops the right one.
+func TestMountServiceUnmountNamesTheTarget(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "mount.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unmounts := make(chan mountmanager.UnmountRequest, 1)
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/mount":
+			fmt.Fprint(w, "{}")
+		case "/unmount":
+			var req mountmanager.UnmountRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			unmounts <- req
+			fmt.Fprint(w, "{}")
+		default:
+			http.NotFound(w, r)
+		}
+	})}
+	t.Cleanup(func() { server.Close() })
+	go server.Serve(listener)
+
+	driver := &SeaweedFsDriver{mountEndpoint: "unix://" + socket, CacheDir: t.TempDir(), volumeSocketDir: t.TempDir()}
+	mounter, err := newMounter("/buckets/pvc-1", false, driver, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "globalmount")
+	unmounter, err := mounter.Mount(target)
+	if err != nil {
+		t.Fatalf("mount: %v", err)
+	}
+	if err := unmounter.Unmount(); err != nil {
+		t.Fatalf("unmount: %v", err)
+	}
+	if got := <-unmounts; got.VolumeID != "/buckets/pvc-1" || got.TargetPath != target {
+		t.Fatalf("unmount request %+v, want volume /buckets/pvc-1 at %s", got, target)
+	}
+}
 
 func TestBuildMountArgsIncludesInitialCollectionQuota(t *testing.T) {
 	mounter := &mountServiceMounter{
