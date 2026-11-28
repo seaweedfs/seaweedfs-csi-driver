@@ -28,8 +28,9 @@ type mountServiceMounter struct {
 }
 
 type mountServiceUnmounter struct {
-	client   *mountmanager.Client
-	volumeID string
+	client     *mountmanager.Client
+	volumeID   string
+	targetPath string
 }
 
 func newMounter(volumeID string, readOnly bool, driver *SeaweedFsDriver, volContext map[string]string) (Mounter, error) {
@@ -84,13 +85,14 @@ func (m *mountServiceMounter) Mount(target string) (Unmounter, error) {
 	}
 
 	return &mountServiceUnmounter{
-		client:   m.client,
-		volumeID: m.volumeID,
+		client:     m.client,
+		volumeID:   m.volumeID,
+		targetPath: target,
 	}, nil
 }
 
 func (u *mountServiceUnmounter) Unmount() error {
-	_, err := u.client.Unmount(&mountmanager.UnmountRequest{VolumeID: u.volumeID})
+	_, err := u.client.Unmount(&mountmanager.UnmountRequest{VolumeID: u.volumeID, TargetPath: u.targetPath})
 	return err
 }
 

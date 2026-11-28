@@ -17,6 +17,9 @@ type MountResponse struct {
 // UnmountRequest contains the information needed to stop a weed mount process.
 type UnmountRequest struct {
 	VolumeID string `json:"volumeId"`
+	// TargetPath names the mount to stop. Without it the volume's only
+	// mount is stopped; a volume mounted at several targets needs it.
+	TargetPath string `json:"targetPath,omitempty"`
 }
 
 // UnmountResponse is the response of a successful unmount request.

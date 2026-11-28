@@ -491,14 +491,14 @@ func TestAdoptedMountUnstage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unmounted := make(chan string, 2)
+	unmounted := make(chan mountmanager.UnmountRequest, 2)
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req mountmanager.UnmountRequest
 		if r.Method != http.MethodPost || r.URL.Path != "/unmount" || json.NewDecoder(r.Body).Decode(&req) != nil {
 			http.Error(w, "expected an unmount request", http.StatusBadRequest)
 			return
 		}
-		unmounted <- req.VolumeID
+		unmounted <- req
 		fmt.Fprint(w, "{}")
 	})}
 	t.Cleanup(func() { server.Close() })
@@ -545,8 +545,8 @@ func TestAdoptedMountUnstage(t *testing.T) {
 			}
 			select {
 			case got := <-unmounted:
-				if got != volumeID {
-					t.Fatalf("unmounted volume %q, want %q", got, volumeID)
+				if got.VolumeID != volumeID || got.TargetPath != stage {
+					t.Fatalf("unmounted volume %q at %q, want %q at %q", got.VolumeID, got.TargetPath, volumeID, stage)
 				}
 			default:
 				t.Fatal("unstage did not contact the mount service")

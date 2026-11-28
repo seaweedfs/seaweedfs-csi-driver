@@ -2,7 +2,7 @@ package mountmanager
 
 import "sync"
 
-// keyMutex provides a lock per key to serialize operations per volume.
+// keyMutex provides a lock per key, such as a volume ID or a target path.
 type keyMutex struct {
 	mutexes sync.Map
 }
