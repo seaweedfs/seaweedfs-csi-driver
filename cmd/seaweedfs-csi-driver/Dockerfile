@@ -1,6 +1,6 @@
 # Stay on the native build platform and cross-compile from there, instead of
 # running the toolchain under QEMU once per target architecture.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
 
 WORKDIR /go/src/github.com/seaweedfs/seaweedfs-csi-driver
 
