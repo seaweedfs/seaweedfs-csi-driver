@@ -1,19 +1,16 @@
 module github.com/seaweedfs/seaweedfs-csi-driver
 
-go 1.26.6
+go 1.27.4
 
 require (
 	github.com/container-storage-interface/spec v1.11.0
+	github.com/seaweedfs/seaweedfs v0.0.0-20261128025837-4cf028f68337
 	golang.org/x/net v0.62.0
+	golang.org/x/sys v0.50.0
 	google.golang.org/grpc v1.86.0-dev.0.20261027044109-d619b5d02089
-	k8s.io/client-go v0.32.0
-)
-
-require (
-	github.com/seaweedfs/seaweedfs v0.0.0-20261123030105-a98c9e27185c
-	golang.org/x/sys v0.49.0
 	k8s.io/api v0.32.0
 	k8s.io/apimachinery v0.32.0
+	k8s.io/client-go v0.32.0
 	k8s.io/mount-utils v0.32.0
 )
 
@@ -73,8 +70,8 @@ require (
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/image v0.46.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
-	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/term v0.47.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
+	golang.org/x/term v0.48.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b // indirect
