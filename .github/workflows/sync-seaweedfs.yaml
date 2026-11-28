@@ -65,8 +65,13 @@ jobs:
           sed -i "s/^ARG SEAWEEDFS_COMMIT=.*/ARG SEAWEEDFS_COMMIT=$COMMIT/" cmd/seaweedfs-mount/Dockerfile
           sed -i "s/^ARG SEAWEEDFS_COMMIT=.*/ARG SEAWEEDFS_COMMIT=$COMMIT/" cmd/seaweedfs-mount/Dockerfile.dev
           
+          # The golang images set GOTOOLCHAIN=local, so the builder must meet go.mod's go line
+          GO_MINOR=$(go mod edit -json | jq -r .Go | cut -d. -f1,2)
+          sed -i -E "s/golang:[0-9]+\.[0-9]+-alpine/golang:${GO_MINOR}-alpine/" cmd/seaweedfs-mount/Dockerfile cmd/seaweedfs-mount/Dockerfile.dev cmd/seaweedfs-csi-driver/Dockerfile cmd/seaweedfs-csi-driver/Dockerfile.dev
+
           # Show the changes
           grep "ARG SEAWEEDFS_COMMIT" cmd/seaweedfs-mount/Dockerfile cmd/seaweedfs-mount/Dockerfile.dev
+          grep -H "golang:" cmd/seaweedfs-mount/Dockerfile cmd/seaweedfs-mount/Dockerfile.dev cmd/seaweedfs-csi-driver/Dockerfile cmd/seaweedfs-csi-driver/Dockerfile.dev
 
       - name: Check for changes
         id: check_changes
