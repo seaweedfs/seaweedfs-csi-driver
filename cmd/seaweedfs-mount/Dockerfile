@@ -5,7 +5,7 @@ ARG SEAWEEDFS_COMMIT=4cf028f68337
 # Stay on the native build platform and cross-compile from there. Running the
 # toolchain under QEMU for every target architecture is slow and makes the git
 # clone below fail with "cannot pread pack file: Bad address".
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
 
 RUN apk add git
 
